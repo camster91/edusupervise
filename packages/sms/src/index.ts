@@ -13,9 +13,9 @@
 import { randomUUID } from 'node:crypto';
 import { appendFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { pino } from 'pino';
+import { pinoLike } from './logger.js';
 
-const logger = pino({
+const logger = pinoLike({
   name: '@edusupervise/sms',
   level: process.env.LOG_LEVEL ?? 'info',
 });
@@ -104,8 +104,21 @@ function getFromNumber(): string {
 }
 
 async function sendTwilio(input: SendSmsInput): Promise<SendSmsResult> {
-  const client = await getTwilioClient();
+  // Validate ALL env vars BEFORE loading the twilio SDK. The SDK transitively
+  // requires `semver` and does `new SemVer(pkg.version)` at module-load
+  // time, which fails on hosts where `semver` is CJS-wrapped as a Proxy
+  // (Node 24 + vite SSR loader + tsx). We want misconfigured prod deploys to
+  // surface a clear "TWILIO_*_required" error, not a generic "SemVer is not
+  // a constructor" SDK loader crash. SID and TOKEN are checked first
+  // (credentials), then FROM (sender identity).
+  if (!process.env.TWILIO_ACCOUNT_SID) {
+    throw new Error('TWILIO_ACCOUNT_SID required when SMS_PROVIDER=twilio');
+  }
+  if (!process.env.TWILIO_AUTH_TOKEN) {
+    throw new Error('TWILIO_AUTH_TOKEN required when SMS_PROVIDER=twilio');
+  }
   const from = getFromNumber();
+  const client = await getTwilioClient();
   const message = await client.messages.create({
     body: input.body,
     to: input.to,

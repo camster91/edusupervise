@@ -11,12 +11,28 @@ export default defineConfig({
     pool: 'forks',
     isolate: true,
   },
-  // Vitest's vite-based loader wraps CommonJS modules (pino, sonic-boom) in
-  // a Proxy that breaks `instanceof` checks inside pino itself. Inlining them
-  // makes vite transform them as ESM and the instanceof checks work again.
+  // Inlining these CJS modules makes vite transform them as ESM instead of
+  // leaving them as Proxies. Pino 9.x's `opts instanceof SonicBoom` branch
+  // throws when SonicBoom arrives Proxy-wrapped (Node 24 + vite SSR loader +
+  // pnpm symlinked tree). With pino replaced by a tiny in-package JSON logger
+  // this is now mostly belt-and-suspenders, but keep the inline list so the
+  // tests don't trip on pino's transitive CJS deps if they're re-introduced.
   server: {
     deps: {
-      inline: ['pino', 'sonic-boom', 'atomic-sleep'],
+      inline: [
+        'pino',
+        'sonic-boom',
+        'atomic-sleep',
+        'pino-std-serializers',
+        'pino-abstract-transport',
+        'thread-stream',
+        'on-exit-leak-free',
+        'quick-format-unescaped',
+        'safe-stable-stringify',
+        '@pinojs/redact',
+        'process-warning',
+        'real-require',
+      ],
     },
   },
 });

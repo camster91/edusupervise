@@ -11,9 +11,9 @@
  *           verifyWebhook uses STRIPE_WEBHOOK_SECRET.
  */
 import { createHmac, randomUUID, timingSafeEqual } from 'node:crypto';
-import { pino } from 'pino';
+import { pinoLike } from './logger.js';
 
-const logger = pino({
+const logger = pinoLike({
   name: '@edusupervise/billing-adapter',
   level: process.env.LOG_LEVEL ?? 'info',
 });
@@ -177,6 +177,16 @@ async function createRealCheckoutSession(input: {
   schoolId: string;
   plan: Plan;
 }): Promise<CheckoutSessionResult> {
+  // Validate ALL env vars BEFORE loading the Stripe SDK. The SDK transitively
+  // requires `semver` / `crypto` and runs `new SemVer(...)` at module-load
+  // time, which fails on hosts where `semver` arrives CJS-wrapped as a Proxy
+  // (Node 24 + vite SSR loader). We want misconfigured prod deploys to surface
+  // a clear "STRIPE_*_required" / "STRIPE_PRICE_*_not configured" error, not
+  // a generic "SemVer is not a constructor" SDK loader crash.
+  if (!process.env.STRIPE_SECRET_KEY) {
+    throw new Error('STRIPE_SECRET_KEY required when BILLING_PROVIDER=stripe');
+  }
+  priceIdFor(input.plan); // throws STRIPE_PRICE_*_not configured if missing
   const stripe = await getStripeClient();
   const session = await stripe.checkout.sessions.create({
     mode: 'subscription',
@@ -199,13 +209,16 @@ async function createRealCheckoutSession(input: {
 async function createRealPortalSession(input: {
   schoolId: string;
 }): Promise<PortalSessionResult> {
-  const stripe = await getStripeClient();
+  if (!process.env.STRIPE_SECRET_KEY) {
+    throw new Error('STRIPE_SECRET_KEY required when BILLING_PROVIDER=stripe');
+  }
   const customerId = process.env.STRIPE_DEFAULT_CUSTOMER_ID;
   if (!customerId) {
     throw new Error(
       'STRIPE_DEFAULT_CUSTOMER_ID required for portal sessions (or pass customerId explicitly)',
     );
   }
+  const stripe = await getStripeClient();
   const session = await stripe.billingPortal.sessions.create({
     customer: customerId,
     return_url:

@@ -17,9 +17,9 @@ import { appendFile, mkdir } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Resend } from 'resend';
-import { pino } from 'pino';
+import { pinoLike } from './logger.js';
 
-const logger = pino({
+const logger = pinoLike({
   name: '@edusupervise/email',
   level: process.env.LOG_LEVEL ?? 'info',
 });
