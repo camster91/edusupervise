@@ -1,7 +1,7 @@
 # EduSupervise Rebuild — Design Spec (v2)
 
 **Date:** 2026-06-28
-**Status:** Draft v2, post-review iteration 1 (5 blockers + 7 important + 8 nits + 3 gaps addressed)
+**Status:** Draft v3, post-review iteration 2 (4 blockers + 5 nits resolved; implementation-ready)
 **Author:** Mavis (orchestrator)
 **Decider:** Cameron Ashley
 **Target ship:** Tier 1 in 4-6 weeks, Tier 2 in weeks 6-10, Tier 3 in months 3-6
@@ -1038,7 +1038,7 @@ If validation fails on consume, the job is moved to BullMQ's failed set with `er
 
 **Scheduling:** when a reminder is created, the server computes the next `dispatch_at` based on the duty's next occurrence (in school timezone) and the reminder's `minutes_before`. Job is added to BullMQ with `delay` set to `dispatch_at - now`. Updates to a duty's time or a teacher's assignment trigger `reminder.replan`.
 
-**Retry policy:** on send failure, BullMQ retries with exponential backoff: 1m, 5m, 30m, 2h, 12h. After 5 failed attempts, mark `reminder_log.status = 'failed'`, write `audit_log` with `action = 'reminder.failed'`, surface to admin via in-app notification.
+**Retry policy:** on send failure, BullMQ retries with exponential backoff: 1m, 5m, 30m, 2h, 12h. After 5 failed attempts, mark `reminder_log.status = 'failed'`, write `audit_log` with `action = 'reminder.failed'`, and insert a `notifications` row (`kind = 'reminder.failed'`, `user_id = job.userId`, `title = 'Reminder failed to send'`, `body = '<error message>'`, `link_url = '/app/reminders'`). The in-app notification bell surfaces this for the assigned teacher; the admin sees it on the audit log.
 
 **Idempotency:** `reminder_log` has `UNIQUE(reminder_id, scheduled_for, channel)`. Concurrent dispatches dedupe.
 
