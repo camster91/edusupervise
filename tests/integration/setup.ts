@@ -1,56 +1,37 @@
-// tests/integration/setup.ts — shared test setup for integration tests.
+// tests/integration/setup.ts — vitest global setup.
 //
-// Spins up a fresh schema in the test database before each test file.
-// We rely on the user pre-creating the database and running the init
-// scripts (see /scripts/setup-test-db.sh in the deliverable notes).
+// Reads the test env vars (DATABASE_URL, SYSTEM_DATABASE_URL, BETTER_AUTH_SECRET)
+// and exports them as process.env defaults if not already set. The integration
+// tests use the local Postgres set up by `setup-local-postgres.sh`.
 //
-// Vitest loads this once per test file. The singleFork pool option in
-// vitest.config.ts ensures tests in a single run share one DB state —
-// we wipe the tenant tables (but not the better-auth global tables)
-// between tests so they start clean.
+// Why a setup file instead of inline env:
+//   - The same env is consumed by both the auth.server.ts (better-auth) and
+//     the test harness (direct DB inserts). One source of truth = no drift.
+//   - Vitest's setupFiles runs before any test, so the env is hot by the
+//     time the auth.server singleton first reads it.
 
-import { afterAll, beforeAll, beforeEach } from 'vitest';
-import { sql } from 'drizzle-orm';
-import postgres from 'postgres';
+import { config as loadEnv } from 'dotenv';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const TEST_DATABASE_URL =
-  process.env.TEST_DATABASE_URL ??
-  'postgres://edusupervise_runtime:edusupervise_runtime@localhost:5432/edusupervise_auth_rls_test';
+const here = dirname(fileURLToPath(import.meta.url));
 
-let sqlConn: ReturnType<typeof postgres> | null = null;
+// Repo-root .env (created by setup-local-postgres.sh output). Fall back
+// to sensible defaults if not present (so `pnpm test:integration`
+// "just works" on a fresh dev box after running the setup script).
+loadEnv({ path: resolve(here, '../../.env.test') });
+loadEnv({ path: resolve(here, '../../.env') });
 
-beforeAll(async () => {
-  sqlConn = postgres(TEST_DATABASE_URL, { max: 5 });
-});
+const DEFAULTS: Record<string, string> = {
+  DATABASE_URL: 'postgres://edusupervise_runtime:testpw@localhost:5432/edusupervise',
+  SYSTEM_DATABASE_URL: 'postgres://edusupervise_system:testpw@localhost:5432/edusupervise',
+  OWNER_DATABASE_URL: 'postgres://edusupervise_owner:testpw@localhost:5432/edusupervise',
+  BETTER_AUTH_SECRET: 'integration-test-secret-do-not-use-in-prod-32chars-min',
+  APP_URL: 'http://localhost:3000',
+  NODE_ENV: 'test',
+  LOG_LEVEL: 'silent',
+};
 
-afterAll(async () => {
-  if (sqlConn) {
-    await sqlConn.end({ timeout: 5 });
-    sqlConn = null;
-  }
-});
-
-beforeEach(async () => {
-  if (!sqlConn) throw new Error('sqlConn not initialized');
-  // Wipe every tenant table + the better-auth session/account/verification
-  // tables so each test starts clean. Order: child tables before parents.
-  // CASCADE handles FKs.
-  await sqlConn.unsafe(`
-    TRUNCATE TABLE
-      reminder_log, reminders, duty_assignments, duties, cycle_calendar,
-      notifications, push_subscriptions, audit_log, users, schools,
-      outbox, worker_heartbeats, stripe_events,
-      auth_session, auth_account, auth_verification
-    RESTART IDENTITY CASCADE;
-  `);
-});
-
-/** Test helper: get the shared test connection. */
-export function getTestSql(): ReturnType<typeof postgres> {
-  if (!sqlConn) throw new Error('getTestSql before beforeAll');
-  return sqlConn;
+for (const [k, v] of Object.entries(DEFAULTS)) {
+  if (!process.env[k]) process.env[k] = v;
 }
-
-// Re-export sql for downstream tests that want raw queries.
-export { sql };
-export { TEST_DATABASE_URL };
