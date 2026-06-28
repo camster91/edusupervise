@@ -44,7 +44,7 @@ async function heartbeat() {
 }
 
 interface OutboxRow {
-  id: number;
+  id: bigint;
   schoolId: string;
   jobType: string;
   payload: Record<string, unknown>;

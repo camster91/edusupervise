@@ -44,8 +44,6 @@ export type Db = PostgresJsDatabase<typeof schemaType>;
 export interface ClientOptions {
   /** Maximum pool size. Default 10. */
   max?: number;
-  /** Postgres application_name (visible in pg_stat_activity). */
-  applicationName?: string;
   /** Optional logger for query debugging. */
   debug?: boolean;
 }
@@ -65,7 +63,6 @@ export function getRuntimeClient(
 ): { db: Db; close: () => Promise<void> } {
   const sql = postgres(databaseUrl, {
     max: options.max ?? DEFAULT_MAX,
-    application_name: options.applicationName ?? 'edusupervise-runtime',
     debug: options.debug ?? false,
     // postgres.js defaults are fine for the runtime role; we do not pass
     // `no_prepare: true` because the runtime role does not own tables
@@ -95,7 +92,6 @@ export function getSystemClient(
 ): { db: Db; close: () => Promise<void> } {
   const sql = postgres(databaseUrl, {
     max: options.max ?? DEFAULT_MAX,
-    application_name: options.applicationName ?? 'edusupervise-system',
     debug: options.debug ?? false,
   });
   const db = drizzle(sql, { schema });
