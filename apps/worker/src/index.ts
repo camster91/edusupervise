@@ -47,7 +47,7 @@ interface OutboxRow {
   id: bigint;
   schoolId: string;
   jobType: string;
-  payload: Record<string, unknown>;
+  payload: unknown;
 }
 
 async function dispatchOutboxRow(row: OutboxRow) {

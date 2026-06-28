@@ -501,7 +501,7 @@ export const workerHeartbeats = pgTable('worker_heartbeats', {
   lastBeat: timestamp('last_beat', { withTimezone: true }).notNull(),
   jobsCompleted: bigserial('jobs_completed', { mode: 'bigint' })
     .notNull()
-    .default(0),
+    .default(0n),
   startedAt: timestamp('started_at', { withTimezone: true }).notNull(),
 });
 export type WorkerHeartbeat = typeof workerHeartbeats.$inferSelect;
