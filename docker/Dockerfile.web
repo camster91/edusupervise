@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM node:20-alpine AS base
+FROM node:22-alpine AS base
 # Pin pnpm to a Node 20-compatible version. Corepack's "latest" picks pnpm 11+
 # which requires node:sqlite (Node 22+ only). 9.15.x is the latest pnpm 9 that
 # works on Node 20.

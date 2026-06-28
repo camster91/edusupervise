@@ -24,3 +24,5 @@ export {
   addMonthsUtc,
 } from './cycle-math.js';
 export type { School, CalendarEntry } from './cycle-math.js';
+export { authSchema } from './auth-schema.js';
+export type { AuthSchema } from './auth-schema.js';
