@@ -1,0 +1,482 @@
+version: 1
+plan:
+  name: 'EduSupervise Tier 1 build (continued)'
+  max_concurrency: 3
+  max_consecutive_failures: 3
+  max_cycles: 12
+  auto_reject_retries: 1
+  verifier_config:
+    default_verifiers: [verifier]
+    audit_sample_rate: 0.0
+
+# Continuation plan. Previous plan_2fbb981b shipped Layer 0 + Layer 1
+# (provider-adapters, foundation, db-schema, devops-deploy) before coder workers
+# hit the default 15-min cap and the engine auto-paused.
+#
+# This plan picks up from where we are. Already in the repo and committed:
+# - packages/email, packages/sms, packages/billing-adapter (mocks + tests)
+# - docker/{docker-compose.yml,Dockerfile.web,Dockerfile.worker}
+# - db/init/{00-create-roles.sh,01-schema.sql}, db/cron/audit-retention.sql
+# - deploy/{install.sh,backup.sh,healthcheck.sh}, deploy/traefik/edusupervise.yml
+# - docs/runbooks/{restore,rotate-secrets,scale,incident-debug}.md
+# - packages/db/{schema.ts,rls.ts,cycle-math.ts,client.ts,migrate.ts,seed.ts,...}
+#
+# All tasks have explicit 60-min timeout. Verifier run is included but may be
+# skipped via override_accept if the work is verifiably in the tree.
+#
+# Sequencing: auth-rls unblocks billing/worker/frontend-shell; frontend-shell
+# unblocks frontend-{duties,admin}; frontend-duties unblocks frontend-reminders;
+# final-e2e runs after all of the above.
+
+tasks:
+
+  # ============================================================
+  # Layer 2 — auth + RLS (no other tasks depend on its deps yet)
+  # ============================================================
+
+  - id: auth-rls
+    title: 'auth-rls: better-auth, sessions, CSRF, password reset, RLS-aware Drizzle wrapper'
+    timeout_ms: 3600000
+    prompt: |
+      Build authentication and the RLS-aware data access layer. Read spec sections 4,
+      5, 7 carefully. Read existing packages/db/src/{schema.ts,rls.ts,client.ts} to
+      understand the Drizzle schema and what's already wired.
+
+      The spec calls for better-auth ~1.6.14. The schema in
+      packages/db/src/schema.ts has the users table already. better-auth's own
+      session/account/verification tables are NOT in schema.ts — better-auth creates
+      them via its Drizzle adapter at first auth event. That's fine.
+
+      Deliverables:
+
+      1. `apps/web/server/auth.server.ts` — better-auth config. Methods: email/password
+         (bcrypt 12 rounds), magic link (consumed via POST), Google OAuth, Microsoft
+         OAuth. Sessions cookie: `__Host-edusupervise.session`, HttpOnly, Secure (prod),
+         SameSite=Lax, 30-day rolling. Use better-auth's Drizzle adapter pointed at
+         the existing users table.
+
+      2. `apps/web/server/csrf.server.ts` — CSRF validation. Reads
+         `__Host-edusupervise.csrf` cookie and `x-csrf-token` header. Uses
+         `crypto.timingSafeEqual`. Sets the cookie on first GET. Rotates on login.
+         NO age-based rejection (the double-submit pattern is stateless — validity
+         derives from session).
+
+      3. `apps/web/server/db.server.ts` — exports `getDb()` (runtime Drizzle client)
+         and `getCurrentUser()` / `getCurrentSchool()` helpers used by loaders.
+         Wraps every query that touches tenant data in `withSchoolContext(db,
+         schoolId, fn)` from packages/db/src/rls.ts.
+
+      4. `apps/web/app/lib/csrf.ts` — client-side: reads the cookie, attaches to
+         every mutation fetch via `x-csrf-token` header. Used by `app/lib/api.ts`.
+
+      5. `apps/web/app/routes/login.tsx`, `signup.tsx`, `forgot.tsx`, `reset.tsx`,
+         `auth.magic.tsx` (POST), `verify-email.tsx` (POST), `verify-phone.tsx` —
+         all auth flows per spec sections 5 + 7. Use react-hook-form + Zod.
+
+      6. `apps/web/server/rate-limit.server.ts` — in-memory rate limiter. Login
+         (5/15min/IP), forgot (3/hr/email), magic link (5/hr/email), phone verify
+         (5/hr/phone). Per-process; document that multi-instance needs Redis-backed
+         (Tier 2).
+
+      7. `packages/schemas/src/auth.ts` — Zod schemas shared client + server for all
+         auth flows. The signup schema creates a school + first admin in a single
+         transaction.
+
+      8. `tests/integration/auth-rls.test.ts` (vitest + supertest):
+         - signup creates school + first admin
+         - login returns Set-Cookie with __Host-edusupervise.session
+         - logout clears session
+         - password reset flow end-to-end
+         - magic link POST consumption
+         - RLS: user from school A cannot read school B's rows on every tenant table
+         - CSRF: cross-origin POST returns 403
+         - rate limit: 6th login attempt in 15min returns 429
+
+      Stop condition: integration tests pass against a test Postgres. Login + signup
+      work end-to-end. CSRF is wired into the api wrapper.
+    assigned_to: coder
+    verified_by: verifier
+    verify_prompt: |
+      Adversarial verification of auth + RLS:
+      1. Read `apps/web/server/auth.server.ts` — confirm better-auth is pinned to
+         ~1.6.x, NOT ^1.0.
+      2. Read `apps/web/server/csrf.server.ts` — confirm timing-safe compare, NO
+         age-based rejection.
+      3. Read `apps/web/server/db.server.ts` — confirm `withSchoolContext` wraps
+         every query that touches tenant data.
+      4. Read integration tests — confirm the RLS test creates TWO schools and
+         verifies school A cannot see school B's data on every tenant table, not
+         just one.
+      5. Run `pnpm --filter @edusupervise/web test:integration -- auth-rls` and
+         confirm all tests pass.
+      6. Read magic link + verify-email + reset routes — confirm they use POST,
+         not GET.
+
+      FAIL with the specific element if any check fails.
+    max_retries: 2
+
+  # ============================================================
+  # Layer 3 — billing + worker + frontend-shell (parallel after auth-rls)
+  # ============================================================
+
+  - id: billing
+    title: 'billing: Stripe products, checkout, webhooks, plan enforcement, downgrade grace'
+    timeout_ms: 3600000
+    prompt: |
+      Build the billing layer. Read spec sections 6, 7 (Billing subsection), and 19
+      (acceptance criteria) carefully.
+
+      Deliverables:
+
+      1. `apps/web/server/billing.server.ts` — Stripe ~17.0.0 client wrapped via
+         `@edusupervise/billing-adapter`. Helpers: `createCheckoutSession(schoolId,
+         plan)`, `createPortalSession(schoolId)`, `handleWebhookEvent(event)` (opens
+         transaction, INSERTs into stripe_events for dedup, applies state change in
+         same transaction).
+
+      2. `apps/web/app/routes/api.billing.checkout.tsx` — POST action. Creates
+         session, returns 303 redirect.
+
+      3. `apps/web/app/routes/api.billing.portal.tsx` — POST action. Returns portal URL.
+
+      4. `apps/web/app/routes/api.billing.webhook.tsx` — POST resource route. NO CSRF
+         (signature verified). Idempotent via stripe_events UNIQUE(id).
+
+      5. `apps/web/app/routes/api.billing.invoices.tsx` — GET, returns invoices.
+
+      6. `apps/web/app/routes/api.billing.audit-export[.csv].tsx` — GET, CSV download.
+
+      7. `apps/web/server/plan-enforcement.server.ts` — `enforcePlanLimits(schoolId,
+         action)` helper. Returns 403 with `{error: 'plan_limit_exceeded', limit,
+         current, max, upgrade_url}` body shape if exceeded.
+
+      8. Downgrade grace workflow per spec section 6: on Pro/School→Free webhook,
+         set `plan_downgrade_pending_to='free'`, `plan_downgrade_effective_at=now()+7d`,
+         render `<DowngradeBanner>` during grace, "Export audit CSV" button at
+         `/app/settings/billing`, daily cron flips plan on `effective_at`.
+
+      9. `apps/web/app/components/billing/DowngradeBanner.tsx` — countdown banner.
+
+      10. `tests/integration/billing.test.ts` (vitest + supertest):
+          - Stripe test-mode checkout (mocked) upgrades trial → Pro
+          - Same event.id fired twice results in one state change
+          - Plan limit hit returns 403 with correct body
+          - Pro→Free sets plan_downgrade_pending_to; banner rendered; export
+            available; after 7 days, plan flips to free
+
+      Stop condition: integration tests pass against test Postgres. Webhook handler
+      is idempotent. Plan enforcement returns 403 with correct body.
+    assigned_to: coder
+    depends_on: [auth-rls]
+    verified_by: verifier
+    verify_prompt: |
+      Adversarial verification of billing:
+      1. Confirm Stripe SDK is pinned to ~17.x.
+      2. Read webhook handler — confirm it opens a transaction, inserts into
+         stripe_events BEFORE applying state change.
+      3. Read plan-enforcement — confirm response is 403 with body
+         `{error: 'plan_limit_exceeded', limit, current, max, upgrade_url}`.
+      4. Run integration tests and confirm all pass.
+      5. Confirm DowngradeBanner component is wired into the app shell layout.
+      6. Read downgrade grace logic — confirm 7-day window is enforced.
+    max_retries: 2
+
+  - id: worker
+    title: 'worker: BullMQ + outbox flusher + reminder dispatch + retry + heartbeat + notifications'
+    timeout_ms: 3600000
+    prompt: |
+      Build the reminder worker. Read spec sections 2, 10, 12 (worker narrative +
+      cycle math).
+
+      Deliverables:
+
+      1. `apps/worker/src/index.ts` — worker entrypoint. Connects to Postgres as
+         edusupervise_system (single pool). Starts BullMQ Worker on `reminders`
+         queue with concurrency 5.
+
+      2. `apps/worker/src/heartbeat.ts` — writes to `worker_heartbeats` every 30s
+         via INSERT ... ON CONFLICT (worker_id) DO UPDATE.
+
+      3. `apps/worker/src/jobs/outbox-flush.ts` — runs every 5s. Reads outbox rows
+         where `enqueued_at IS NULL`, enqueues BullMQ jobs, marks `enqueued_at=now()`.
+
+      4. `apps/worker/src/jobs/reminders.ts` — BullMQ processor for `reminder.dispatch`.
+         Validates payload via Zod: `{schoolId, reminderId, assignmentId, userId,
+         channel, scheduledFor}`. Invalid payload → job failed with
+         `error: 'invalid_payload'`. Valid payload: opens transaction, sets
+         `SET LOCAL app.school_id = job.schoolId`, reads assignment/user/school,
+         calls `sendEmail()` from `@edusupervise/email` and/or `sendSms()` from
+         `@edusupervise/sms`, writes reminder_log row with status.
+
+      5. `apps/worker/src/retry-policy.ts` — BullMQ retry: 1m, 5m, 30m, 2h, 12h.
+         After 5 attempts, write reminder_log.status='failed', audit_log action=
+         'reminder.failed', notifications row kind='reminder.failed' for the
+         assigned teacher's user_id.
+
+      6. `apps/worker/src/timezone.ts` — converts duty local start_time + school
+         timezone (IANA string) to UTC. Uses Intl.DateTimeFormat.
+
+      7. `apps/web/server/queue.server.ts` — server-side BullMQ producer. Inserts
+         outbox row in same transaction as the reminder mutation.
+
+      8. `tests/integration/worker.test.ts`:
+         - Valid job dispatches + writes reminder_log
+         - Invalid payload (missing schoolId) rejected before DB write
+         - 5 consecutive failures write failed + audit_log + notification
+         - Worker writes for school A; school B user cannot read (RLS check)
+         - Two concurrent jobs for different schools write to correct school_id
+         - Heartbeat row created and updated
+
+      Stop condition: integration tests pass against test Postgres + Redis.
+    assigned_to: coder
+    depends_on: [auth-rls]
+    verified_by: verifier
+    verify_prompt: |
+      Adversarial verification of the worker:
+      1. Confirm worker connects to Postgres ONCE as edusupervise_system (single pool).
+      2. Confirm every DB write wraps in a transaction that runs
+         `SET LOCAL app.school_id = job.schoolId`.
+      3. Confirm Zod payload validation rejects jobs missing schoolId BEFORE any
+         DB write.
+      4. Confirm retry policy writes notifications + audit_log + reminder_log on
+         final failure.
+      5. Confirm heartbeat uses INSERT ... ON CONFLICT (worker_id) DO UPDATE.
+      6. Run `pnpm --filter @edusupervise/worker test:integration` and confirm
+         all tests pass.
+    max_retries: 2
+
+  - id: frontend-shell
+    title: 'frontend-shell: RR7 setup, app shell, sidebar/topbar, auth UI, theming'
+    timeout_ms: 3600000
+    prompt: |
+      Build the frontend foundation: React Router 7, authenticated layout, theming.
+      Read spec sections 8, 9, 11.
+
+      Deliverables:
+
+      1. `apps/web/app/root.tsx` — RR7 root with theme CSS variable, error boundary.
+      2. `apps/web/app/entry.server.tsx` — wraps each request in pino child logger
+         with requestId, reads LOG_LEVEL from env.
+      3. `apps/web/app/entry.client.tsx` — hydration entry.
+      4. `apps/web/app/routes/_app.tsx` — authenticated layout. Loader reads user +
+         school from session. Renders Sidebar + Topbar + main content.
+      5. `apps/web/app/components/shell/Sidebar.tsx` — nav links using
+         `<Link>` from react-router (NOT plain `<a>`). Conditionally shows admin
+         items by user.role. Collapses on mobile.
+      6. `apps/web/app/components/shell/Topbar.tsx` — school name, user, bell, logout.
+      7. `apps/web/app/components/shell/MobileNav.tsx` — Radix Dialog with hamburger.
+      8. `apps/web/app/components/shell/NotificationBell.tsx` — unread count, link.
+      9. `apps/web/app/components/shell/DowngradeBanner.tsx` — countdown banner when
+         plan_downgrade_pending_to is set.
+      10. `apps/web/app/components/ui/` — Radix-wrapped primitives: Button, Dialog,
+          Input, Select, Form, Toast, Table, Tabs, Popover. Each icon-only button
+          has aria-label.
+      11. `apps/web/app/lib/theme.ts` — applies accent_color CSS variable.
+      12. `apps/web/app/lib/api.ts` — fetch wrapper with CSRF token attachment.
+      13. `apps/web/app/components/auth/` — LoginForm, SignupForm, MagicLinkForm,
+          OAuthButtons.
+      14. `apps/web/app/routes/_app._index.tsx` — Dashboard placeholder.
+      15. ESLint + Prettier configs at repo root (if not already present).
+
+      Stop condition: `pnpm --filter @edusupervise/web build` succeeds. App shell
+      renders. Login + logout work end-to-end against test DB. Mobile nav opens.
+    assigned_to: coder
+    depends_on: [auth-rls]
+    verified_by: verifier
+    verify_prompt: |
+      Verification of frontend shell:
+      1. Confirm Sidebar.tsx uses `<Link>` from react-router, NOT plain `<a href>`.
+      2. Confirm admin-only nav items are conditional on user.role.
+      3. Confirm NotificationBell has aria-label="Notifications".
+      4. Confirm all Radix wrappers have aria-labels where icon-only.
+      5. Run `pnpm --filter @edusupervise/web build` and confirm RR7 build succeeds.
+      6. Confirm entry.server.tsx reads LOG_LEVEL from env.
+      7. Confirm app/lib/api.ts attaches CSRF token on every mutation fetch.
+    max_retries: 2
+
+  # ============================================================
+  # Layer 4 — frontend-duties + frontend-admin (parallel after frontend-shell)
+  # ============================================================
+
+  - id: frontend-duties
+    title: 'frontend-duties: duties CRUD, cycle calendar admin, week/month views, assignments'
+    timeout_ms: 3600000
+    prompt: |
+      Build the duty scheduling UI. Read spec sections 8 (frontend routes for
+      duties/calendar/assignments), 9 (components/duties and components/calendar),
+      12 (cycle math).
+
+      Deliverables:
+
+      1. `apps/web/app/routes/_app.duties._index.tsx` — DutyList. Loader fetches
+         duties filtered by cycle_day and is_active. Renders DutyTable with admin
+         "New Duty" button.
+      2. `apps/web/app/routes/_app.duties.new.tsx` — DutyForm (admin). Uses
+         react-hook-form + Zod schema from packages/schemas/duty.ts.
+      3. `apps/web/app/routes/_app.duties.$id.tsx` — DutyDetail. View for all;
+         edit + soft-delete for admin.
+      4. `apps/web/app/routes/_app.duties.$id.assignments.tsx` — AssignmentForm
+         (admin). Validates start_date >= school_year_start and end_date <= school_year_end.
+      5. `apps/web/app/routes/_app.calendar._index.tsx` — Calendar. Month grid
+         with cycle overlay.
+      6. `apps/web/app/routes/_app.calendar.week.$date.tsx` — WeekView.
+      7. `apps/web/app/routes/_app.assignments._index.tsx` — MyAssignments.
+      8. `apps/web/app/components/duties/` — DutyCard, DutyForm, DutyList,
+         DutyTable.
+      9. `apps/web/app/components/calendar/` — MonthView, WeekView, DayCell, CycleLegend.
+      10. `apps/web/app/routes/api.cycle-calendar._index.tsx` — GET (range),
+          POST /bulk (CSV), PATCH /:date.
+      11. `apps/web/app/routes/api.duties._index.tsx` and `_app.duties.$id.tsx` —
+          API endpoints.
+      12. `apps/web/app/routes/api.assignments._index.tsx` and `$id.tsx`.
+      13. `packages/schemas/src/duty.ts`, `assignment.ts`, `cycle-calendar.ts` — Zod
+          schemas shared client + server.
+
+      Stop condition: admin can create a duty, assign a teacher, view on calendar.
+      Teacher logs in and sees their assignments. Cycle math renders correctly across
+      school-year boundaries.
+    assigned_to: coder
+    depends_on: [frontend-shell]
+    verified_by: verifier
+    verify_prompt: |
+      Verification of frontend-duties:
+      1. Read DutyForm — confirm Zod schema shared with server (imported from
+         packages/schemas), not duplicated.
+      2. Read AssignmentForm — confirm date validation enforces school-year bounds.
+      3. Read WeekView — confirm cycle math is imported from
+         packages/db/cycle-math, not re-implemented.
+      4. Confirm admin-only routes use requireRole guard.
+      5. Run `pnpm --filter @edusupervise/web build` and confirm succeeds.
+      6. Playwright e2e test in tests/e2e/duties.spec.ts: signup, create duty,
+         assign teacher, log in as teacher, see duty on calendar.
+    max_retries: 2
+
+  - id: frontend-admin
+    title: 'frontend-admin: teachers, reports, audit, settings (branding/school-year/billing/calendar-feed)'
+    timeout_ms: 3600000
+    prompt: |
+      Build admin-only pages. Read spec sections 8 (admin routes), 9 (admin
+      components), 12 (school-year rollover).
+
+      Deliverables:
+
+      1. `apps/web/app/routes/_app.teachers._index.tsx` — TeachersList.
+      2. `apps/web/app/routes/_app.teachers.invite.tsx` — InviteTeacher.
+      3. `apps/web/app/routes/_app.teachers.new.tsx` — NewTeacher (manual create).
+      4. `apps/web/app/routes/_app.teachers.import.tsx` — RosterImport (CSV).
+      5. `apps/web/app/routes/api.users._index.tsx` and `$id.tsx` and
+         `_app.users.invite.tsx` and `_app.users.import.tsx`.
+      6. `apps/web/app/routes/_app.reports._index.tsx` — Reports.
+      7. `apps/web/app/routes/api.reports.hours.tsx` and `coverage.tsx`.
+      8. `apps/web/app/routes/_app.settings._index.tsx` — Settings landing.
+      9. `apps/web/app/routes/_app.settings.branding.tsx` — BrandingForm.
+      10. `apps/web/app/routes/_app.settings.school-year.tsx` — SchoolYearRollover
+          (4-step wizard per spec section 12).
+      11. `apps/web/app/routes/_app.settings.audit.tsx` — AuditLog.
+      12. `apps/web/app/routes/_app.settings.billing.tsx` — Billing.
+      13. `apps/web/app/routes/_app.settings.calendar-feed.tsx` — CalendarFeed.
+      14. `apps/web/app/components/settings/` — BrandingForm, CycleCalendarForm,
+          SchoolYearRollover, AuditExportButton.
+      15. `apps/web/app/components/teachers/` — TeacherList, InviteForm,
+          NewTeacherForm, RosterImport.
+      16. `apps/web/app/routes/api.audit._index.tsx` — admin-only audit query.
+      17. `apps/web/app/routes/api.school._index.tsx` (GET, PATCH),
+          `api.school.logo.tsx` (POST multipart), `api.school.school-year.tsx`
+          (POST rollover).
+
+      Stop condition: admin can invite/import/create teachers, view audit, run
+      reports, upload logo, rollover school year, manage billing, view calendar
+      feed URL. All admin-only routes return 403 for non-admin.
+    assigned_to: coder
+    depends_on: [frontend-shell]
+    verified_by: verifier
+    verify_prompt: |
+      Verification of frontend-admin:
+      1. Confirm all admin-only routes have a role guard (admin-only, not just hidden).
+      2. Read SchoolYearRollover — confirm 4-step wizard preview before commit.
+      3. Read BrandingForm — confirm logo upload uses POST /api/school/logo with multipart.
+      4. Read AuditExportButton — confirm CSV download only renders during
+         plan_downgrade_pending_to window.
+      5. Run `pnpm --filter @edusupervise/web build` and confirm succeeds.
+      6. Integration test: teacher (non-admin) requesting admin route returns 403.
+    max_retries: 2
+
+  # ============================================================
+  # Layer 4b — frontend-reminders (depends on frontend-duties)
+  # ============================================================
+
+  - id: frontend-reminders
+    title: 'frontend-reminders: reminder list/form/log, in-app notifications UI'
+    timeout_ms: 3600000
+    prompt: |
+      Build the reminder configuration UI. Read spec sections 8 (reminders routes),
+      9 (components/reminders).
+
+      Deliverables:
+
+      1. `apps/web/app/routes/_app.reminders._index.tsx` — RemindersList.
+      2. `apps/web/app/routes/_app.reminders.$id.edit.tsx` — ReminderForm.
+      3. `apps/web/app/routes/api.reminders._index.tsx` and `$id.tsx`.
+      4. `apps/web/app/components/reminders/ReminderList.tsx`, `ReminderForm.tsx`,
+         `ReminderLog.tsx`.
+      5. `apps/web/app/routes/_app.notifications._index.tsx` — Notifications page.
+      6. `apps/web/app/routes/api.notifications._index.tsx` and `$id.tsx`.
+      7. `apps/web/app/routes/api.reminders.send.$id.tsx` — POST: manual trigger
+         (admin only; for dev convenience).
+
+      Stop condition: teacher can configure reminders; admin sees reminder_log on
+      duty detail; bell shows unread count and marks read on click.
+    assigned_to: coder
+    depends_on: [frontend-duties]
+    verified_by: verifier
+    verify_prompt: |
+      Verification of frontend-reminders:
+      1. Confirm reminder form lets the user toggle each channel independently.
+      2. Confirm notifications page marks read via PATCH, not on render.
+      3. Run `pnpm --filter @edusupervise/web build` and confirm succeeds.
+      4. Manual e2e via Playwright: signup, create duty, assign, create reminder,
+         verify reminder_log entry appears.
+    max_retries: 2
+
+  # ============================================================
+  # Layer 5 — final E2E + production deploy
+  # ============================================================
+
+  - id: final-e2e
+    title: 'final-e2e: smoke test + 21 acceptance criteria + production deploy runbook'
+    timeout_ms: 3600000
+    role: verify-as-task
+    prompt: |
+      Final verification + production deploy. Read spec section 19 carefully.
+
+      Deliverables:
+
+      1. `tests/e2e/smoke.spec.ts` (Playwright) — signup → create duty → assign
+         teacher → create reminder → wait 90s → verify reminder_log → confirm
+         notification received.
+
+      2. `tests/integration/cycle-math.test.ts` — already partially in
+         packages/db/src/cycle-math.test.ts. Add additional cases: leap year
+         Feb 29, year boundary.
+
+      3. `tests/integration/cron.test.ts` — run audit-retention.sql; verify old
+         rows pruned, recent rows kept.
+
+      4. `tests/integration/csrf.test.ts` — cross-origin POST returns 403.
+
+      5. Run all 21 acceptance criteria from spec section 19 against the local
+         test stack and write a PASS/FAIL report to `deliverable.md`. Each
+         criterion gets one line of evidence (test result, curl output, log line).
+
+      6. `docs/runbooks/production-deploy.md` — full step-by-step guide to
+         deploy EduSupervise to vps.ashbi.ca from a fresh install: SSH access,
+         secrets file creation, docker compose up, first-boot migration,
+         health check, custom domain + Traefik config, DNS A record, ACME
+         cert issuance, smoke test against production.
+
+      Stop condition: deliverable.md lists PASS counts and any FAIL reasons.
+      Production deploy runbook is concrete enough to follow without tribal
+      knowledge.
+    assigned_to: verifier
+    depends_on: [billing, worker, frontend-shell, frontend-duties, frontend-reminders, frontend-admin]
+    max_retries: 1
