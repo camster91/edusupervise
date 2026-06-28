@@ -17,6 +17,7 @@
     "@edusupervise/billing-adapter": "workspace:*",
     "@edusupervise/db": "workspace:*",
     "@edusupervise/email": "workspace:*",
+    "@edusupervise/google-calendar": "workspace:*",
     "@edusupervise/schemas": "workspace:*",
     "@edusupervise/sms": "workspace:*",
     "@hookform/resolvers": "^3.9.0",
@@ -45,6 +46,7 @@
     "react-router": "~7.1.0",
     "stripe": "~17.0.0",
     "tailwind-merge": "^2.5.4",
+    "web-push": "~3.6.7",
     "zod": "^3.23.8"
   },
   "devDependencies": {

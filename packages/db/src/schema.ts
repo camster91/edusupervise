@@ -1,5 +1,7 @@
 /**
- * Drizzle schema — mirrors `db/init/01-schema.sql` (which mirrors spec section 4).
+ * Drizzle schema — mirrors `db/init/02-schema.sql` (which mirrors spec section 4)
+ * plus the better-auth session/account/verification tables (defined in this
+ * file because the init script cannot know about better-auth's columns).
  *
  * Why a Drizzle layer when SQL already runs from `db/init/`?
  *   - The init script is the FIRST-BOOT bootstrap so a fresh Postgres
@@ -13,7 +15,7 @@
  *   - All tenant tables have `school_id UUID NOT NULL REFERENCES schools(id)
  *     ON DELETE CASCADE` and an RLS policy defined in the init SQL. RLS is
  *     NOT re-asserted here — drizzle-kit does not model policies, and the
- *     SQL is the single source of truth for them. See `db/init/01-schema.sql`.
+ *     SQL is the single source of truth for them. See `db/init/02-schema.sql`.
  *   - CHECK constraints (length caps, time ordering, enum-equivalents that
  *     pgEnum does not cover) are written inline using drizzle's `check()`
  *     builder so they are emitted as part of the generated migration SQL.
@@ -21,10 +23,13 @@
  *     for the corresponding column; pgEnum emits a matching
  *     `CREATE TYPE ... AS ENUM` plus an implicit CHECK, so we do NOT add a
  *     manual `check()` for enum membership on those columns.
- *   - Better-auth's `session` / `account` / `verification` tables are NOT
- *     declared here — better-auth owns them and creates them at first
- *     auth event via its Drizzle adapter. The runtime role already has
- *     table-level grants from the init script.
+ *   - Better-auth's `session` / `account` / `verification` tables ARE
+ *     declared here — better-auth's Drizzle adapter expects them to exist
+ *     before the first auth event. They are global (NOT tenant-scoped, no
+ *     `school_id`) because a session is keyed by an opaque token, not by
+ *     school. See `apps/web/server/auth.server.ts` for the field-name
+ *     mapping that bridges our snake_case `users` columns to better-auth's
+ *     camelCase expectations.
  */
 
 import { relations, sql } from 'drizzle-orm';
@@ -835,6 +840,143 @@ export const auditLogRelations = relations(auditLog, ({ one }) => ({
 }));
 
 // ---------------------------------------------------------------------------
+// Better-auth session / account / verification tables
+// ---------------------------------------------------------------------------
+//
+// These tables are GLOBAL (no `school_id`, no RLS). They are keyed by opaque
+// tokens / provider IDs, not by tenant — a session token identifies "this
+// browser is logged in as user X", and `school_id` is read off the user row
+// inside the request handler after `auth.api.getSession({ headers })`
+// returns the session.
+//
+// Why these are NOT in db/init/02-schema.sql:
+//   - The init script doesn't know better-auth's column shape. Column types
+//     and lengths are owned by the better-auth adapter contract, so we
+//     declare them here as Drizzle tables and let drizzle-kit migrations
+//     manage their evolution.
+//   - The runtime role gets `SELECT/INSERT/UPDATE/DELETE` on these tables
+//     via the GRANT loop at the bottom of 02-schema.sql, which uses
+//     `pg_tables` — but that loop only sees tables that already exist at
+//     init time. The GRANT for these tables is therefore re-applied by the
+//     migration that creates them (see db/migrations/0000_init.sql — the
+//     migration emits explicit `GRANT ... TO edusupervise_runtime` for
+//     every better-auth table it creates).
+//
+// Column shape matches better-auth's internal adapter (see
+// `@better-auth/core/dist/db/schema/*.mjs`):
+//   - session:   id, userId, token, expiresAt, ipAddress, userAgent
+//   - account:   id, userId, accountId, providerId, accessToken, ... , password
+//   - verification: id, identifier, value, expiresAt
+//
+// We use camelCase columns because better-auth's drizzle adapter defaults to
+// camelCase column names; setting `camelCase: false` would force us to write
+// a `fields` mapping for every column, which is more friction than value.
+
+/**
+ * Better-auth session. Identified by an opaque `token` (unique). The runtime
+ * role reads this table on every authenticated request via
+ * `auth.api.getSession({ headers })`. NO school_id, NO RLS — session lookup
+ * is the very step that figures out which school the request belongs to.
+ */
+export const authSession = pgTable('auth_session', {
+  id: uuid('id').primaryKey().defaultRandom(),
+  userId: uuid('userId')
+    .notNull()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  token: text('token').notNull().unique(),
+  expiresAt: timestamp('expiresAt', { withTimezone: true }).notNull(),
+  ipAddress: text('ipAddress'),
+  userAgent: text('userAgent'),
+  createdAt: timestamp('createdAt', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  updatedAt: timestamp('updatedAt', { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+export type AuthSession = typeof authSession.$inferSelect;
+export type NewAuthSession = typeof authSession.$inferInsert;
+
+/**
+ * Better-auth account. One row per (userId, providerId) — credential accounts
+ * hold the bcrypt password hash in `password`; OAuth accounts hold the
+ * provider's access/refresh tokens. Read on sign-in (password verify) and on
+ * OAuth callback.
+ */
+export const authAccount = pgTable(
+  'auth_account',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('userId')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    accountId: text('accountId').notNull(),
+    providerId: text('providerId').notNull(),
+    accessToken: text('accessToken'),
+    refreshToken: text('refreshToken'),
+    idToken: text('idToken'),
+    accessTokenExpiresAt: timestamp('accessTokenExpiresAt', {
+      withTimezone: true,
+    }),
+    refreshTokenExpiresAt: timestamp('refreshTokenExpiresAt', {
+      withTimezone: true,
+    }),
+    scope: text('scope'),
+    /** bcrypt hash for `providerId='credential'`. */
+    password: text('password'),
+    createdAt: timestamp('createdAt', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updatedAt', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    // One row per (user, provider). A user can have a credential account
+    // AND a Google account at the same time, but only one of each.
+    uniqueIndex('auth_account_user_provider_unique').on(t.userId, t.providerId),
+    index('idx_auth_account_user').on(t.userId),
+  ],
+);
+export type AuthAccount = typeof authAccount.$inferSelect;
+export type NewAuthAccount = typeof authAccount.$inferInsert;
+
+/**
+ * Better-auth verification. Generic token store for email-verification,
+ * password-reset, magic-link flows. Each row is a one-time token (better-auth
+ * deletes on consume). NO RLS — verification lookups happen before we know
+ * which user / school the token belongs to.
+ */
+export const authVerification = pgTable(
+  'auth_verification',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    identifier: text('identifier').notNull(),
+    value: text('value').notNull(),
+    expiresAt: timestamp('expiresAt', { withTimezone: true }).notNull(),
+    createdAt: timestamp('createdAt', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updatedAt', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('idx_auth_verification_identifier').on(t.identifier),
+  ],
+);
+export type AuthVerification = typeof authVerification.$inferSelect;
+export type NewAuthVerification = typeof authVerification.$inferInsert;
+
+export const authSessionRelations = relations(authSession, ({ one }) => ({
+  user: one(users, { fields: [authSession.userId], references: [users.id] }),
+}));
+
+export const authAccountRelations = relations(authAccount, ({ one }) => ({
+  user: one(users, { fields: [authAccount.userId], references: [users.id] }),
+}));
+
+// ---------------------------------------------------------------------------
 // Schema array — convenient for drizzle-kit + drizzle-orm
 // ---------------------------------------------------------------------------
 
@@ -855,4 +997,7 @@ export const schema = {
   planLimits,
   googleCalendarTokens,
   calendarEventLinks,
+  authSession,
+  authAccount,
+  authVerification,
 };

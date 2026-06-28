@@ -257,6 +257,29 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, created_at DESC) WHERE read_at IS NULL;
 
 -- =========================================
+-- Push notification subscriptions (Tier 2)
+-- =========================================
+-- One row per (school, user, browser endpoint). See
+-- db/migrations/2026-06-28-push-subscriptions.sql for the matching
+-- migration file (kept in sync with this bootstrap block).
+
+CREATE TABLE IF NOT EXISTS push_subscriptions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  endpoint TEXT NOT NULL,
+  p256dh TEXT NOT NULL,
+  auth TEXT NOT NULL,
+  user_agent TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  last_used_at TIMESTAMPTZ,
+  UNIQUE(school_id, user_id, endpoint)
+);
+
+CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user
+  ON push_subscriptions(school_id, user_id);
+
+-- =========================================
 -- Plan limits (global lookup, no RLS)
 -- =========================================
 
@@ -291,7 +314,8 @@ DECLARE
 BEGIN
   FOREACH t IN ARRAY ARRAY[
     'users', 'cycle_calendar', 'duties', 'duty_assignments',
-    'reminders', 'reminder_log', 'audit_log', 'notifications'
+    'reminders', 'reminder_log', 'audit_log', 'notifications',
+    'push_subscriptions'
   ]
   LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);

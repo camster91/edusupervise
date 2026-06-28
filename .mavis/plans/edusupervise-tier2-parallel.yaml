@@ -1,0 +1,247 @@
+version: 1
+plan:
+  name: 'EduSupervise Tier 2 add-ons (parallel with Tier 1)'
+  max_concurrency: 4
+  max_consecutive_failures: 2
+  max_cycles: 6
+  auto_reject_retries: 1
+  verifier_config:
+    default_verifiers: [verifier]
+    audit_sample_rate: 0.0
+
+# Parallel Tier 2 work that ADDS new files without modifying Tier 1 surfaces.
+# Designed to run alongside plan_5c6c0a37 (Tier 1) on the same repo.
+# Conflicts minimised: each task creates new files in new directories.
+# Files that may temporarily reference Tier 1 symbols are noted; workers
+# should stub or import from Tier 1 if present, no-op if absent.
+
+tasks:
+
+  # ============================================================
+  # No deps — purely additive scaffolding
+  # ============================================================
+
+  - id: tenant-data-isolation-tests
+    title: 'tenant-data-isolation-tests: RLS contract test suite for CI'
+    prompt: |
+      Build the automated RLS contract test suite that the spec section 15 lists as a
+      Tier 2 deliverable. This runs on every CI migration to prove tenant isolation.
+
+      Read spec section 4 (data model) + section 5 (RLS) before writing. The schema
+      itself ships in Tier 1 db-schema; this task writes the TEST SUITE that proves
+      RLS works against the schema.
+
+      Deliverables (all NEW files, additive to Tier 1):
+
+      1. `tests/integration/tenant-isolation.test.ts` — vitest + supertest. For each
+         tenant table listed in spec section 4 (schools, users, duties, duty_assignments,
+         reminders, reminder_log, audit_log, stripe_events, outbox, notifications,
+         worker_heartbeat, plan_limits, cycle_calendar):
+         - create two schools (A and B) with admin users
+         - as school A admin, attempt to SELECT/UPDATE/DELETE rows owned by school B
+         - assert: SELECT returns 0 rows; UPDATE returns 0 rows affected; DELETE returns
+           0 rows affected
+         - assert: direct INSERT with a forged school_id is rejected by RLS (FORCE RLS)
+      2. `tests/integration/rls-negative.test.ts` — adversarial cases:
+         - school A tries to read school B's audit_log via raw SQL with explicit
+           `school_id = B` filter (should return 0 rows under RLS)
+         - school A tries to UPDATE school B's duty (should affect 0 rows)
+         - worker (system role) can read across schools (control case)
+      3. `tests/integration/cycle-math-isolation.test.ts` — cycle_day calculation
+         must be school-scoped: school A and school B with different cycle_days
+         should compute different cycle_day for the same date.
+      4. `tests/helpers/tenant-factory.ts` — vitest helper. `createTenant()` returns
+         {schoolId, adminUser, runtimeClient, systemClient} for tests. Idempotent
+         cleanup via afterEach.
+      5. `tests/helpers/assertions.ts` — `expectRowCount(client, table, n)`,
+         `expectRlsBlocks(client, fn, schoolId)` helpers.
+      6. `package.json` (root) — add scripts: `test:rls`, `test:tenant-isolation`,
+         add to existing `test:integration`.
+      7. CI config `.github/workflows/rls-contract.yml` — runs `pnpm test:rls`
+         against a Postgres service container on every PR. Fail-fast on any RLS leak.
+
+      The tests need a real Postgres with the schema. Document the setup:
+      `docker run --rm -p 5432:5432 -e POSTGRES_PASSWORD=test postgres:16-alpine`
+      then `pnpm db:migrate && pnpm test:rls`.
+
+      Stop condition: `pnpm test:rls` runs against a throwaway Postgres and PASSES
+      for at least 6 of the 13 tenant tables. (Remaining tables covered in CI
+      once Tier 1 schema lands.)
+    assigned_to: coder
+    verified_by: verifier
+    verify_prompt: |
+      Verify the RLS contract test suite:
+      1. Confirm `tests/integration/tenant-isolation.test.ts` covers AT LEAST 6 tenant
+         tables (school_id-scoped: schools, users, duties, duty_assignments, reminders,
+         reminder_log, audit_log, etc.).
+      2. Confirm tests assert: SELECT 0 rows cross-tenant, UPDATE 0 rows cross-tenant,
+         DELETE 0 rows cross-tenant.
+      3. Confirm system role CAN read across schools (control case) — otherwise the
+         worker process would break.
+      4. Run `bash -n .github/workflows/rls-contract.yml` for syntax check.
+      5. Confirm `pnpm test:rls` script exists in root package.json.
+      6. Confirm helpers (tenant-factory.ts, assertions.ts) are reusable utilities,
+         not one-off test code.
+
+      FAIL with the specific missing element if any check fails. PASS only if all six pass.
+    max_retries: 2
+
+  - id: push-notifications-module
+    title: 'push-notifications: Web Push subscription, VAPID, service worker skeleton'
+    prompt: |
+      Build the Web Push notification module. The spec section 15 lists this as Tier 2.
+      Tier 1 ships the in-app notifications table; this task adds browser push on top.
+
+      Read spec section 8 (routes) and section 10 (worker) before writing. Push
+      notifications will integrate with the existing `notifications` table from Tier 1.
+
+      Deliverables (all NEW files, additive to Tier 1):
+
+      1. `db/migrations/2026-07-XX-push-subscriptions.sql` — new migration:
+         ```sql
+         CREATE TABLE push_subscriptions (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+           user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+           endpoint TEXT NOT NULL,
+           p256dh TEXT NOT NULL,
+           auth TEXT NOT NULL,
+           user_agent TEXT,
+           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+           last_used_at TIMESTAMPTZ,
+           UNIQUE(school_id, user_id, endpoint)
+         );
+         ALTER TABLE push_subscriptions ENABLE ROW LEVEL SECURITY;
+         ALTER TABLE push_subscriptions FORCE ROW LEVEL SECURITY;
+         CREATE POLICY push_sub_tenant ON push_subscriptions
+           USING (school_id = current_setting('app.school_id')::UUID);
+         ```
+         Save with a timestamp filename (use today's date).
+      2. `apps/web/server/push.server.ts` — exports:
+         - `getVapidKeys()` — reads `VAPID_PUBLIC_KEY` + `VAPID_PRIVATE_KEY` from env
+         - `subscribeUser(userId, schoolId, subscription)` — INSERTs into push_subscriptions
+         - `unsubscribeUser(userId, schoolId, endpoint)` — DELETEs
+         - `sendPushToUser(userId, schoolId, payload)` — looks up subscriptions,
+           calls `web-push` library for each, returns success/failure counts
+         - `sendPushToSchool(schoolId, payload)` — broadcasts to all subs in school
+      3. `apps/web/app/lib/push-client.ts` — client-side subscription helper:
+         - `requestNotificationPermission()` — prompts user
+         - `subscribeToPush(vapidKey)` — registers service worker, creates PushSubscription
+         - Posts to `/api/push/subscribe`
+      4. `apps/web/public/sw.js` — service worker (NEW file, not a Tier 1 surface):
+         - Listens for `push` events
+         - Shows notification with payload (title, body, link_url, tag)
+         - Handles `notificationclick` to open the link_url
+      5. `apps/web/app/routes/api.push.subscribe.tsx` — POST. Validates CSRF,
+         accepts subscription JSON, calls subscribeUser. Idempotent on duplicate.
+      6. `apps/web/app/routes/api.push.unsubscribe.tsx` — POST. DELETEs the sub.
+      7. `apps/web/app/routes/api.push.test.tsx` — POST admin-only. Sends a test
+         push to the current user's subscriptions. Used to verify push works end-to-end.
+      8. `apps/web/app/components/push/PushPermissionPrompt.tsx` — banner that appears
+         in app shell (admin can dismiss; re-prompts after 7 days). Wires to push-client.
+      9. `package.json` — add `web-push` to dependencies (latest stable ~3.6.x).
+      10. `docs/runbooks/push-debug.md` — common issues: VAPID key mismatch, expired
+          subscriptions (410 Gone), service worker not registered, browser blocks.
+
+      The notifications from Tier 1 (reminder.failed, etc.) should ALSO trigger a push
+      if the user has a push subscription. Stub the integration point at
+      `apps/web/server/notifications.server.ts` if it exists from Tier 1, otherwise
+      add a TODO comment for the auth-rls task to wire.
+
+      Stop condition: subscribe + unsubscribe endpoints work end-to-end against test
+      Postgres, service worker registers in a browser, push payload renders a
+      notification. VAPID keys generated via `npx web-push generate-vapid-keys`.
+    assigned_to: coder
+    verified_by: verifier
+    verify_prompt: |
+      Verify push-notifications module:
+      1. Confirm migration file exists with FORCE ROW LEVEL SECURITY on
+         push_subscriptions.
+      2. Confirm `web-push` is added to dependencies, pinned to ~3.6 (NOT ^3.0.0).
+      3. Confirm `apps/web/public/sw.js` exists as a NEW file (not modified Tier 1).
+      4. Confirm CSRF validation on subscribe/unsubscribe routes.
+      5. Confirm service worker handles `push` and `notificationclick` events.
+      6. Confirm runbook documents VAPID key generation + 410 Gone handling.
+
+      FAIL with the specific element if any check fails. PASS only if all six pass.
+    max_retries: 2
+
+  - id: calendar-exports-v2-google
+    title: 'calendar-exports-v2-google: Google Calendar 2-way sync package'
+    prompt: |
+      Build the Google Calendar two-way sync. Tier 1 ships the per-user .ics feed
+      (calendar-feed task in frontend-admin); this task adds Google Calendar OAuth
+      and 2-way event sync.
+
+      Read spec section 12 (cycle math) before writing. Calendar sync must respect
+      cycle_day and school-year boundaries.
+
+      Deliverables (all NEW files in new package + new routes):
+
+      1. `packages/google-calendar/package.json` — new workspace package.
+         Depends on `googleapis` (~130.x), `@google-cloud/local-auth` (~3.x).
+      2. `packages/google-calendar/src/index.ts` — exports:
+         - `getAuthUrl(schoolId, userId)` — generates Google OAuth URL with state
+           containing {schoolId, userId, nonce}
+         - `exchangeCode(code, state)` — exchanges OAuth code for tokens, stores in
+           new `google_calendar_tokens` table
+         - `listEvents(userId, schoolId, timeMin, timeMax)` — calls Google Calendar
+           API, returns normalised events
+         - `pushEventToGoogle(userId, schoolId, duty)` — creates Google Calendar
+           event from duty/assignment
+         - `pullEventsFromGoogle(userId, schoolId, since)` — fetches events from
+           user's primary calendar
+         - `reconcile(userId, schoolId)` — 2-way sync, returns diff (created/updated/deleted)
+      3. `db/migrations/2026-07-XX-google-calendar-tokens.sql` — new migration:
+         ```sql
+         CREATE TABLE google_calendar_tokens (
+           id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+           school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+           user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+           access_token TEXT NOT NULL,
+           refresh_token TEXT NOT NULL,
+           expiry_date TIMESTAMPTZ NOT NULL,
+           scope TEXT NOT NULL,
+           created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+           UNIQUE(school_id, user_id)
+         );
+         ALTER TABLE google_calendar_tokens ENABLE ROW LEVEL SECURITY;
+         ALTER TABLE google_calendar_tokens FORCE ROW LEVEL SECURITY;
+         ```
+      4. `apps/web/app/routes/api.google-calendar.connect.tsx` — GET. Generates
+         auth URL, redirects user.
+      5. `apps/web/app/routes/api.google-calendar.callback.tsx` — GET. Handles
+         OAuth callback, calls exchangeCode, redirects to settings page.
+      6. `apps/web/app/routes/api.google-calendar.disconnect.tsx` — POST. Deletes
+         tokens row.
+      7. `apps/web/app/routes/api.google-calendar.sync.tsx` — POST admin-only.
+         Triggers reconcile for current user's primary calendar.
+      8. `apps/web/app/components/settings/GoogleCalendarConnect.tsx` — connect
+         button + status display (connected email + last sync time).
+      9. `docs/runbooks/google-calendar-sync.md` — OAuth setup (Google Cloud
+         Console), token refresh handling, rate-limit recovery (Google Calendar
+         API has 1M queries/day quota per project), conflict resolution policy
+         (Google wins on conflict by default).
+      10. Unit tests `packages/google-calendar/src/sync.test.ts` — verify
+          reconcile logic handles: event created on EduSupervise side only,
+          event deleted on Google side, event modified on both sides (Google
+          wins).
+
+      Stop condition: OAuth connect flow works against a test Google Cloud
+      project, reconcile correctly diffs a fixture of 5 events, tokens persist
+      across server restart.
+    assigned_to: coder
+    verified_by: verifier
+    verify_prompt: |
+      Verify google-calendar package:
+      1. Confirm `packages/google-calendar/` is a new workspace package with
+         googleapis ~130.x pinned (NOT ^130.0.0).
+      2. Confirm migration adds google_calendar_tokens with FORCE RLS.
+      3. Confirm OAuth state contains nonce for CSRF protection.
+      4. Confirm token refresh is handled (not just initial auth).
+      5. Confirm reconcile logic has unit tests with fixture data.
+      6. Confirm runbook documents Google Cloud Console OAuth setup steps.
+
+      FAIL with the specific element if any check fails. PASS only if all six pass.
+    max_retries: 2
