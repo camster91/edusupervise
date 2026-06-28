@@ -16,7 +16,7 @@ COPY packages/email/package.json packages/email/package.json
 COPY packages/sms/package.json packages/sms/package.json
 COPY packages/billing-adapter/package.json packages/billing-adapter/package.json
 COPY packages/schemas/package.json packages/schemas/package.json
-RUN pnpm install --frozen-lockfile --filter './apps/*' --filter './packages/*'
+RUN pnpm install --no-frozen-lockfile --filter './apps/*' --filter './packages/*'
 
 # --- build stage ---
 FROM deps AS build
