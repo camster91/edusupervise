@@ -18,7 +18,12 @@ export default defineConfig({
     // when the source is `.ts` rather than `dist/*.js`).
     alias: {
       "@edusupervise/db": new URL("./packages/db/src/index.ts", import.meta.url).pathname,
+      "@edusupervise/db/schema": new URL("./packages/db/src/schema.ts", import.meta.url).pathname,
+      "@edusupervise/db/client": new URL("./packages/db/src/client.ts", import.meta.url).pathname,
+      "@edusupervise/db/rls": new URL("./packages/db/src/rls.ts", import.meta.url).pathname,
+      "@edusupervise/db/cycle-math": new URL("./packages/db/src/cycle-math.ts", import.meta.url).pathname,
       "@edusupervise/schemas": new URL("./packages/schemas/src/index.ts", import.meta.url).pathname,
+      "@edusupervise/schemas/auth": new URL("./packages/schemas/src/auth.ts", import.meta.url).pathname,
       "~": new URL("./apps/web/app", import.meta.url).pathname,
     },
   },
