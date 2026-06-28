@@ -2,7 +2,7 @@
 import { useLoaderData, Link } from 'react-router';
 import type { Route } from './+types/_app.duties._index';
 import { getSession, requireSession } from '../../server/auth.server.ts';
-import { withSchoolContext } from '../../server/db.server.ts';
+import { withSchool } from '../../server/db.server.ts';
 import { duties } from '@edusupervise/db';
 import { and, eq, desc } from 'drizzle-orm';
 
@@ -12,7 +12,7 @@ export function meta() {
 
 export async function loader({ request }: Route.LoaderArgs) {
   const session = requireSession(await getSession(request));
-  const rows = await withSchoolContext(session.schoolId, (tx) =>
+  const rows = await withSchool(session.schoolId, (tx) =>
     tx
       .select({
         id: duties.id,

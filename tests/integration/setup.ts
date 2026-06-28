@@ -26,6 +26,7 @@ const DEFAULTS: Record<string, string> = {
   DATABASE_URL: 'postgres://edusupervise_runtime:testpw@localhost:5432/edusupervise',
   SYSTEM_DATABASE_URL: 'postgres://edusupervise_system:testpw@localhost:5432/edusupervise',
   OWNER_DATABASE_URL: 'postgres://edusupervise_owner:testpw@localhost:5432/edusupervise',
+  SESSION_SECRET: 'integration-test-session-secret-do-not-use-in-prod-32chars-min',
   BETTER_AUTH_SECRET: 'integration-test-secret-do-not-use-in-prod-32chars-min',
   APP_URL: 'http://localhost:3000',
   NODE_ENV: 'test',

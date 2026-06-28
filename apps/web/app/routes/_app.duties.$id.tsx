@@ -2,7 +2,7 @@
 import { useLoaderData, Link, Form, redirect } from 'react-router';
 import type { Route } from './+types/_app.duties.$id';
 import { getSession, requireSession, requireRole } from '../../server/auth.server.ts';
-import { withSchoolContext } from '../../server/db.server.ts';
+import { withSchool } from '../../server/db.server.ts';
 import { duties, dutyAssignments, users } from '@edusupervise/db';
 import { eq } from 'drizzle-orm';
 
@@ -12,7 +12,7 @@ export function meta() {
 
 export async function loader({ request, params }: Route.LoaderArgs) {
   const session = requireSession(await getSession(request));
-  const data = await withSchoolContext(session.schoolId, async (tx) => {
+  const data = await withSchool(session.schoolId, async (tx) => {
     const [duty] = await tx
       .select()
       .from(duties)
@@ -46,7 +46,7 @@ export async function action({ request, params }: Route.ActionArgs) {
     const userId = String(form.get('userId') ?? '');
     const startDate = String(form.get('startDate') ?? '');
     if (!userId || !startDate) return Response.json({ error: 'missing_fields' }, { status: 400 });
-    await withSchoolContext(session.schoolId, (tx) =>
+    await withSchool(session.schoolId, (tx) =>
       tx.insert(dutyAssignments).values({
         dutyId: params.id,
         userId,
@@ -57,7 +57,7 @@ export async function action({ request, params }: Route.ActionArgs) {
     return redirect(`/app/duties/${params.id}`);
   }
   if (intent === 'delete') {
-    await withSchoolContext(session.schoolId, (tx) =>
+    await withSchool(session.schoolId, (tx) =>
       tx.update(duties).set({ isActive: false }).where(eq(duties.id, params.id)),
     );
     return redirect('/app/duties');

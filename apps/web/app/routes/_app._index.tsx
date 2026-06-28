@@ -2,7 +2,7 @@
 import { useLoaderData, Link } from 'react-router';
 import type { Route } from './+types/_app._index';
 import { getSession } from '../../server/auth.server.ts';
-import { withSchoolContext } from '../../server/db.server.ts';
+import { withSchool } from '../../server/db.server.ts';
 import { duties, dutyAssignments, users, cycleCalendar } from '@edusupervise/db';
 import { and, eq, gte, lte, desc, isNull } from 'drizzle-orm';
 
@@ -14,7 +14,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const session = await getSession(request);
   if (!session) throw new Response('Unauthorized', { status: 401 });
 
-  const data = await withSchoolContext(session.schoolId, async (tx) => {
+  const data = await withSchool(session.schoolId, async (tx) => {
     // Look up the school for cycle info
     const now = new Date();
     const weekAgo = new Date(now.getTime() - 7 * 86_400_000);
