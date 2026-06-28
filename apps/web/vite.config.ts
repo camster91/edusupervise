@@ -11,25 +11,19 @@ export default defineConfig({
   resolve: {
     alias: [
       {
-        find: /^~\/(.*)$/,
+        find: /^~(.+)$/,
         replacement: '',
         customResolver: (id: string) => {
-          // Strip the leading ~ and try .ts / .tsx / /index.ts
-          const target = id.replace(/^~\/?/, '');
+          // id is the matched prefix-stripped path (after the regex matches)
+          const target = id.startsWith('/') ? id.slice(1) : id;
           const candidates = [
             resolve(appDir, `${target}.ts`),
             resolve(appDir, `${target}.tsx`),
             resolve(appDir, target, 'index.ts'),
           ];
-          for (const c of candidates) {
-            try {
-              // Vite will resolve this path; existence check at build time
-              return c;
-            } catch {
-              // continue
-            }
-          }
-          return resolve(appDir, target);
+          // Return the first candidate; Vite will surface a clear error
+          // if none exist (rather than silently appending nothing).
+          return candidates[0];
         },
       },
     ],
