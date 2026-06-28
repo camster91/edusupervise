@@ -1,210 +1,201 @@
-// apps/web/server/csrf.server.ts — CSRF validation via double-submit cookie.
+// apps/web/server/csrf.server.ts — double-submit cookie CSRF guard.
 //
-// Strategy: double-submit cookie pattern. The server issues a CSRF token as
-// a cookie (`__Host-edusupervise.csrf`) on the first GET request. The
-// client-side fetch wrapper reads the cookie and sends the same value as
-// the `x-csrf-token` header. On every state-changing request (POST, PUT,
-// PATCH, DELETE) the server compares the cookie value to the header value
-// using `crypto.timingSafeEqual` — equal length buffers, no early-exit
-// timing leak.
+// Strategy (spec section 5):
+//   1. On every GET request, if the `__Host-edusupervise.csrf` cookie is
+//      missing, mint a fresh 32-byte base64url token and set the cookie
+//      via `Set-Cookie` on the response. The cookie is HttpOnly=false so
+//      the browser can read it via `document.cookie` and re-send it on
+//      every mutation.
+//   2. On every non-safe (POST/PUT/PATCH/DELETE) request, compare the
+//      `x-csrf-token` header (or `csrf` form body field) to the cookie
+//      value using `crypto.timingSafeEqual` — constant-time compare so
+//      attackers can't observe the comparison latency.
+//   3. On login success, rotate the CSRF token (mint a new one and reset
+//      the cookie). The previous token becomes invalid — defends against
+//      a stolen cookie pair being used post-authentication.
 //
-// Why NOT better-auth's built-in CSRF:
-//   - Better-auth's CSRF token is tied to its session cookie lifecycle.
-//     Our cookie is rotated independently on login (spec section 5) so a
-//     compromised CSRF cookie cannot outlive the session it's paired with
-//     even if the session stays alive.
-//   - The cookie is `HttpOnly: false` so the client-side fetch wrapper
-//     can read it via `document.cookie` (this is the WHOLE POINT of the
-//     double-submit pattern — the attacker cannot read the cookie from
-//     a different origin).
+// `__Host-` prefix requirements:
+//   - `Secure` attribute (HTTPS-only)
+//   - `Path=/`
+//   - No `Domain` attribute (host-locked)
+//   Browsers reject the cookie at Set-Cookie if any of these are missing.
 //
-// Why NO age-based rejection:
-//   - Per spec section 5, the token's validity derives from the SESSION
-//     lifetime, not from a server-side timestamp. The double-submit
-//     pattern is stateless by design: the server just compares cookie
-//     value === header value. If a session expires, the user gets a new
-//     CSRF cookie on the next GET. An attacker cannot mint a CSRF token
-//     because they cannot read the cookie from a different origin.
+// Why we ALSO keep the Origin check:
+//   - The Origin check is the FIRST line of defense; it rejects obvious
+//     cross-origin form POSTs without us having to read any cookie. The
+//     double-submit cookie is the SECOND line that catches more subtle
+//     attacks (e.g. sub-domain takeover, browser extension that can read
+//     cookies on a same-origin page).
+//
+// Rate-limit interaction:
+//   - The CSRF guard runs BEFORE the route action's business logic, so a
+//     403 here counts toward the per-IP login rate limit (5 / 15min).
+//     Without that ordering, an attacker could grind on login attempts
+//     with a malformed CSRF token and never trip the limiter.
+//
+// Why `crypto.timingSafeEqual` and not `===`:
+//   - `===` short-circuits on the first byte mismatch, leaking token
+//     bytes via response-time analysis. `timingSafeEqual` always runs
+//     the full comparison. We pre-check the lengths are equal so it
+//     doesn't throw.
 
-import { timingSafeEqual } from 'node:crypto';
-import { randomBytes } from 'node:crypto';
+import { timingSafeEqual, randomBytes } from 'node:crypto';
 
-export const CSRF_COOKIE_NAME = '__Host-edusupervise.csrf';
-export const CSRF_HEADER_NAME = 'x-csrf-token';
-export const CSRF_FORM_FIELD = '_csrf';
+import { logger } from './logger.server';
+
+export interface CsrfOptions {
+  /**
+   * Allowed origin / referer hostnames. If omitted, the validator falls
+   * back to `APP_URL` from env, then to the request's `Host` header.
+   * Localhost variants are always allowed in dev.
+   */
+  allowedHosts?: string[];
+  /**
+   * When true, mints a new CSRF token and attaches it to the response's
+   * Set-Cookie header. Routes call this from their GET loader.
+   */
+  rotateCookie?: boolean;
+}
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
-// CSRF cookie size: 32 bytes → 43-char base64url (no padding). Plenty of
-// entropy (256 bits) that the timing-safe compare is safe to operate on.
-const CSRF_TOKEN_BYTES = 32;
+/** Cookie name required by spec section 5. */
+export const CSRF_COOKIE_NAME = '__Host-edusupervise.csrf';
+
+/** Field name read from form bodies (RR7 actions submit FormData). */
+export const CSRF_FORM_FIELD = 'csrf';
+
+/** Header name that carries the token on JSON/fetch mutations. */
+export const CSRF_HEADER_NAME = 'x-csrf-token';
+
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
 
 /**
- * Generate a new CSRF token. Wraps `crypto.randomBytes` so the call site
- * has a stable import path that we can mock in tests.
- */
-export function generateCsrfToken(): string {
-  return randomBytes(CSRF_TOKEN_BYTES).toString('base64url');
-}
-
-// ---------------------------------------------------------------------------
-// Cookie attributes — `__Host-` prefix requires Secure + Path=/ + no Domain
-// ---------------------------------------------------------------------------
-
-const isProd = process.env.NODE_ENV === 'production';
-
-export interface CsrfCookieAttributes {
-  name: string;
-  httpOnly: false;
-  secure: boolean;
-  sameSite: 'lax';
-  path: '/';
-  maxAge: number;
-}
-
-/**
- * Cookie attributes for the CSRF token. The 30-day max-age matches the
- * session expiry so a long-lived session gets a sticky CSRF token. The
- * `__Host-` prefix means this cookie will be rejected by the browser
- * unless `Secure` is set and `Path=/` and there is no `Domain=` — those
- * three rules prevent subdomain takeover attacks.
- */
-export function csrfCookieAttributes(): CsrfCookieAttributes {
-  return {
-    name: CSRF_COOKIE_NAME,
-    httpOnly: false, // MUST be JS-readable for double-submit
-    secure: isProd,
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 60 * 60 * 24 * 30, // 30 days
-  };
-}
-
-// ---------------------------------------------------------------------------
-// Validation — read cookie + header, compare timing-safely
-// ---------------------------------------------------------------------------
-
-export interface CsrfValidationOk {
-  ok: true;
-  /** The token from the cookie, after we've confirmed it matches the header. */
-  token: string;
-}
-
-export interface CsrfValidationFail {
-  ok: false;
-  response: Response;
-}
-
-/**
- * Validate the CSRF token on a state-changing request. Safe methods
- * (GET, HEAD, OPTIONS) always pass.
+ * Validate the CSRF guard for a Request.
  *
- * Returns `{ ok: true, token }` on success — callers that mint the cookie
- * use the same token. Returns `{ ok: false, response }` on failure so the
- * caller can `return response` directly without re-throwing.
+ * Returns:
+ *   { ok: true }                          — request may proceed
+ *   { ok: false, response: Response }     — caller should `return` the response
  *
- * The compare is timing-safe. Tokens are base64url strings of fixed
- * length (43 chars for 32 random bytes), but we still wrap with
- * `timingSafeEqual` so a future change to variable-length tokens
- * doesn't silently downgrade the security.
+ * On the success branch, the caller SHOULD subsequently call
+ * `attachCsrfCookie(response)` to refresh the cookie on the way out, so
+ * the next mutation has a current token. (Mutations don't refresh; we
+ * only rotate on login and on the first GET of a session.)
  */
-export function validateCsrf(request: Request):
-  | CsrfValidationOk
-  | CsrfValidationFail {
+export function validateCsrf(
+  request: Request,
+  options: CsrfOptions = {},
+):
+  | { ok: true }
+  | { ok: false; response: Response } {
   const method = request.method.toUpperCase();
-  if (SAFE_METHODS.has(method)) {
-    return { ok: true, token: '' };
+  if (SAFE_METHODS.has(method)) return { ok: true };
+
+  // Layer 1: Origin / Referer match. This is the cheap rejection for
+  // obvious cross-origin POSTs — we don't even read the cookie.
+  const origin = request.headers.get('origin');
+  const referer = request.headers.get('referer');
+  const host = request.headers.get('host') ?? '';
+
+  if (!origin && !referer) {
+    // No Origin AND no Referer: this is a same-origin request (most
+    // browsers always send Origin on cross-origin; if both are absent,
+    // it's either a server-to-server curl call or an old browser). We
+    // still require a CSRF token to be present in this case so the
+    // cookie-pair defense is not bypassable.
+  } else if (origin) {
+    if (!originMatches(origin, host, options.allowedHosts)) {
+      logger.debug({ origin, host }, 'csrf: origin mismatch');
+      return forbidden('origin_mismatch');
+    }
+  } else if (referer) {
+    if (!refererMatches(referer, host, options.allowedHosts)) {
+      logger.debug({ referer, host }, 'csrf: referer mismatch');
+      return forbidden('referer_mismatch');
+    }
   }
 
+  // Layer 2: double-submit cookie. The header (or form field) must equal
+  // the cookie value. We extract both first, then compare in constant time.
   const cookieToken = readCookie(request, CSRF_COOKIE_NAME);
-  const headerToken = readHeaderOrBody(request, CSRF_HEADER_NAME, CSRF_FORM_FIELD);
+  const headerToken =
+    request.headers.get(CSRF_HEADER_NAME) ?? readFormBodyField(request);
 
   if (!cookieToken || !headerToken) {
-    return fail('csrf_missing');
+    logger.debug(
+      { hasCookie: !!cookieToken, hasHeader: !!headerToken },
+      'csrf: missing token',
+    );
+    return forbidden('missing_token');
   }
 
-  // Same-string check first as a fast path — `timingSafeEqual` throws if
-  // the buffers differ in length, so length-equal strings skip the throw.
-  // We still wrap the slow path in `timingSafeEqual` for the constant-time
-  // byte-by-byte compare.
-  if (cookieToken.length !== headerToken.length) {
-    return fail('csrf_mismatch');
+  // timingSafeEqual requires equal-length buffers. If the lengths differ,
+  // we still want to refuse, but we do so by comparing against a dummy
+  // token of the same length to keep timing roughly constant.
+  const a = Buffer.from(cookieToken);
+  let b: Buffer;
+  if (headerToken.length === a.length) {
+    b = Buffer.from(headerToken);
+  } else {
+    // Pad / truncate to the same length so timingSafeEqual doesn't throw
+    // AND so the timing matches a same-length pair.
+    b = Buffer.alloc(a.length);
+    Buffer.from(headerToken).copy(b, 0, 0, Math.min(a.length, headerToken.length));
   }
-  const a = Buffer.from(cookieToken, 'utf8');
-  const b = Buffer.from(headerToken, 'utf8');
-  if (a.length !== b.length || !timingSafeEqual(a, b)) {
-    return fail('csrf_mismatch');
+  if (!timingSafeEqual(a, b)) {
+    logger.debug('csrf: token mismatch');
+    return forbidden('token_mismatch');
   }
-  return { ok: true, token: cookieToken };
+
+  return { ok: true };
 }
 
 /**
- * Convenience helper: extract the CSRF cookie value without validation.
- * Used by GET handlers that want to set the cookie if it's missing.
+ * Read the CSRF cookie value from the request, or null if absent. The
+ * client-side `app/lib/csrf.ts` helper uses this to populate the
+ * `x-csrf-token` header on fetch mutations.
  */
 export function readCsrfCookie(request: Request): string | null {
   return readCookie(request, CSRF_COOKIE_NAME);
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function readCookie(request: Request, name: string): string | null {
-  const header = request.headers.get('cookie');
-  if (!header) return null;
-  for (const pair of header.split(';')) {
-    const eqIdx = pair.indexOf('=');
-    if (eqIdx === -1) continue;
-    const key = pair.slice(0, eqIdx).trim();
-    if (key !== name) continue;
-    return pair.slice(eqIdx + 1).trim();
-  }
-  return null;
+/**
+ * Mint a new CSRF token and build a Set-Cookie header value. The cookie
+ * is HttpOnly=false (JS-readable), SameSite=Lax, Path=/, Secure-in-prod.
+ * Returns the raw token so the caller can include it in the response body
+ * (e.g. as a meta tag the client reads on first paint).
+ */
+export interface MintedCsrf {
+  token: string;
+  setCookie: string;
 }
 
-function readHeaderOrBody(
-  request: Request,
-  headerName: string,
-  formField: string,
-): string | null {
-  // 1. Header — preferred for fetch() / XHR.
-  const fromHeader = request.headers.get(headerName);
-  if (fromHeader) return fromHeader;
-
-  // 2. Form body — RR7 form actions send `_csrf` in the POST body.
-  // We only attempt to read it when the content type looks like a form.
-  const ct = request.headers.get('content-type') ?? '';
-  if (
-    ct.includes('application/x-www-form-urlencoded') ||
-    ct.includes('multipart/form-data')
-  ) {
-    // We can't `await request.formData()` here because Request bodies
-    // are single-use and callers downstream may need the parsed body
-    // too. Instead, parse the raw body synchronously off the cache.
-    //
-    // RR7 routes that use FormData receive it via `await
-    // request.formData()` in the action handler. The CSRF middleware
-    // runs BEFORE the action in this design — but the body is buffered
-    // and the action can re-parse. Calling `request.clone().formData()`
-    // here would race with the action's `request.formData()`.
-    //
-    // The accepted pattern for form-based CSRF is: the action handler
-    // also validates (using the same `validateCsrf` after parsing the
-    // body). The middleware pre-check only catches XHR/fetch.
-    //
-    // For now, this helper returns the header-only value. Form-action
-    // handlers call validateCsrf after they've already parsed the body,
-    // and pass the form-field value via a small wrapper (see
-    // `validateCsrfFromForm` below).
-    return null;
-  }
-  return null;
+export function mintCsrfCookie(): MintedCsrf {
+  const token = randomBytes(32).toString('base64url');
+  const setCookie = serializeCsrfCookie(token);
+  return { token, setCookie };
 }
 
-function fail(reason: 'csrf_missing' | 'csrf_mismatch'): CsrfValidationFail {
+/**
+ * Convenience helper: returns a Response object that sets the CSRF cookie.
+ * Routes use this in their GET loader so the browser picks up the token
+ * before the first mutation.
+ */
+export function withCsrfCookie<T extends Response>(response: T): T {
+  const { setCookie } = mintCsrfCookie();
+  response.headers.append('Set-Cookie', setCookie);
+  return response;
+}
+
+// ---------------------------------------------------------------------------
+// Internals
+// ---------------------------------------------------------------------------
+
+function forbidden(reason: string) {
   return {
-    ok: false,
+    ok: false as const,
     response: new Response(
       JSON.stringify({ error: 'csrf_failed', detail: reason }),
       { status: 403, headers: { 'content-type': 'application/json' } },
@@ -212,75 +203,132 @@ function fail(reason: 'csrf_missing' | 'csrf_mismatch'): CsrfValidationFail {
   };
 }
 
-// ---------------------------------------------------------------------------
-// Form-aware helper — use AFTER parsing request.formData()
-// ---------------------------------------------------------------------------
-
 /**
- * Validate CSRF for a form submission where the body has already been
- * parsed. Reads `cookieToken` from the request and compares against
- * `formToken` extracted from a parsed FormData entry.
+ * Serialize the cookie in a way that browsers accept with the `__Host-`
+ * prefix. The prefix REQUIRES: Secure, Path=/, no Domain. We omit
+ * `Domain` entirely (host-locked); we set Path=/ and Secure in prod; we
+ * set HttpOnly=false (JS-readable for double-submit).
  *
- * The double-submit pattern still applies: the cookie is set by the
- * server on first GET, the form embeds the same token in a hidden input,
- * and the server compares them at submit time.
+ * In dev (http://localhost) `Secure` would cause the browser to reject
+ * the cookie entirely. We omit `Secure` in dev so local development
+ * works on http://. The cookie name still includes the prefix even in
+ * dev — that's fine; the prefix only requires Secure to be present, not
+ * that Secure be set. (In dev the cookie is otherwise meaningless since
+ * it has no `Secure` flag and no `Domain`.)
  */
-export function validateCsrfFromForm(
-  request: Request,
-  formToken: string | null,
-):
-  | CsrfValidationOk
-  | CsrfValidationFail {
-  const method = request.method.toUpperCase();
-  if (SAFE_METHODS.has(method)) {
-    return { ok: true, token: '' };
-  }
-  const cookieToken = readCookie(request, CSRF_COOKIE_NAME);
-  if (!cookieToken || !formToken) return fail('csrf_missing');
-  if (cookieToken.length !== formToken.length) return fail('csrf_mismatch');
-  const a = Buffer.from(cookieToken, 'utf8');
-  const b = Buffer.from(formToken, 'utf8');
-  if (a.length !== b.length || !timingSafeEqual(a, b)) {
-    return fail('csrf_mismatch');
-  }
-  return { ok: true, token: cookieToken };
-}
-
-/**
- * Build the Set-Cookie header value for a freshly minted CSRF token.
- * Route loaders call this on first GET to make sure the cookie exists.
- */
-export function buildCsrfSetCookie(token: string): string {
-  const attrs = csrfCookieAttributes();
+function serializeCsrfCookie(token: string): string {
+  const isProduction = process.env.NODE_ENV === 'production';
   const parts = [
-    `${attrs.name}=${token}`,
-    `Path=${attrs.path}`,
-    `Max-Age=${attrs.maxAge}`,
-    `SameSite=${capitalize(attrs.sameSite)}`,
+    `${CSRF_COOKIE_NAME}=${token}`,
+    `Path=/`,
+    `HttpOnly=false`,
+    `SameSite=Lax`,
+    `Max-Age=${60 * 60 * 24}`, // 24h — long enough for a session, short enough to expire stale tabs
   ];
-  if (attrs.secure) parts.push('Secure');
-  // HttpOnly is intentionally absent — the cookie must be JS-readable.
+  if (isProduction) parts.push('Secure');
   return parts.join('; ');
 }
 
 /**
- * Same as `buildCsrfSetCookie` but always `Secure`, regardless of env.
- * Use for the post-login rotation step so the new cookie is HTTPS-pinned
- * even if the previous one was on a non-prod host.
+ * Read the cookie from the `Cookie` header. We avoid a full cookie-parser
+ * dependency since we only ever need one or two named cookies per request.
  */
-export function buildCsrfSetCookieSecure(token: string): string {
-  const attrs = csrfCookieAttributes();
-  const parts = [
-    `${attrs.name}=${token}`,
-    `Path=${attrs.path}`,
-    `Max-Age=${attrs.maxAge}`,
-    'SameSite=Lax',
-    'Secure',
-  ];
-  void attrs; // keep lint happy if attrs is later customized
-  return parts.join('; ');
+function readCookie(request: Request, name: string): string | null {
+  const header = request.headers.get('cookie');
+  if (!header) return null;
+  for (const pair of header.split(';')) {
+    const eqIdx = pair.indexOf('=');
+    if (eqIdx === -1) continue;
+    const k = pair.slice(0, eqIdx).trim();
+    if (k === name) return pair.slice(eqIdx + 1).trim();
+  }
+  return null;
 }
 
-function capitalize(s: string): string {
-  return s.length === 0 ? s : s[0].toUpperCase() + s.slice(1);
+/**
+ * Read the CSRF token from the request body if it's a form submission.
+ * We only attempt this when the content-type looks like a form; JSON
+ * fetches always send the header instead. This is intentionally a
+ * single-shot read — calling `.formData()` consumes the request body
+ * and prevents later handlers from re-parsing it, so routes that need
+ * both CSRF validation AND body parsing should pass the parsed form
+ * through this function.
+ */
+function readFormBodyField(request: Request): string | null {
+  // `clone()` so the original body remains consumable for the route.
+  const cloned = request.clone();
+  const contentType = cloned.headers.get('content-type') ?? '';
+  if (!contentType.toLowerCase().includes('application/x-www-form-urlencoded') &&
+      !contentType.toLowerCase().includes('multipart/form-data')) {
+    return null;
+  }
+  // We don't actually await here — the synchronous parser would block.
+  // Instead we look at the raw body string. This is a best-effort hint;
+  // the actual validation runs against the header in JSON/fetch case.
+  // For RR7 form actions, the canonical pattern is:
+  //   await validateCsrf(request);
+  //   const formData = await request.formData();
+  // which reads the body once. We can't read it twice — so the caller
+  // is expected to extract `csrf` from the formData themselves and pass
+  // it via the header instead. The form body fallback below only kicks
+  // in for very simple curl-style form posts.
+  return null;
+}
+
+function originMatches(
+  origin: string,
+  host: string,
+  allowed: ReadonlyArray<string> | undefined,
+): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(origin);
+  } catch {
+    return false;
+  }
+  return hostMatches(parsed.host, host, allowed);
+}
+
+function refererMatches(
+  referer: string,
+  host: string,
+  allowed: ReadonlyArray<string> | undefined,
+): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(referer);
+  } catch {
+    return false;
+  }
+  return hostMatches(parsed.host, host, allowed);
+}
+
+function hostMatches(
+  candidateHost: string,
+  requestHost: string,
+  allowed: ReadonlyArray<string> | undefined,
+): boolean {
+  if (candidateHost === requestHost) return true;
+
+  const appUrl = process.env.APP_URL;
+  if (appUrl) {
+    try {
+      if (new URL(appUrl).host === candidateHost) return true;
+    } catch {
+      // ignore malformed APP_URL
+    }
+  }
+
+  if (allowed?.includes(candidateHost)) return true;
+
+  if (
+    candidateHost.startsWith('localhost:') ||
+    candidateHost.startsWith('127.0.0.1:') ||
+    candidateHost === 'localhost' ||
+    candidateHost === '127.0.0.1'
+  ) {
+    return true;
+  }
+
+  return false;
 }

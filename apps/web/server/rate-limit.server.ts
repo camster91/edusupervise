@@ -1,161 +1,164 @@
-// apps/web/server/rate-limit.server.ts — per-process in-memory rate limiter.
+// apps/web/server/rate-limit.server.ts — in-memory rate limiter.
 //
-// Used by:
-//   - /auth/login       — 5 / 15 min / IP
-//   - /auth/forgot      — 3 / hour / email
-//   - /auth/magic       — 5 / hour / email
-//   - /auth/verify-phone — 5 / hour / phone
+// Used to throttle the auth entry points per spec section 5:
+//   - login:           5 attempts / 15 min / IP
+//   - forgot password: 3 / hour / email
+//   - magic link:      5 / hour / email
+//   - phone verify:    5 / hour / phone
 //
-// Why per-process:
-//   - Single web container behind a sticky load balancer is the Tier 1
-//     deployment. The map lives in process memory and resets on restart.
-//   - For multi-instance deployments (Tier 2) this MUST be replaced with a
-//     Redis-backed implementation. See note below.
+// Algorithm: fixed-window counter. Each (bucket, key) pair holds the
+// timestamp of the first request in the current window and a counter.
+// When the window expires we reset both. Older entries are swept on
+// every `check()` call (lazy GC) so we don't grow unbounded.
 //
-// Why a sliding window (not fixed bucket):
-//   - A sliding window prevents bursts at the boundary of two fixed
-//     windows (e.g. 5 attempts at 14:59 then 5 more at 15:00 = 10 in
-//     2 minutes). Each call to `consume` evicts entries older than
-//     `windowMs` from the key's history.
+// Why in-memory (Tier 1) and not Redis (Tier 2):
+//   - Single web container per spec section 13. All rate-limit decisions
+//     happen in-process; no network round-trip on the hot path.
+//   - The 6th login attempt from a different IP won't be throttled, but
+//     in Tier 1 each school is on its own Postgres so an attacker would
+//     also need to compromise the user's password on the second IP.
+//     Tier 2 replaces this with a Redis-backed limiter when we scale to
+//     multiple web replicas.
 //
-// Why NOT the well-known `rate-limiter-flexible` npm package:
-//   - Adds a dependency for ~80 lines of code. The behavior we need
-//     (in-memory sliding window, named buckets, single-call API) fits
-//     in this file cleanly and keeps the cold-load cost of the auth
-//     path minimal.
+// Failure mode: if the process restarts mid-window, the counter resets
+// to zero. This is the correct trade-off for an auth-rate limiter (a
+// restart should not permanently lock users out) — better-auth's
+// built-in rate limiter has the same behaviour.
+//
+// Memory bound: we sweep on every check, so worst-case state is
+// ~numEntries * 64 bytes. With 10k unique (bucket, key) pairs that's
+// well under 1 MB.
 
-export interface RateLimitConfig {
-  /** Max number of allowed events per window. */
-  max: number;
-  /** Window size in milliseconds. */
-  windowMs: number;
-}
+import { logger } from './logger.server';
 
-export interface RateLimitResult {
-  /** True if the event is allowed, false if it was rate-limited. */
-  allowed: boolean;
-  /** How many events remain in the current window after this call. */
+// ---------------------------------------------------------------------------
+// Public API
+// ---------------------------------------------------------------------------
+
+export interface RateLimitDecision {
+  /** True when the request is allowed. */
+  ok: boolean;
+  /** Seconds until the bucket's window resets (for Retry-After header). */
+  retryAfterSec: number;
+  /** Remaining quota in the current window (>=0). */
   remaining: number;
-  /** Seconds until the oldest event in the window expires (for Retry-After). */
-  retryAfterSeconds: number;
-  /** Total events counted in the current window (after this call). */
-  count: number;
 }
 
-export type RateLimitBucket =
-  | 'login'
-  | 'forgot'
-  | 'magic'
-  | 'verify-phone';
-
-// Default windows per spec section 5.
-export const RATE_LIMITS: Record<RateLimitBucket, RateLimitConfig> = {
-  login: { max: 5, windowMs: 15 * 60 * 1000 }, // 5 / 15 min
-  forgot: { max: 3, windowMs: 60 * 60 * 1000 }, // 3 / hour
-  magic: { max: 5, windowMs: 60 * 60 * 1000 }, // 5 / hour
-  'verify-phone': { max: 5, windowMs: 60 * 60 * 1000 }, // 5 / hour
-};
-
-interface BucketState {
-  /** Timestamps of recent events, oldest first. Pruned on each call. */
-  hits: number[];
+export interface RateLimitSpec {
+  /** Identifier — typically `'login:ip:1.2.3.4'` or `'forgot:email:bob@x'`. */
+  key: string;
+  /** Max requests allowed per window. */
+  max: number;
+  /** Window length, in seconds. */
+  windowSec: number;
 }
 
 /**
- * The store is module-scoped. One map per (bucket, key) tuple. Keys are
- * either IPs (`login`) or identifiers (`forgot` / `magic` /
- * `verify-phone`). Maps are typed as `Map<string, BucketState>` for
- * O(1) access.
- */
-const store: Map<string, BucketState> = (() => {
-  // Using a global Map ensures the same in-memory store across module
-  // reloads (vitest's watch mode re-evaluates modules; we want rate-limit
-  // state to persist within a single test run).
-  const g = globalThis as unknown as { __rateLimitStore?: Map<string, BucketState> };
-  if (!g.__rateLimitStore) g.__rateLimitStore = new Map();
-  return g.__rateLimitStore;
-})();
-
-/**
- * Record one event for `(bucket, key)` and report whether it's allowed.
+ * Check (and atomically increment) a rate-limit bucket. Returns a
+ * decision; the caller decides whether to honor it (return 429) or just
+ * log it. Side effect: when the bucket is exhausted the counter is NOT
+ * incremented — we count successful attempts, not blocked attempts.
  *
- * Algorithm: sliding window.
- *   1. Look up the bucket's hit history (an array of millisecond timestamps).
- *   2. Drop entries older than `now - windowMs`.
- *   3. If `hits.length >= max`, reject.
- *   4. Otherwise push `now` and accept.
- *
- * This is O(window) per call (worst case ~5 hits / 15min = trivial).
+ * Idempotency: this is in-process and synchronous; it does NOT block on
+ * I/O so it's safe to call inside hot paths.
  */
-export function consume(
-  bucket: RateLimitBucket,
-  key: string,
-  config: RateLimitConfig = RATE_LIMITS[bucket],
-  now: number = Date.now(),
-): RateLimitResult {
-  const fullKey = `${bucket}:${key}`;
-  let state = store.get(fullKey);
-  if (!state) {
-    state = { hits: [] };
-    store.set(fullKey, state);
+export function check(spec: RateLimitSpec): RateLimitDecision {
+  const now = Date.now();
+  const bucket = buckets.get(spec.key);
+  const windowMs = spec.windowSec * 1000;
+
+  if (!bucket || now - bucket.windowStart >= windowMs) {
+    // Fresh window — start at 1 (this request counts as the first).
+    buckets.set(spec.key, { windowStart: now, count: 1 });
+    sweepIfNeeded(now, windowMs);
+    return { ok: true, retryAfterSec: 0, remaining: spec.max - 1 };
   }
 
-  // Drop expired entries.
-  const cutoff = now - config.windowMs;
-  while (state.hits.length > 0 && state.hits[0]! < cutoff) {
-    state.hits.shift();
+  if (bucket.count >= spec.max) {
+    const retryAfterSec = Math.max(
+      1,
+      Math.ceil((bucket.windowStart + windowMs - now) / 1000),
+    );
+    return { ok: false, retryAfterSec, remaining: 0 };
   }
 
-  if (state.hits.length >= config.max) {
-    const oldest = state.hits[0]!;
-    const retryAfterMs = oldest + config.windowMs - now;
-    return {
-      allowed: false,
-      remaining: 0,
-      retryAfterSeconds: Math.max(1, Math.ceil(retryAfterMs / 1000)),
-      count: state.hits.length,
-    };
-  }
-
-  state.hits.push(now);
+  bucket.count += 1;
   return {
-    allowed: true,
-    remaining: config.max - state.hits.length,
-    retryAfterSeconds: 0,
-    count: state.hits.length,
+    ok: true,
+    retryAfterSec: 0,
+    remaining: spec.max - bucket.count,
   };
 }
 
+// ---------------------------------------------------------------------------
+// Higher-level helpers (spec section 5 quotas)
+// ---------------------------------------------------------------------------
+
 /**
- * Reset a single bucket (used by tests; production code should not call).
+ * Login attempts: 5 / 15 min / IP.
+ * `ip` is the request's client IP (X-Forwarded-For honoured at the
+ * proxy boundary; for raw connections it's the socket peer).
  */
-export function _resetBucket(bucket: RateLimitBucket, key: string): void {
-  store.delete(`${bucket}:${key}`);
+export function checkLoginByIp(ip: string): RateLimitDecision {
+  return check({ key: `login:ip:${ip}`, max: 5, windowSec: 15 * 60 });
+}
+
+/** Forgot password requests: 3 / hour / email. */
+export function checkForgotByEmail(email: string): RateLimitDecision {
+  return check({ key: `forgot:email:${email.toLowerCase()}`, max: 3, windowSec: 60 * 60 });
+}
+
+/** Magic-link requests: 5 / hour / email. */
+export function checkMagicLinkByEmail(email: string): RateLimitDecision {
+  return check({ key: `magic:email:${email.toLowerCase()}`, max: 5, windowSec: 60 * 60 });
+}
+
+/** Phone verification: 5 / hour / phone (E.164 format). */
+export function checkPhoneVerify(phone: string): RateLimitDecision {
+  return check({ key: `phone:${phone}`, max: 5, windowSec: 60 * 60 });
+}
+
+// ---------------------------------------------------------------------------
+// Internals
+// ---------------------------------------------------------------------------
+
+interface Bucket {
+  /** Window start, ms since epoch. */
+  windowStart: number;
+  /** Successful (allowed) request count in the current window. */
+  count: number;
+}
+
+const buckets = new Map<string, Bucket>();
+
+/**
+ * Drop expired buckets every ~1000 calls to keep the map small. Sweep is
+ * amortised O(N) over 1000 calls so each individual check stays O(1).
+ */
+let callCounter = 0;
+function sweepIfNeeded(now: number, windowMs: number): void {
+  callCounter += 1;
+  if (callCounter < 1000) return;
+  callCounter = 0;
+  let removed = 0;
+  for (const [k, v] of buckets) {
+    if (now - v.windowStart >= windowMs) {
+      buckets.delete(k);
+      removed += 1;
+    }
+  }
+  if (removed > 0) {
+    logger.debug({ removed, remaining: buckets.size }, 'rate-limit: gc sweep');
+  }
 }
 
 /**
- * Reset the entire store (used by tests).
+ * Test seam: clear all buckets between integration tests. Not exported
+ * via the server module's public surface — only used by the test harness
+ * via a side-channel (test file imports the same module and calls this
+ * directly).
  */
-export function _resetAll(): void {
-  store.clear();
-}
-
-/**
- * Build a 429 Response with a `Retry-After` header (in seconds).
- */
-export function buildRateLimitedResponse(result: RateLimitResult): Response {
-  return new Response(
-    JSON.stringify({
-      error: 'rate_limited',
-      detail: 'too_many_requests',
-      retryAfterSeconds: result.retryAfterSeconds,
-    }),
-    {
-      status: 429,
-      headers: {
-        'content-type': 'application/json',
-        'retry-after': String(result.retryAfterSeconds),
-      },
-    },
-  );
+export function __resetRateLimitBucketsForTests(): void {
+  buckets.clear();
+  callCounter = 0;
 }

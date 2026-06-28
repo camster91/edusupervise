@@ -1,99 +1,131 @@
-// apps/web/app/lib/api.ts — fetch wrapper for mutation calls.
+// app/lib/api.ts — fetch wrapper with CSRF + error normalization.
 //
-// Thin wrapper around `csrfFetch` (apps/web/app/lib/csrf.ts) that:
-//   - Defaults to `credentials: 'same-origin'` so the session cookie
-//     travels with every request.
-//   - Parses JSON responses and surfaces server errors as exceptions.
-//   - Treats 204 No Content as success-with-null.
+// The single point of contact for client → server HTTP. Every mutation
+// fetch goes through this module so:
+//   - the CSRF token is always attached
+//   - JSON responses are parsed + typed
+//   - non-2xx responses are normalized to thrown `ApiError`s with a
+//     consistent shape `{ error, status, ...details }`
 //
-// Routes that need raw fetch (file uploads, streaming) should NOT use
-// this wrapper — call `csrfFetch` directly with `body: FormData` and let
-// the browser set the multipart boundary.
+// React Router form actions bypass this module (they're plain HTML
+// submissions) — they handle CSRF by including the `csrf` hidden field
+// from `csrfFormField()`. The fetch wrapper is for client-side JS that
+// calls the resource routes directly (e.g. from `useFetcher().submit`).
 
-import { csrfFetch } from './csrf';
+import { csrfHeader } from './csrf';
+
+export interface ApiErrorBody {
+  /** Stable machine-readable error code (e.g. 'unauthorized'). */
+  error: string;
+  /** Free-text detail; not localized. */
+  detail?: string;
+  /** Optional structured fields (e.g. plan_limit_exceeded's `limit`). */
+  [key: string]: unknown;
+}
 
 export class ApiError extends Error {
   readonly status: number;
-  readonly body: unknown;
-  constructor(status: number, body: unknown, message?: string) {
-    super(message ?? `API error ${status}`);
+  readonly body: ApiErrorBody;
+
+  constructor(status: number, body: ApiErrorBody) {
+    super(body.error || `HTTP ${status}`);
     this.name = 'ApiError';
     this.status = status;
     this.body = body;
   }
 }
 
-export interface ApiOptions extends Omit<RequestInit, 'body'> {
-  /** Body — JSON-encoded automatically unless already a string. */
-  body?: unknown;
-  /**
-   * If true, throw ApiError on any 4xx/5xx. Default true.
-   */
-  throwOnError?: boolean;
+export interface ApiRequestInit extends Omit<RequestInit, 'body' | 'headers'> {
+  body?: BodyInit | object | null;
+  headers?: HeadersInit;
+  /** Skip CSRF for endpoints that intentionally bypass (Stripe webhook). */
+  skipCsrf?: boolean;
 }
 
-export async function api<T = unknown>(
-  url: string,
-  options: ApiOptions = {},
-): Promise<T | null> {
-  const { body, throwOnError = true, headers, ...rest } = options;
+const JSON_HEADERS: HeadersInit = {
+  'Content-Type': 'application/json',
+  Accept: 'application/json',
+};
 
-  const init: RequestInit = {
-    credentials: 'same-origin',
-    ...rest,
-    headers: {
-      accept: 'application/json',
-      ...(body !== undefined && !(body instanceof FormData)
-        ? { 'content-type': 'application/json' }
-        : {}),
-      ...(headers ?? {}),
-    },
-  };
+/**
+ * Issue a fetch to one of our resource routes. Throws `ApiError` on
+ * non-2xx responses; otherwise returns the parsed JSON body typed as `T`.
+ *
+ * The function is safe to call from any browser context — it adds the
+ * CSRF header automatically when a token is available. Server-side
+ * callers should use raw `fetch()` because the cookie isn't readable.
+ */
+export async function apiFetch<T = unknown>(
+  input: string | URL,
+  init: ApiRequestInit = {},
+): Promise<T> {
+  const { body, headers, skipCsrf, ...rest } = init;
 
-  if (body !== undefined) {
-    if (body instanceof FormData) {
-      init.body = body;
-      // Multipart sets its own content-type with boundary.
-      delete (init.headers as Record<string, string>)['content-type'];
-    } else if (typeof body === 'string') {
-      init.body = body;
-    } else {
-      init.body = JSON.stringify(body);
+  const finalHeaders = new Headers(headers ?? {});
+  if (body !== undefined && !(body instanceof FormData) && !(body instanceof Blob)) {
+    if (!finalHeaders.has('Content-Type')) {
+      for (const [k, v] of Object.entries(JSON_HEADERS)) {
+        finalHeaders.set(k, v as string);
+      }
+    }
+  }
+  if (!skipCsrf) {
+    for (const [k, v] of Object.entries(csrfHeader())) {
+      finalHeaders.set(k, v as string);
     }
   }
 
-  const response = await csrfFetch(url, init);
+  const finalBody =
+    body === undefined || body === null
+      ? undefined
+      : body instanceof FormData ||
+          body instanceof Blob ||
+          body instanceof ArrayBuffer ||
+          typeof body === 'string'
+        ? body
+        : JSON.stringify(body);
 
-  // No content.
-  if (response.status === 204) return null;
+  const response = await fetch(input, {
+    ...rest,
+    headers: finalHeaders,
+    body: finalBody,
+    credentials: 'same-origin',
+  });
 
-  const contentType = response.headers.get('content-type') ?? '';
-  let parsed: unknown = null;
-  if (contentType.includes('application/json')) {
+  // 204 No Content / empty body — caller gets null.
+  if (response.status === 204) return null as T;
+
+  // Try to parse JSON. If it isn't JSON, fall back to text so the
+  // error message still has useful context.
+  let parsed: unknown;
+  const text = await response.text();
+  if (text) {
     try {
-      parsed = await response.json();
+      parsed = JSON.parse(text);
     } catch {
-      parsed = null;
+      parsed = { error: 'invalid_json', detail: text.slice(0, 500) };
     }
   } else {
-    try {
-      parsed = await response.text();
-    } catch {
-      parsed = null;
-    }
+    parsed = {};
   }
 
   if (!response.ok) {
-    if (throwOnError) {
-      throw new ApiError(
-        response.status,
-        parsed,
-        typeof parsed === 'object' && parsed !== null && 'error' in parsed
-          ? String((parsed as { error: unknown }).error)
-          : undefined,
-      );
-    }
+    throw new ApiError(response.status, parsed as ApiErrorBody);
   }
 
   return parsed as T;
 }
+
+// Convenience HTTP-verb wrappers.
+export const api = {
+  get: <T = unknown>(url: string | URL, init?: ApiRequestInit) =>
+    apiFetch<T>(url, { ...init, method: 'GET' }),
+  post: <T = unknown>(url: string | URL, body?: unknown, init?: ApiRequestInit) =>
+    apiFetch<T>(url, { ...init, method: 'POST', body: body as object }),
+  put: <T = unknown>(url: string | URL, body?: unknown, init?: ApiRequestInit) =>
+    apiFetch<T>(url, { ...init, method: 'PUT', body: body as object }),
+  patch: <T = unknown>(url: string | URL, body?: unknown, init?: ApiRequestInit) =>
+    apiFetch<T>(url, { ...init, method: 'PATCH', body: body as object }),
+  delete: <T = unknown>(url: string | URL, init?: ApiRequestInit) =>
+    apiFetch<T>(url, { ...init, method: 'DELETE' }),
+};

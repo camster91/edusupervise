@@ -1,106 +1,67 @@
-// apps/web/app/lib/csrf.ts — client-side CSRF token helpers.
+// app/lib/csrf.ts — client-side CSRF helpers.
 //
-// The double-submit cookie pattern requires the client to:
-//   1. Read the `__Host-edusupervise.csrf` cookie (set by the server on
-//      the first GET response).
-//   2. Attach the same value as the `x-csrf-token` header on every
-//      state-changing fetch.
+// Used by the `fetch` wrapper in `app/lib/api.ts` to attach the CSRF
+// token to every mutation. Also used by forms that submit via RR7 form
+// actions: those pass the token as a hidden form field rather than a
+// header, so we expose `csrfFormField()` for that case.
 //
-// This file exports:
-//   - `getCsrfToken()` — synchronous read of the cookie value.
-//   - `csrfFetch(input, init)` — drop-in `fetch` replacement that
-//     attaches the header automatically on non-safe methods.
-//   - `setCsrfTokenInForm(form)` — for RR7 form actions, writes the
-//     cookie value into a hidden `_csrf` input.
+// How the token gets into the browser:
+//   1. User hits any GET route → server's `attachCsrfCookie()` sets the
+//      `__Host-edusupervise.csrf` cookie (HttpOnly=false).
+//   2. This module reads `document.cookie` and extracts the value.
+//   3. On every fetch mutation, the value is sent as `x-csrf-token`.
 //
-// Edge cases:
-//   - The cookie is `HttpOnly: false` (this is the whole point of the
-//     double-submit pattern). `document.cookie` reads it.
-//   - On the `__Host-` prefix: cookies with `__Host-` cannot be read
-//     from JavaScript on a different origin (which is exactly the
-//     attack we are defending against). On the same origin, the prefix
-//     is transparent — `document.cookie` returns the name without it.
-//   - If the cookie is missing (e.g. the user landed on a non-GET page
-//     or the server forgot to set it), `csrfFetch` makes a one-shot
-//     GET to /api/csrf-init? Actually no — we want the server to set
-//     the cookie on the next navigation. We just send the request
-//     without the token, the server returns 403, and the UI redirects
-//     to a page that primes the cookie.
+// We do NOT cache the token in module state because the cookie can rotate
+// (login success, server restart, etc.). Reading on every request is
+// cheap (single string scan) and immune to staleness.
 
-const CSRF_COOKIE_NAME = '__Host-edusupervise.csrf';
-const CSRF_HEADER_NAME = 'x-csrf-token';
-const CSRF_FORM_FIELD = '_csrf';
+/** Cookie name. Must match `csrf.server.ts#CSRF_COOKIE_NAME`. */
+export const CSRF_COOKIE_NAME = '__Host-edusupervise.csrf';
+
+/** Header name for JSON/fetch mutations. */
+export const CSRF_HEADER_NAME = 'x-csrf-token';
+
+/** Form field name for RR7 form action submissions. */
+export const CSRF_FORM_FIELD = 'csrf';
 
 /**
- * Synchronous read of the CSRF cookie. Returns null if the cookie is
- * missing (typically on first navigation before any GET has set it).
+ * Read the CSRF token from `document.cookie`. Returns null when:
+ *   - the cookie has not been set yet (no GET has run on this origin)
+ *   - the document.cookie API is unavailable (server-side / SSR)
+ *   - the cookie's HttpOnly flag is true (it should NOT be — see
+ *     csrf.server.ts#serializeCsrfCookie for the dev/prod split)
  */
-export function getCsrfToken(): string | null {
+export function readCsrfToken(): string | null {
   if (typeof document === 'undefined') return null;
-  for (const pair of document.cookie.split(';')) {
+  const cookies = document.cookie ? document.cookie.split(';') : [];
+  for (const pair of cookies) {
     const eqIdx = pair.indexOf('=');
     if (eqIdx === -1) continue;
     const name = pair.slice(0, eqIdx).trim();
     if (name !== CSRF_COOKIE_NAME) continue;
-    const value = pair.slice(eqIdx + 1).trim();
-    return value || null;
+    return decodeURIComponent(pair.slice(eqIdx + 1).trim());
   }
   return null;
 }
 
-const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-
 /**
- * `fetch` wrapper that attaches `x-csrf-token` on state-changing requests.
- *
- * Safe methods (GET, HEAD, OPTIONS) pass through untouched.
- *
- * If the CSRF cookie is missing, this throws — caller should redirect to
- * a page that primes the cookie (e.g. the index page) and retry. We
- * intentionally do NOT auto-GET a priming endpoint because that adds a
- * network round-trip to every mutation when the cookie is unset.
+ * Build the `x-csrf-token` header pair, omitting the header entirely
+ * when no token is available. Callers should pass-through null headers
+ * rather than fabricate one — an empty header fails server validation
+ * just like a missing one, and a fabricated one fails by token mismatch
+ * after the second check.
  */
-export async function csrfFetch(
-  input: RequestInfo | URL,
-  init: RequestInit = {},
-): Promise<Response> {
-  const method = (init.method ?? 'GET').toUpperCase();
-  if (!SAFE_METHODS.has(method)) {
-    const token = getCsrfToken();
-    if (!token) {
-      throw new Error(
-        'csrfFetch: CSRF cookie is missing. Refresh the page to prime it.',
-      );
-    }
-    const headers = new Headers(init.headers ?? undefined);
-    headers.set(CSRF_HEADER_NAME, token);
-    init = { ...init, headers };
-  }
-  return fetch(input, init);
+export function csrfHeader(): Record<string, string> {
+  const token = readCsrfToken();
+  return token ? { [CSRF_HEADER_NAME]: token } : {};
 }
 
 /**
- * Inject the CSRF token into a `<form>` element as a hidden `_csrf`
- * input. Idempotent — replaces an existing hidden `_csrf` input if
- * present.
+ * Render a hidden `<input>` for inclusion in `<Form method="post">`
+ * JSX. The Form action's body parser extracts the value via the
+ * `CSRF_FORM_FIELD` name (mirrors `csrf.server.ts#CSRF_FORM_FIELD`).
  */
-export function setCsrfTokenInForm(form: HTMLFormElement): void {
-  const token = getCsrfToken();
-  if (!token) return;
-  let input = form.querySelector<HTMLInputElement>(
-    `input[name="${CSRF_FORM_FIELD}"]`,
-  );
-  if (!input) {
-    input = document.createElement('input');
-    input.type = 'hidden';
-    input.name = CSRF_FORM_FIELD;
-    form.appendChild(input);
-  }
-  input.value = token;
+export function csrfFormField(): { name: string; value: string } {
+  const token = readCsrfToken();
+  return { name: CSRF_FORM_FIELD, value: token ?? '' };
 }
-
-export const CSRF_NAMES = {
-  cookie: CSRF_COOKIE_NAME,
-  header: CSRF_HEADER_NAME,
-  formField: CSRF_FORM_FIELD,
-} as const;
