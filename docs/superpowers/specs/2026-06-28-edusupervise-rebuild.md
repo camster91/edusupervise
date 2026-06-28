@@ -86,15 +86,17 @@ The runtime role does NOT own tables, so `FORCE ROW LEVEL SECURITY` actually enf
 6. Mutation runs; `audit_log` row written in same transaction
 7. Transaction commits
 8. If the mutation affects reminders, a transactional outbox row is inserted; the same transaction commits both the data change and the outbox entry
-9. A separate BullMQ enqueueer (in the web container, runs every 5s) reads outbox rows and adds jobs to Redis
+9. A separate outbox-flusher loop (running in the worker container, every 5s) reads outbox rows where `enqueued_at IS NULL` and adds them as BullMQ jobs to Redis, marking `enqueued_at = now()` on success
 
 ### Request flow (reminder dispatch)
 
+The worker process connects to Postgres ONCE on startup as the `edusupervise_system` role and uses a single pool for all reads and writes. The system role has `BYPASSRLS`, but the worker defensively sets `app.school_id` on every transaction so its behavior is identical to the runtime role for tenant tables and the `BYPASSRLS` only matters for writes to system-only tables (`audit_log` for system actions, `worker_heartbeats`, `stripe_events`).
+
 1. Worker picks up `reminder.dispatch` job at scheduled time
 2. Worker validates job payload via Zod: `{ schoolId: UUID, reminderId: UUID, assignmentId: UUID, userId: UUID, channel: 'email'|'sms', scheduledFor: ISO8601 }` — missing `schoolId` is a hard error
-3. Worker opens DB transaction using `edusupervise_system` connection (which has `BYPASSRLS`, but the worker doesn't rely on it)
-4. Worker sets `SET LOCAL app.school_id = job.schoolId` defensively — even with `BYPASSRLS`, this makes the worker's intent explicit and matches the runtime path
-5. Worker reads assignment, user contact info, school branding (RLS still applies for reads since worker uses runtime connection role for reads; writes go through system role only for `audit_log`, `reminder_log`, `worker_heartbeats`)
+3. Worker opens a transaction on its single system-role pool
+4. Worker sets `SET LOCAL app.school_id = job.schoolId` (defensive; makes intent explicit and matches the runtime path even though the system role bypasses RLS)
+5. Worker reads assignment, user contact info, school branding — all subject to RLS via the `app.school_id` setting, mirroring runtime behavior
 6. Worker calls Resend (email) and/or Twilio (SMS) API
 7. On success: writes `reminder_log` row with status `sent`
 8. On failure: BullMQ retries with exponential backoff (1m, 5m, 30m, 2h, 12h); after 5 failed attempts, writes `reminder_log.status = 'failed'` and writes `audit_log`
@@ -174,7 +176,7 @@ The runtime role does NOT own tables, so `FORCE ROW LEVEL SECURITY` actually enf
 
 | Package | Version | Why |
 |---------|---------|-----|
-| better-auth | **~1.6.14** | Pinned minor. 1.6.x is current stable as of mid-2026 with monthly security updates. Renovate opens PRs only against `~1.6.x`. |
+| better-auth | **~1.6.14** | Pinned minor. 1.6.x is current stable as of mid-2026. Renovate is configured to open PRs only against `~1.6.x` and the spec is updated when a new minor ships. |
 
 ### Billing
 
@@ -204,6 +206,15 @@ The runtime role does NOT own tables, so `FORCE ROW LEVEL SECURITY` actually enf
 ### Logging strategy
 
 `app/entry.server.tsx` wraps every request in a `pino` child logger with a `requestId`. Loaders and actions receive the logger via `context.get('logger')`. The worker logs job lifecycle via the same logger pattern, with `jobId` and `schoolId` on every line.
+
+`LOG_LEVEL` from env is wired into the pino instance on container startup:
+
+```ts
+import pino from 'pino';
+export const logger = pino({ level: process.env.LOG_LEVEL ?? 'info' });
+```
+
+Production runs at `info`; staging at `debug`; local dev at `trace`.
 
 ### Testing
 
@@ -359,10 +370,39 @@ CREATE TABLE duty_assignments (
 CREATE INDEX idx_assignments_school_user ON duty_assignments(school_id, user_id);
 CREATE INDEX idx_assignments_school_duty ON duty_assignments(school_id, duty_id);
 
--- Cycle-math sanity check enforced at the application layer (see Section 17):
+-- Cycle-math sanity check enforced at the application layer (see Section 12):
 --   start_date >= schools.school_year_start
 --   end_date <= schools.school_year_end  (or NULL)
 -- Postgres CHECK can't reference schools easily; the application validates on insert/update.
+
+-- A duty's cycle_day must correspond to a valid cycle day for the school:
+--   duties.cycle_day BETWEEN 1 AND schools.cycle_days
+-- Also, when looking up duties for a date, the date's cycle_day (per Section 12 cycle math)
+-- must match duties.cycle_day. Application-layer check; no DB-level FK possible.
+
+-- =========================================
+-- Notifications (in-app)
+-- =========================================
+
+CREATE TABLE notifications (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  school_id UUID NOT NULL REFERENCES schools(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('reminder.failed', 'plan.downgrade.pending', 'plan.downgrade.applied', 'system.message')),
+  title TEXT NOT NULL,
+  body TEXT,
+  link_url TEXT,
+  read_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_notifications_user_unread ON notifications(user_id, created_at DESC) WHERE read_at IS NULL;
+
+ALTER TABLE notifications ENABLE ROW LEVEL SECURITY;
+ALTER TABLE notifications FORCE ROW LEVEL SECURITY;
+CREATE POLICY tenant_isolation ON notifications
+  USING (school_id = current_school_id())
+  WITH CHECK (school_id = current_school_id());
 
 -- =========================================
 -- Reminders
@@ -585,7 +625,8 @@ Server behavior (RR7 actions / resource routes):
 - Extract token from `x-csrf-token` header (or form body for actions)
 - Extract cookie value from `__Host-edusupervise.csrf`
 - Compare using `crypto.timingSafeEqual(Buffer.from(header), Buffer.from(cookie))`
-- Reject (403) on mismatch, missing token, or token age > 24h
+- Reject (403) on mismatch or missing token
+- Token rotates on login and on session expiry; validity derives from session lifetime, not from a server-side timestamp (the double-submit pattern is stateless by design)
 - **Cross-origin form POST test** (origin != `APP_URL`) must return 403
 
 **Rate limits:**
@@ -653,15 +694,36 @@ Content-Type: application/json
 
 ### Audit log retention cron
 
-`DELETE FROM audit_log WHERE (school_id, created_at) IN (
+The retention prune runs nightly via a dedicated `cron` container (Docker image `alpine:3.20` with `postgresql16-client` installed). The container loops over `psql -f /sql/audit-retention.sql` once per day. Cron is preferred over the `pg_cron` extension because `pg_cron` is not bundled with stock `postgres:16-alpine` and adding it requires either a custom image build or extension installation steps that complicate the deploy.
+
+SQL (in `db/cron/audit-retention.sql`):
+
+```sql
+DELETE FROM audit_log WHERE (school_id, created_at) IN (
   SELECT a.school_id, a.created_at
   FROM audit_log a
   JOIN schools s ON a.school_id = s.id
   JOIN plan_limits pl ON s.plan = pl.plan
   WHERE a.created_at < now() - (pl.audit_retention_days * interval '1 day')
-);`
+);
+```
 
-This SQL is checked into `db/cron/audit-retention.sql` and run nightly via pg_cron (extension, included in postgres:16-alpine).
+Cron container in compose:
+
+```yaml
+cron:
+  image: alpine:3.20
+  restart: unless-stopped
+  command: ["sh", "-c", "while true; do psql $$DATABASE_URL -f /sql/audit-retention.sql; sleep 86400; done"]
+  environment:
+    DATABASE_URL: postgres://edusupervise_system:...@postgres:5432/edusupervise
+  volumes:
+    - ./db/cron:/sql:ro
+  depends_on:
+    postgres: { condition: service_healthy }
+```
+
+Integration test for retention behavior: insert audit_log rows with `created_at` 100 days in the past for a school on the `pro` plan (90-day retention); run the cron SQL; verify rows are deleted.
 
 ### Stripe webhook handler
 
@@ -1021,6 +1083,52 @@ Retention per `plan_limits` (see Section 6 audit retention cron).
 
 Admin can view at `/app/settings/audit` with filters (date range, user, action type). During downgrade grace, an "Export CSV" button is rendered.
 
+### Cycle math (how a date maps to a cycle day)
+
+The cycle calendar table stores the `cycle_day` for each date. For dates NOT in `cycle_calendar`, the application uses a deterministic formula:
+
+```ts
+function cycleDayForDate(
+  date: Date,
+  school: { school_year_start: Date; school_year_end: Date; cycle_days: number },
+  calendarEntry?: { cycle_day: number | null; is_school_day: boolean }
+): number | null {
+  // 1. Explicit calendar entry wins
+  if (calendarEntry) {
+    return calendarEntry.is_school_day ? calendarEntry.cycle_day : null;
+  }
+
+  // 2. Out-of-school-year → no cycle day
+  if (date < school.school_year_start || date > school.school_year_end) {
+    return null;
+  }
+
+  // 3. Default: modulo math from school_year_start
+  const daysSinceStart = Math.floor(
+    (date.getTime() - school.school_year_start.getTime()) / (24 * 60 * 60 * 1000)
+  );
+  return (daysSinceStart % school.cycle_days) + 1;
+}
+```
+
+Behavior:
+- **Dates outside `[school_year_start, school_year_end]`**: `null` (treated as non-school days for duty assignment purposes).
+- **Dates with `is_school_day = false` in `cycle_calendar`**: `null` (PD days, snow days, holidays).
+- **Dates within `[school_year_start, school_year_end]` with no `cycle_calendar` row**: computed via modulo. Admins can override by inserting a `cycle_calendar` row.
+- **Leap year (Feb 29)**: no special handling — the modulo math treats Feb 29 like any other date. If a school's cycle doesn't normally include Feb 29 (most don't, since it's not a school day), it's effectively skipped.
+- **Year boundary** (Dec → Jan): the `school_year_end` field makes the window explicit. Once a school year ends, dates past `school_year_end` return `null` until rollover (see below).
+
+### School-year rollover workflow
+
+Admin UI at `/app/settings/school-year`, multi-step:
+
+1. **Step 1 — Specify new dates.** Admin enters `school_year_start`, `school_year_end`, and (optionally) new `cycle_days`. Validation: `school_year_end > school_year_start` and `school_year_end <= school_year_start + 14 months` (14 months covers southern-hemisphere and split-year calendars; longer configs not supported in Tier 1).
+2. **Step 2 — Preview.** System bulk-inserts `cycle_calendar` rows for every date in `[new_start, new_end]` with `is_school_day = true` and `cycle_day = ((date - new_start) mod cycle_days) + 1`. Preview shows a count of rows to insert + first 10 sample rows. Admin confirms.
+3. **Step 3 — Forward assignments.** Admin is asked: "Copy open-ended assignments forward with `start_date = new school_year_start`?" Default: opt-in (unchecked). If admin checks the box and clicks Apply, system clones every `duty_assignments` row where `end_date IS NULL` with `start_date = new school_year_start` and `end_date = NULL`. Each cloned row references the same `duty_id` and `user_id`.
+4. **Step 4 — Commit.** Atomic transaction updates `schools.school_year_start` and `school_year_end`, inserts an `audit_log` row with `action = 'school_year.rollover'`, `metadata = { from: oldDates, to: newDates, assignmentsForwarded: N }`.
+
+The entire rollover is a single DB transaction. If anything fails, the transaction rolls back and the school is unchanged.
+
 ## 13. Deployment
 
 ### Resource sizing
@@ -1312,6 +1420,10 @@ Sequencing:
 - [ ] Stripe test-mode checkout upgrades a trial school to Pro
 - [ ] Backups verified: dump a fresh DB, restore to a clean Postgres, login works
 - [ ] Heartbeat table populated by worker; `/api/health` reports `degraded` when worker is killed
+- [ ] Integration test: cycle math returns correct cycle_day for school-year-edge, leap-year, and year-boundary dates
+- [ ] Integration test: school-year rollover (preview + apply + commit + audit_log entry) succeeds end-to-end
+- [ ] Integration test: audit_log retention cron prunes rows beyond per-plan retention
+- [ ] Notifications table populated when reminders fail; user can mark read via UI
 - [ ] No TODO/FIXME in shipped Tier 1 code
 - [ ] Cameron does final demo and approves ship
 
