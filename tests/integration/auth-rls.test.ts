@@ -225,9 +225,13 @@ describe('case 1: signup creates school + first admin', () => {
     expect(sessionCookie).toMatch(/SameSite=Lax/i);
     expect(sessionCookie).toMatch(/Path=\//i);
 
-    // The school + admin rows exist.
-    const runtimeDb = drizzle(sqlRuntime, { schema });
-    const schoolRow = await runtimeDb
+    // The school + admin rows exist. We use the system role for the
+    // initial school lookup because the runtime role's RLS policy
+    // (`school_self`) only allows seeing a school if app.school_id is
+    // already set — and we don't have the id until we look it up. The
+    // system role bypasses RLS for this single bootstrap read.
+    const sysDbLookup = drizzle(sqlSystem, { schema });
+    const schoolRow = await sysDbLookup
       .select()
       .from(schools)
       .where(eq(schools.slug, 'oak-elementary'))
@@ -235,6 +239,15 @@ describe('case 1: signup creates school + first admin', () => {
     expect(schoolRow.length).toBe(1);
     expect(schoolRow[0]!.plan).toBe('trial');
     expect(schoolRow[0]!.id).toBe(schoolId);
+
+    // Verify the runtime role can see the school once we set the
+    // RLS context (this is the actual production flow).
+    const runtimeDb = drizzle(sqlRuntime, { schema });
+    const schoolRowViaRuntime = await withSchoolContext(runtimeDb, schoolId, async (tx) => {
+      return tx.select().from(schools).where(eq(schools.id, schoolId)).limit(1);
+    });
+    expect(schoolRowViaRuntime.length).toBe(1);
+    expect(schoolRowViaRuntime[0]!.plan).toBe('trial');
 
     const userRows = await withSchoolContext(runtimeDb, schoolId, async (tx) => {
       return tx.select().from(users).where(eq(users.email, 'admin@oak.test')).limit(1);
