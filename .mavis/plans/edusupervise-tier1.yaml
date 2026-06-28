@@ -23,6 +23,74 @@ tasks:
   # Layer 0 — foundation (no deps)
   # ============================================================
 
+  - id: provider-adapters
+    title: 'provider-adapters: email, SMS, billing wrappers with mock+real implementations'
+    prompt: |
+      Build provider adapter packages so the rest of the system can be developed and
+      tested without real API keys, then swapped to real providers via env var at
+      production time.
+
+      Deliverables:
+
+      1. `packages/email/src/index.ts` — exports `sendEmail({to, subject, body, html})`:
+         - Reads `EMAIL_PROVIDER` env var (`'mock'` | `'resend'`). Default: `'mock'`.
+         - Mock impl: logs `{to, subject, body}` to stdout (pino structured log), returns
+           `{providerId: 'mock-<uuid>', status: 'sent'}`. Appends to `/data/mocks/emails.log`.
+         - Real impl: uses `resend` SDK (already in spec stack ~4.0) to send via Resend API.
+           Reads `RESEND_API_KEY` and `RESEND_FROM_EMAIL` from env.
+      2. `packages/email/src/templates/DutyReminder.tsx` — react-email component for the
+         reminder email. Subject: "Reminder: <duty.location> at <time>". Body includes
+         school name, duty location, time (in school timezone), time-until (e.g., "in 15
+         minutes"), and a custom message if provided. Both mock and real send via this
+         template.
+      3. `packages/sms/src/index.ts` — exports `sendSms({to, body})`:
+         - Reads `SMS_PROVIDER` env var (`'mock'` | `'twilio'`). Default: `'mock'`.
+         - Mock impl: logs `{to, body}` to stdout and appends to `/data/mocks/sms.log`,
+           returns `{providerId: 'mock-<uuid>', status: 'sent'}`.
+         - Real impl: uses `twilio` SDK. Reads `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`,
+           `TWILIO_FROM_NUMBER` from env.
+      4. `packages/billing-adapter/src/index.ts` — exports Stripe helpers, but with a
+         mock layer:
+         - `createCheckoutSession({schoolId, plan})` — mock returns a fake Stripe Checkout
+           URL (`http://localhost:3000/mock-stripe?session=cs_test_<uuid>&plan=<plan>`),
+           real returns a real Stripe Checkout URL.
+         - `createPortalSession({schoolId})` — mock returns `http://localhost:3000/mock-stripe/portal`,
+           real returns the real Stripe portal URL.
+         - `verifyWebhook(rawBody, signature)` — mock accepts any payload with a
+           `X-Mock-Signature: mock` header, real uses `STRIPE_WEBHOOK_SECRET`.
+         - Reads `BILLING_PROVIDER` env var (`'mock'` | `'stripe'`). Default: `'mock'`.
+      5. `packages/email/src/__mocks__/emails.log`, `packages/sms/src/__mocks__/sms.log` —
+         .gitkeep'd directories where mocks append. Add to .gitignore.
+      6. Tests `packages/email/src/send.test.ts`, `packages/sms/src/send.test.ts`,
+         `packages/billing-adapter/src/index.test.ts` — verify mock impls log to the
+         correct files and return the correct shape; verify real impls are properly
+         wired (mock the SDK at the test level for the real impl).
+      7. Update `package.json` to include `@edusupervise/email`, `@edusupervise/sms`,
+         `@edusupervise/billing-adapter` workspaces.
+
+      Stop condition: `EMAIL_PROVIDER=mock pnpm --filter @edusupervise/email test` passes,
+      `SMS_PROVIDER=mock pnpm --filter @edusupervise/sms test` passes,
+      `BILLING_PROVIDER=mock pnpm --filter @edusupervise/billing-adapter test` passes.
+      Switching `EMAIL_PROVIDER=resend` (no real key) fails fast with a clear error
+      "RESEND_API_KEY required".
+    assigned_to: coder
+    verified_by: verifier
+    verify_prompt: |
+      Verify the provider-adapters:
+      1. Confirm `EMAIL_PROVIDER=mock` is the default and works without any API keys set.
+      2. Confirm `EMAIL_PROVIDER=resend` without RESEND_API_KEY throws a clear error
+         (not a generic SDK error).
+      3. Confirm mock impl writes to `/data/mocks/emails.log` and `/data/mocks/sms.log`
+         (or equivalent) and the .gitignore excludes these.
+      4. Run `pnpm --filter @edusupervise/email test` and confirm tests pass.
+      5. Run `pnpm --filter @edusupervise/sms test` and confirm tests pass.
+      6. Run `pnpm --filter @edusupervise/billing-adapter test` and confirm tests pass.
+      7. Confirm the react-email DutyReminder template renders without errors when given
+         sample inputs.
+
+      FAIL with the specific element if any check fails. PASS only if all seven pass.
+    max_retries: 2
+
   - id: foundation
     title: 'foundation: docker-compose, three Postgres roles, secrets layout, Traefik snippet'
     prompt: |
@@ -237,10 +305,11 @@ tasks:
 
       Deliverables:
 
-      1. `apps/web/server/billing.server.ts` — Stripe ~17.0.0 client. Helpers:
-         `createCheckoutSession(schoolId, plan)`, `createPortalSession(schoolId)`,
-         `handleWebhookEvent(event)` (verifies signature, opens transaction, INSERTs into
-         stripe_events for dedup, applies state change in same transaction).
+      1. `apps/web/server/billing.server.ts` — Stripe ~17.0.0 client wrapped via
+         `@edusupervise/billing-adapter`. Helpers: `createCheckoutSession(schoolId, plan)`,
+         `createPortalSession(schoolId)`, `handleWebhookEvent(event)` (verifies signature,
+         opens transaction, INSERTs into stripe_events for dedup, applies state change
+         in same transaction).
       2. `apps/web/app/routes/api.billing.checkout.tsx` — POST action. Creates session,
          returns 303 redirect.
       3. `apps/web/app/routes/api.billing.portal.tsx` — POST action. Returns portal URL.
@@ -272,7 +341,7 @@ tasks:
       webhook handler is idempotent, plan enforcement returns 403 with correct body, all
       integration tests pass.
     assigned_to: coder
-    depends_on: [auth-rls]
+    depends_on: [auth-rls, provider-adapters]
     verified_by: verifier
     verify_prompt: |
       Adversarial verification of billing:
@@ -309,7 +378,9 @@ tasks:
          channel, scheduledFor}`). On invalid payload, marks job failed with
          `error: 'invalid_payload'`. On valid payload: opens transaction, sets
          `SET LOCAL app.school_id = job.schoolId`, reads assignment + user + school,
-         calls Resend (email) and/or Twilio (SMS), writes reminder_log row with status.
+         calls `sendEmail()` from `@edusupervise/email` and/or `sendSms()` from
+         `@edusupervise/sms` (both packages are mock-by-default; switch to real via env),
+         writes reminder_log row with status.
       5. `apps/worker/src/retry-policy.ts` — BullMQ retry config: 1m, 5m, 30m, 2h, 12h.
          After 5 attempts, the worker writes:
          - `reminder_log.status = 'failed'` with the error message
@@ -337,7 +408,7 @@ tasks:
       payload rejected, retry policy writes notification on final failure, all
       integration tests pass.
     assigned_to: coder
-    depends_on: [auth-rls]
+    depends_on: [auth-rls, provider-adapters]
     verified_by: verifier
     verify_prompt: |
       Adversarial verification of the worker:
