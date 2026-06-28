@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist",
+    "types": ["node"],
+    "lib": ["ES2022"],
+    "noEmit": false
+  },
+  "include": ["src/**/*.ts", "migrations/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
