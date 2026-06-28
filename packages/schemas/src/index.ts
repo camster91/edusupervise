@@ -1,12 +1,16 @@
-// @edusupervise/schemas — barrel.
+// @edusupervise/schemas — shared Zod schemas.
 //
-// Domain areas live in their own files (auth, duty, reminder, ...). This
-// barrel re-exports everything so consumers can do:
+// Each schema in this package is the single source of truth for validating
+// both client form submissions (via @hookform/resolvers/zod) and server
+// action inputs (via schema.parse on the action body). Sharing the schema
+// means the client and server cannot drift apart.
 //
-//   import { signupSchema, loginSchema } from '@edusupervise/schemas';
+// Each domain area exports its schema from a sub-path:
 //
-// Or pull a single domain explicitly:
+//   import { loginSchema } from '@edusupervise/schemas/auth';
+//   import { dutyCreateSchema } from '@edusupervise/schemas/duty';
 //
-//   import { signupSchema } from '@edusupervise/schemas/auth';
+// Populated by subsequent tasks (frontend-duties, frontend-reminders, etc.).
+// This file is intentionally a barrel placeholder so the workspace builds.
 
 export * from './auth.js';

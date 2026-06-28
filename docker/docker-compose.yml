@@ -75,7 +75,7 @@ services:
       - "traefik.http.routers.edusupervise.rule=Host(`${APP_HOST:-edusupervise.ashbi.ca}`)"
       - "traefik.http.routers.edusupervise.entrypoints=websecure"
       - "traefik.http.routers.edusupervise.tls.certresolver=letsencrypt"
-      - "traefik.http.services.edusupervise.loadbalancer.server.port=3000"
+      - "traefik.http.services.edusupervise.loadbalancer.server.port=3011"
 
   worker:
     build:

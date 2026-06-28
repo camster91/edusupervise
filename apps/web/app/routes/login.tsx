@@ -1,77 +1,103 @@
-// apps/web/app/routes/login.tsx
-import { Form, redirect, useActionData } from 'react-router';
+// apps/web/app/routes/login.tsx — /login (UI).
+//
+// Renders a login form that POSTs to /auth/login. The form includes a
+// hidden `_csrf` input that the action validates against the
+// `__Host-edusupervise.csrf` cookie.
+//
+// The route loader mints a CSRF token if the cookie is missing, so the
+// first navigation lands on a usable form.
+//
+// Magic link: separate form below the password form, posts to
+// /auth/magic (request) — the response includes the URL the user
+// should email themselves; for production the email adapter sends the
+// link. We don't implement that here.
+//
+// OAuth buttons (Google, Microsoft) are stubs — they hit
+// /api/auth/sign-in/social/:provider which better-auth handles.
+
+import { redirect } from 'react-router';
+
+import {
+  buildCsrfSetCookie,
+  CSRF_COOKIE_NAME,
+  generateCsrfToken,
+} from '~/server/csrf.server';
+import { getSession } from '~/server/auth.server';
+
 import type { Route } from './+types/login';
-import { eq, and } from 'drizzle-orm';
-import { users } from '@edusupervise/db';
-import { getDb } from '~/server/db.server';
-import { verifyPassword, newSessionTokenFor, sessionCookieAttributes } from '~/server/auth.server';
 
-export function meta() {
-  return [{ title: 'Sign in — EduSupervise' }];
-}
+export async function loader({ request }: Route.LoaderArgs) {
+  // If already signed in, redirect to /app.
+  const session = await getSession(request);
+  if (session) return redirect('/app');
 
-export async function loader() {
-  return null;
-}
-
-export async function action({ request }: Route.ActionArgs) {
-  const form = await request.formData();
-  const email = String(form.get('email') ?? '').trim().toLowerCase();
-  const password = String(form.get('password') ?? '');
-  if (!email || !password) {
-    return Response.json({ error: 'missing_credentials' }, { status: 400 });
+  // Prime the CSRF cookie if missing.
+  const cookieHeader = request.headers.get('cookie') ?? '';
+  const hasCsrf = cookieHeader.split(';').some((p) => p.trim().startsWith(`${CSRF_COOKIE_NAME}=`));
+  const headers = new Headers();
+  let csrf = '';
+  if (!hasCsrf) {
+    csrf = generateCsrfToken();
+    headers.append('set-cookie', buildCsrfSetCookie(csrf));
+  } else {
+    // Pull the existing token out so the form can re-embed it.
+    for (const p of cookieHeader.split(';')) {
+      const [name, ...rest] = p.trim().split('=');
+      if (name === CSRF_COOKIE_NAME) csrf = rest.join('=');
+    }
   }
-  const db = getDb();
-  const rows = await db
-    .select({
-      id: users.id,
-      passwordHash: users.passwordHash,
-      isActive: users.isActive,
-    })
-    .from(users)
-    .where(and(eq(users.email, email), eq(users.isActive, true)))
-    .limit(1);
-  const user = rows[0];
-  if (!user || !user.passwordHash) {
-    return Response.json({ error: 'invalid_credentials' }, { status: 401 });
-  }
-  const ok = await verifyPassword(password, user.passwordHash);
-  if (!ok) {
-    return Response.json({ error: 'invalid_credentials' }, { status: 401 });
-  }
-  const { token } = newSessionTokenFor(user.id);
-  return redirect('/app', {
-    headers: { 'Set-Cookie': `edusupervise.session=${token}; ${sessionCookieAttributes()}` },
-  });
-}
-
-export default function LoginPage() {
-  const data = useActionData() as { error?: string } | undefined;
-  return (
-    <main className="min-h-screen grid place-items-center bg-slate-50 px-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-        <h1 className="text-2xl font-bold text-slate-900 mb-1">Welcome back</h1>
-        <p className="text-sm text-slate-600 mb-6">Sign in to EduSupervise.</p>
-        <Form method="post" className="space-y-4">
-          <label className="block">
-            <span className="text-sm font-medium text-slate-700">Email</span>
-            <input name="email" type="email" required autoComplete="email"
-              className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none" />
-          </label>
-          <label className="block">
-            <span className="text-sm font-medium text-slate-700">Password</span>
-            <input name="password" type="password" required autoComplete="current-password"
-              className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none" />
-          </label>
-          {data?.error && <p className="text-sm text-red-600">Invalid email or password.</p>}
-          <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
-            Sign in
-          </button>
-        </Form>
-        <p className="text-sm text-slate-600 text-center mt-6">
-          New school? <a href="/signup" className="text-blue-600 hover:underline">Create one</a>
-        </p>
-      </div>
-    </main>
+  return new Response(
+    renderLoginPage(csrf),
+    { headers: { ...Object.fromEntries(headers), 'content-type': 'text/html; charset=utf-8' } },
   );
+}
+
+function renderLoginPage(csrf: string): string {
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign in — EduSupervise</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 24rem; margin: 4rem auto; padding: 0 1rem; }
+    h1 { font-size: 1.5rem; margin-bottom: 1.5rem; }
+    label { display: block; margin-top: 1rem; font-size: 0.9rem; }
+    input { display: block; width: 100%; padding: 0.5rem; margin-top: 0.25rem; box-sizing: border-box; }
+    button { margin-top: 1.5rem; padding: 0.6rem 1.2rem; }
+    .divider { margin: 1.5rem 0; text-align: center; color: #888; font-size: 0.85rem; }
+    .errors { color: #b00020; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <h1>Sign in</h1>
+  <form method="post" action="/auth/login">
+    <input type="hidden" name="_csrf" value="${escapeAttr(csrf)}" />
+    <label>Email
+      <input type="email" name="email" required autocomplete="username" />
+    </label>
+    <label>Password
+      <input type="password" name="password" required autocomplete="current-password" />
+    </label>
+    <button type="submit">Sign in</button>
+  </form>
+  <div class="divider">— or —</div>
+  <form method="post" action="/api/auth/sign-in/magic-link">
+    <input type="hidden" name="_csrf" value="${escapeAttr(csrf)}" />
+    <label>Magic link email
+      <input type="email" name="email" required autocomplete="username" />
+    </label>
+    <button type="submit">Send magic link</button>
+  </form>
+  <p><a href="/forgot">Forgot password?</a> · <a href="/signup">Create a school</a></p>
+</body>
+</html>`;
+}
+
+function escapeAttr(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }

@@ -41,7 +41,7 @@ http:
     edusupervise:
       loadBalancer:
         servers:
-          - url: "http://edusupervise-web:3000"
+          - url: "http://edusupervise-web:3011"
         healthCheck:
           path: /api/health
           interval: "30s"
