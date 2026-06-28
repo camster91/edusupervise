@@ -3,8 +3,8 @@ import { Form, redirect, useActionData } from 'react-router';
 import type { Route } from './+types/login';
 import { eq, and } from 'drizzle-orm';
 import { users } from '@edusupervise/db';
-import { getDb } from '~/server/db.server';
-import { verifyPassword, newSessionTokenFor, sessionCookieAttributes } from '~/server/auth.server';
+import { getDb } from '../server/db.server';
+import { verifyPassword, newSessionTokenFor, sessionCookieAttributes } from '../server/auth.server';
 
 export function meta() {
   return [{ title: 'Sign in — EduSupervise' }];

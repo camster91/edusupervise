@@ -1,7 +1,7 @@
 // apps/web/app/routes/api.health.tsx
 import type { Route } from './+types/api.health';
 import { sql } from 'drizzle-orm';
-import { getDb } from '~/server/db.server';
+import { getDb } from '../server/db.server';
 
 export async function loader(_: Route.LoaderArgs) {
   let dbOk = false;
