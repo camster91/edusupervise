@@ -126,16 +126,31 @@ needed unless you have a specific dump file to load.
 DUMP=/data/backups/edusupervise-2026-06-28.dump
 cat "${DUMP}" | \
   docker compose -f docker/docker-compose.yml exec -T postgres \
-  pg_restore -U edusupervise_owner -d edusupervise --no-owner --no-acl
+  pg_restore -U edusupervise_owner -d edusupervise --no-owner
 ```
 
-`--no-owner --no-acl` because the dump was taken with the owner role
-and we don't want `pg_restore` to try to reassign ownership (the
-runtime + system roles can't own tables).
+`--no-owner` (no `--no-acl`) because:
 
-`pg_restore` may print `WARNING: errors ignored on restore: N` — these
-are usually harmless (e.g. trying to drop an index that doesn't exist
-in a fresh DB). The data is restored.
+- The dump was taken with the owner role; `--no-owner` stops `pg_restore`
+  from trying to reassign table ownership to roles that can't own them
+  (the runtime + system roles have no CREATE permissions).
+- We DO want `pg_restore` to restore the GRANT statements — without
+  them, the runtime role cannot SELECT/INSERT/UPDATE/DELETE on tenant
+  tables and you'll see `permission denied for table schools` the
+  moment the web container tries to query anything. If you forgot to
+  recreate the runtime + system roles in step 4, the GRANT statements
+  will fail with `role "edusupervise_runtime" does not exist` —
+  that's the signal to redo step 4.
+
+`pg_restore` may print `WARNING: errors ignored on restore: N` —
+these are usually harmless (e.g. COMMENT on a CONSTRAINT that already
+exists). The data is restored.
+
+If you see `permission denied for table <x>` from the web container
+after a restore, the GRANTs didn't apply — re-run the GRANT loop from
+`db/init/02-schema.sql` (the `DO` block at the bottom of that file,
+which loops over `information_schema.tables` and grants SELECT/INSERT/
+UPDATE/DELETE on each to both roles). The loop is idempotent.
 
 ### 6. Re-run drizzle-kit migrations
 
