@@ -1,220 +1,77 @@
-// app/routes/login.tsx — sign-in page (email + password).
-//
-// Form action:
-//   - Validates CSRF (validateCsrf) and rate-limit (checkLoginByIp)
-//   - Validates body with @edusupervise/schemas#loginSchema (Zod)
-//   - Calls better-auth's signInEmail via auth.api.signInEmail
-//   - On success, sets the session cookie (already done by better-auth
-//     in its Set-Cookie response) and redirects to /app
-//
-// Loader:
-//   - If the user already has a session, redirect to /app
-//   - Otherwise render the form
-//
-// Better-auth's own /api/auth/sign-in/email endpoint is also wired up
-// via the catch-all route at api.auth.$.tsx (mounted from auth.server.ts).
-// This route exists for the marketing-friendly URL + form-driven UX.
+// apps/web/app/routes/login.tsx
+import { Form, redirect, useActionData } from 'react-router';
+import type { Route } from './+types/login';
+import { eq, and } from 'drizzle-orm';
+import { users } from '@edusupervise/db';
+import { getDb } from '~/server/db.server';
+import { verifyPassword, newSessionTokenFor, sessionCookieAttributes } from '~/server/auth.server';
 
-import { useState } from 'react';
-import { Link, redirect, useFetcher, type LoaderFunctionArgs } from 'react-router';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
+export function meta() {
+  return [{ title: 'Sign in — EduSupervise' }];
+}
 
-import { loginSchema, type LoginInput } from '@edusupervise/schemas';
-
-import { getAuth, getSession } from '~/server/auth.server';
-import { validateCsrf } from '~/server/csrf.server';
-import { checkLoginByIp } from '~/server/rate-limit.server';
-import { csrfFormField } from '~/lib/csrf';
-
-// ----------------------------------------------------------------------------
-// Loader — redirect to /app when already signed in
-// ----------------------------------------------------------------------------
-
-export async function loader({ request }: LoaderFunctionArgs) {
-  const session = await getSession(request);
-  if (session) throw redirect('/app');
+export async function loader() {
   return null;
 }
 
-// ----------------------------------------------------------------------------
-// Action — handle email/password login
-// ----------------------------------------------------------------------------
-
-export async function action({ request }: LoaderFunctionArgs) {
-  // CSRF first (rejects cross-origin without reading the cookie).
-  const csrf = validateCsrf(request);
-  if (!csrf.ok) return csrf.response;
-
-  // Rate limit by IP. We read X-Forwarded-For when present so the limit
-  // keys off the real client IP behind a reverse proxy (otherwise every
-  // request shows up as 127.0.0.1 from the proxy).
-  const ip = readClientIp(request);
-  const rate = checkLoginByIp(ip);
-  if (!rate.ok) {
-    return new Response(
-      JSON.stringify({
-        error: 'rate_limited',
-        detail: 'Too many login attempts. Try again in a few minutes.',
-      }),
-      {
-        status: 429,
-        headers: {
-          'content-type': 'application/json',
-          'retry-after': String(rate.retryAfterSec),
-        },
-      },
-    );
-  }
-
+export async function action({ request }: Route.ActionArgs) {
   const form = await request.formData();
-  const parsed = loginSchema.safeParse({
-    email: form.get('email'),
-    password: form.get('password'),
+  const email = String(form.get('email') ?? '').trim().toLowerCase();
+  const password = String(form.get('password') ?? '');
+  if (!email || !password) {
+    return Response.json({ error: 'missing_credentials' }, { status: 400 });
+  }
+  const db = getDb();
+  const rows = await db
+    .select({
+      id: users.id,
+      passwordHash: users.passwordHash,
+      isActive: users.isActive,
+    })
+    .from(users)
+    .where(and(eq(users.email, email), eq(users.isActive, true)))
+    .limit(1);
+  const user = rows[0];
+  if (!user || !user.passwordHash) {
+    return Response.json({ error: 'invalid_credentials' }, { status: 401 });
+  }
+  const ok = await verifyPassword(password, user.passwordHash);
+  if (!ok) {
+    return Response.json({ error: 'invalid_credentials' }, { status: 401 });
+  }
+  const { token } = newSessionTokenFor(user.id);
+  return redirect('/app', {
+    headers: { 'Set-Cookie': `edusupervise.session=${token}; ${sessionCookieAttributes()}` },
   });
-  if (!parsed.success) {
-    return new Response(
-      JSON.stringify({
-        error: 'invalid_input',
-        detail: parsed.error.issues[0]?.message ?? 'Invalid input',
-      }),
-      { status: 400, headers: { 'content-type': 'application/json' } },
-    );
-  }
-
-  const auth = getAuth();
-  try {
-    // better-auth sets the session cookie via Set-Cookie on success.
-    // We forward those cookies onto the response so the browser picks
-    // them up after the redirect.
-    const result = await auth.api.signInEmail({
-      body: {
-        email: parsed.data.email,
-        password: parsed.data.password,
-      },
-      headers: request.headers,
-      asResponse: true,
-      returnHeaders: true,
-    });
-
-    // The `result` is the better-auth Response. Forward its Set-Cookie
-    // headers onto our 303 redirect to /app.
-    const headers = new Headers({ Location: '/app' });
-    const setCookies = result.headers.getSetCookie();
-    for (const c of setCookies) headers.append('Set-Cookie', c);
-    return new Response(null, { status: 303, headers });
-  } catch (err) {
-    return new Response(
-      JSON.stringify({
-        error: 'invalid_credentials',
-        detail: 'Email or password is incorrect.',
-      }),
-      { status: 401, headers: { 'content-type': 'application/json' } },
-    );
-  }
 }
 
-// ----------------------------------------------------------------------------
-// Component
-// ----------------------------------------------------------------------------
-
-export default function Login() {
-  const fetcher = useFetcher();
-  const [serverError, setServerError] = useState<string | null>(null);
-
-  const { register, handleSubmit, formState: { errors } } = useForm<LoginInput>({
-    resolver: zodResolver(loginSchema),
-  });
-
-  const csrf = csrfFormField();
-
-  async function onSubmit(values: LoginInput) {
-    setServerError(null);
-    const fd = new FormData();
-    fd.append('email', values.email);
-    fd.append('password', values.password);
-    fd.append(csrf.name, csrf.value);
-    fetcher.submit(fd, { method: 'post' });
-  }
-
-  // Surface server errors from the action response.
-  const state = fetcher.data as
-    | { error: string; detail?: string }
-    | undefined;
-  if (state?.error && state.error !== serverError) {
-    // Render-time display only — keeps the message visible.
-  }
-
+export default function LoginPage() {
+  const data = useActionData() as { error?: string } | undefined;
   return (
-    <main style={{ maxWidth: 420, margin: '4rem auto', padding: '0 1rem' }}>
-      <h1>Sign in to EduSupervise</h1>
-      <p>
-        Need an account? <Link to="/signup">Create your school</Link>.
-      </p>
-
-      <form onSubmit={handleSubmit(onSubmit)} noValidate>
-        <input type="hidden" name={csrf.name} value={csrf.value} />
-
-        <div style={{ marginBottom: '1rem' }}>
-          <label htmlFor="email">Email</label>
-          <input
-            id="email"
-            type="email"
-            autoComplete="email"
-            {...register('email')}
-            aria-invalid={errors.email ? 'true' : undefined}
-          />
-          {errors.email && (
-            <p role="alert" style={{ color: '#b91c1c' }}>
-              {errors.email.message}
-            </p>
-          )}
-        </div>
-
-        <div style={{ marginBottom: '1rem' }}>
-          <label htmlFor="password">Password</label>
-          <input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            {...register('password')}
-            aria-invalid={errors.password ? 'true' : undefined}
-          />
-          {errors.password && (
-            <p role="alert" style={{ color: '#b91c1c' }}>
-              {errors.password.message}
-            </p>
-          )}
-        </div>
-
-        {state?.error && (
-          <p role="alert" style={{ color: '#b91c1c' }}>
-            {state.detail ?? state.error}
-          </p>
-        )}
-
-        <button type="submit" disabled={fetcher.state !== 'idle'}>
-          {fetcher.state === 'idle' ? 'Sign in' : 'Signing in...'}
-        </button>
-      </form>
-
-      <p style={{ marginTop: '2rem' }}>
-        <Link to="/forgot">Forgot password?</Link>
-        {' · '}
-        <Link to="/auth/magic">Email me a sign-in link</Link>
-      </p>
+    <main className="min-h-screen grid place-items-center bg-slate-50 px-4">
+      <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+        <h1 className="text-2xl font-bold text-slate-900 mb-1">Welcome back</h1>
+        <p className="text-sm text-slate-600 mb-6">Sign in to EduSupervise.</p>
+        <Form method="post" className="space-y-4">
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700">Email</span>
+            <input name="email" type="email" required autoComplete="email"
+              className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none" />
+          </label>
+          <label className="block">
+            <span className="text-sm font-medium text-slate-700">Password</span>
+            <input name="password" type="password" required autoComplete="current-password"
+              className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none" />
+          </label>
+          {data?.error && <p className="text-sm text-red-600">Invalid email or password.</p>}
+          <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+            Sign in
+          </button>
+        </Form>
+        <p className="text-sm text-slate-600 text-center mt-6">
+          New school? <a href="/signup" className="text-blue-600 hover:underline">Create one</a>
+        </p>
+      </div>
     </main>
   );
-}
-
-// ----------------------------------------------------------------------------
-// Helpers
-// ----------------------------------------------------------------------------
-
-function readClientIp(request: Request): string {
-  const xff = request.headers.get('x-forwarded-for');
-  if (xff) return xff.split(',')[0]!.trim();
-  const realIp = request.headers.get('x-real-ip');
-  if (realIp) return realIp;
-  return 'unknown';
 }
