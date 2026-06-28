@@ -1,27 +1,32 @@
-// apps/web/app/routes/api.auth.$.tsx — catch-all route for better-auth.
+// app/routes/api.auth.$.tsx — better-auth catch-all resource route.
 //
-// Better-auth mounts its own router at /api/auth/* and exposes a single
-// `handler(request: Request): Promise<Response>` that dispatches to the
-// right endpoint based on the URL path. We pass through the incoming
-// request and forward the response.
+// Mounts better-auth's REST API at /api/auth/*. Better-auth exposes a
+// set of standard endpoints (sign-up, sign-in, sign-out, session,
+// forget-password, reset-password, verify-email, magic-link, OAuth
+// callbacks) that the client SDK + the form actions in this app use.
 //
-// This route also handles OAuth callbacks (Google, Microsoft) which
-// better-auth exposes at /api/auth/oauth/callback/:providerId.
-//
-// Why a catch-all ($):
-//   - Better-auth has ~30 endpoints under /api/auth/* (sign-in, sign-up,
-//     sign-out, magic-link/verify, oauth/*, email-verification, etc.).
-//     Mounting a single catch-all and forwarding to better-auth's
-//     dispatch keeps us from manually wiring each one.
+// We catch any path under /api/auth and forward the Request to
+// better-auth's handler. The handler returns a Response (with the right
+// Set-Cookie headers for session cookies); we forward it unchanged.
 
-import type { Route } from './+types/api.auth.$';
+import type { LoaderFunctionArgs, ActionFunctionArgs } from 'react-router';
 
 import { getAuth } from '~/server/auth.server';
 
-export async function loader({ request }: Route.LoaderArgs) {
-  return getAuth().handler(request);
+/**
+ * GET handler — e.g. /api/auth/get-session, /api/auth/sign-in/google,
+ * OAuth callbacks.
+ */
+export async function loader({ request }: LoaderFunctionArgs) {
+  const auth = getAuth();
+  return auth.handler(request);
 }
 
-export async function action({ request }: Route.ActionArgs) {
-  return getAuth().handler(request);
+/**
+ * POST handler — sign-up, sign-in, sign-out, magic-link request,
+ * password reset, etc.
+ */
+export async function action({ request }: ActionFunctionArgs) {
+  const auth = getAuth();
+  return auth.handler(request);
 }
