@@ -22,6 +22,14 @@
 \set SYSTEM_PASSWORD  `echo "$EDUSUPERVISE_SYSTEM_PASSWORD"`
 \set DB_NAME          `echo "$POSTGRES_DB"`
 
+-- Stage the passwords as session-scoped GUCs so we can read them inside
+-- the DO block below. psql variable interpolation (`:'name'`) does NOT
+-- happen inside dollar-quoted strings (`$$ ... $$`), so we can't use
+-- `:'RUNTIME_PASSWORD'` directly inside the DO block. set_config +
+-- current_setting is the standard workaround.
+SELECT set_config('edusupervise.runtime_pw', :'RUNTIME_PASSWORD', false);
+SELECT set_config('edusupervise.system_pw',  :'SYSTEM_PASSWORD',  false);
+
 -- CREATE ROLE only (no grants yet — tables don't exist on first run).
 -- Idempotent: skip if the role already exists (e.g. second container boot).
 DO $$
@@ -29,13 +37,13 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'edusupervise_runtime') THEN
     EXECUTE format(
       'CREATE ROLE edusupervise_runtime WITH LOGIN PASSWORD %L',
-      :'RUNTIME_PASSWORD'
+      current_setting('edusupervise.runtime_pw', true)
     );
   END IF;
   IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'edusupervise_system') THEN
     EXECUTE format(
       'CREATE ROLE edusupervise_system WITH LOGIN PASSWORD %L BYPASSRLS',
-      :'SYSTEM_PASSWORD'
+      current_setting('edusupervise.system_pw', true)
     );
   END IF;
 END
