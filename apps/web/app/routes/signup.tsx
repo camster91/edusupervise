@@ -10,12 +10,12 @@
 
 import { Form, redirect, useActionData } from 'react-router';
 import type { Route } from './+types/signup';
-import { getDb } from '../server/db.server';
+import { getDb } from '../server/db.server.ts';
 import {
   hashPassword,
   newSessionTokenFor,
   sessionCookieAttributes,
-} from '../server/auth.server';
+} from '../server/auth.server.ts';
 import { schools, users } from '@edusupervise/db';
 import { sql } from 'drizzle-orm';
 

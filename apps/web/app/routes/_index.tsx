@@ -1,7 +1,7 @@
 // apps/web/app/routes/_index.tsx — public landing
 import { redirect } from 'react-router';
 import type { Route } from './+types/_index';
-import { getSession } from '../server/auth.server';
+import { getSession } from '../server/auth.server.ts';
 
 export async function loader({ request }: Route.LoaderArgs) {
   const session = await getSession(request);

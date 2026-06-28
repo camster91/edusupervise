@@ -1,6 +1,6 @@
 // apps/web/app/routes/_app.calendar._index.tsx — placeholder
 import type { Route } from './+types/_app.calendar._index';
-import { getSession, requireSession } from '../server/auth.server';
+import { getSession, requireSession } from '../server/auth.server.ts';
 
 export function meta() {
   return [{ title: 'Calendar — EduSupervise' }];

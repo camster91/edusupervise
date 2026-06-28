@@ -1,6 +1,6 @@
 // apps/web/app/routes/_app.settings._index.tsx — placeholder
 import type { Route } from './+types/_app.settings._index';
-import { getSession, requireSession, requireRole } from '../server/auth.server';
+import { getSession, requireSession, requireRole } from '../server/auth.server.ts';
 
 export function meta() {
   return [{ title: 'Settings — EduSupervise' }];

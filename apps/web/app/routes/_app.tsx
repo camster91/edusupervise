@@ -5,10 +5,10 @@
 
 import { Link, NavLink, Outlet, useLoaderData } from 'react-router';
 import type { Route } from './+types/_app';
-import { getSession } from '../server/auth.server';
+import { getSession } from '../server/auth.server.ts';
 import { eq } from 'drizzle-orm';
 import { schools } from '@edusupervise/db';
-import { getDb } from '../server/db.server';
+import { getDb } from '../server/db.server.ts';
 import { redirect } from 'react-router';
 
 export async function loader({ request }: Route.LoaderArgs) {

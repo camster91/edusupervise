@@ -1,8 +1,8 @@
 // apps/web/app/routes/_app.duties.new.tsx — Create duty (admin only)
 import { Form, redirect, useActionData } from 'react-router';
 import type { Route } from './+types/_app.duties.new';
-import { getSession, requireRole, requireSession } from '../server/auth.server';
-import { withSchoolContext } from '../server/db.server';
+import { getSession, requireRole, requireSession } from '../server/auth.server.ts';
+import { withSchoolContext } from '../server/db.server.ts';
 import { duties } from '@edusupervise/db';
 
 export function meta() {
