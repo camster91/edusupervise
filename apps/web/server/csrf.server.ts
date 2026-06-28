@@ -1,135 +1,60 @@
-// apps/web/server/csrf.server.ts — minimal CSRF guard for state-changing
-// requests.
+// apps/web/server/csrf.server.ts
 //
-// Strategy: check that the Origin (or Referer) header of a non-GET
-// request matches the host the server is configured for. This is the
-// simplest defense that blocks cross-origin form submissions without
-// requiring a CSRF token round-trip in every request.
-//
-// Limitations (acceptable for this Tier 2 task):
-//   - Modern browsers always send Origin on cross-origin POST / PUT /
-//     DELETE. Older browsers (IE11, some legacy mobile WebViews) only
-//     send Referer — we fall back to that, then to nothing.
-//   - For development on `localhost:3000` we allow `http://localhost:*`
-//     since the dev server might run on a different port than production.
-//
-// TODO(auth-and-rls): this file is intentionally minimal. The auth-and-rls
-// task adds a per-session double-submit token (CSRF cookie + header)
-// that is the production-grade defense — this Origin check stays as
-// a first line of defense in addition to that token.
+// CSRF double-submit cookie pattern. The cookie is read by JS and attached
+// to mutation requests via the x-csrf-token header. Server compares with
+// crypto.timingSafeEqual. Validity derives from session lifetime — there is
+// NO server-side timestamp; tokens are stateless.
 
-export interface CsrfOptions {
-  /**
-   * Allowed hostnames. If omitted, defaults to:
-   *   - process.env.APP_URL host (if set)
-   *   - the `Host` request header (for dev / single-domain deploys)
-   * Plus `localhost` / `127.0.0.1` for local development.
-   */
-  allowedHosts?: string[];
+import { timingSafeEqual } from 'node:crypto';
+import { createHmac } from 'node:crypto';
+
+const CSRF_COOKIE = 'edusupervise.csrf';
+
+function getSecret(): string {
+  const secret = process.env.SESSION_SECRET ?? 'dev-only-csrf-secret';
+  return secret;
 }
 
-const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+function sign(value: string): string {
+  return createHmac('sha256', getSecret()).update(value).digest('base64url');
+}
 
-/**
- * Validate the CSRF guard for a Request. Returns either
- *   { ok: true }                         — request may proceed
- *   { ok: false, response: Response }    — caller should `return` the response
- *
- * The returned Response is a 403 with a small JSON body — RR7 routes
- * propagate it to the client as-is.
- */
-export function validateCsrf(
-  request: Request,
-  options: CsrfOptions = {},
-):
-  | { ok: true }
-  | { ok: false; response: Response } {
-  const method = request.method.toUpperCase();
-  if (SAFE_METHODS.has(method)) return { ok: true };
+/** Issue a fresh CSRF token and the Set-Cookie attribute for first-GET. */
+export function csrfCookie(): { token: string; setCookie: string } {
+  const raw = crypto.randomUUID();
+  const token = `${raw}.${sign(raw)}`;
+  const secure = process.env.NODE_ENV === 'production' ? '; Secure' : '';
+  const setCookie = `${CSRF_COOKIE}=${token}; Path=/; SameSite=Lax; Max-Age=86400${secure}`;
+  return { token, setCookie };
+}
 
-  const origin = request.headers.get('origin');
-  const referer = request.headers.get('referer');
-  const host = request.headers.get('host') ?? '';
-
-  // 1. Origin match (preferred).
-  if (origin) {
-    if (originMatches(origin, host, options.allowedHosts)) {
-      return { ok: true };
-    }
-  } else if (referer) {
-    // 2. Referer match — some browsers / proxied clients strip Origin.
-    if (refererMatches(referer, host, options.allowedHosts)) {
-      return { ok: true };
+/** Validate the header vs the cookie. Returns true on match, false otherwise. */
+export function validateCsrf(request: Request): boolean {
+  const header = request.headers.get('x-csrf-token');
+  if (!header) return false;
+  const cookieHeader = request.headers.get('cookie');
+  if (!cookieHeader) return false;
+  let cookieToken: string | null = null;
+  for (const pair of cookieHeader.split(';')) {
+    const idx = pair.indexOf('=');
+    if (idx === -1) continue;
+    if (pair.slice(0, idx).trim() === CSRF_COOKIE) {
+      cookieToken = pair.slice(idx + 1).trim();
+      break;
     }
   }
-
-  return {
-    ok: false,
-    response: new Response(
-      JSON.stringify({ error: 'csrf_failed', detail: 'origin_mismatch' }),
-      { status: 403, headers: { 'content-type': 'application/json' } },
-    ),
-  };
-}
-
-function originMatches(
-  origin: string,
-  host: string,
-  allowed: ReadonlyArray<string> | undefined,
-): boolean {
-  let parsed: URL;
+  if (!cookieToken) return false;
+  if (header.length !== cookieToken.length) return false;
   try {
-    parsed = new URL(origin);
+    return timingSafeEqual(Buffer.from(header), Buffer.from(cookieToken));
   } catch {
     return false;
   }
-  return hostMatches(parsed.host, host, allowed);
 }
 
-function refererMatches(
-  referer: string,
-  host: string,
-  allowed: ReadonlyArray<string> | undefined,
-): boolean {
-  let parsed: URL;
-  try {
-    parsed = new URL(referer);
-  } catch {
-    return false;
-  }
-  return hostMatches(parsed.host, host, allowed);
-}
-
-function hostMatches(
-  candidateHost: string,
-  requestHost: string,
-  allowed: ReadonlyArray<string> | undefined,
-): boolean {
-  // Exact match against the request's Host header is the strongest signal.
-  if (candidateHost === requestHost) return true;
-
-  // Env-configured APP_URL host always allowed.
-  const appUrl = process.env.APP_URL;
-  if (appUrl) {
-    try {
-      if (new URL(appUrl).host === candidateHost) return true;
-    } catch {
-      // ignore malformed APP_URL
-    }
-  }
-
-  // Explicit allow-list.
-  if (allowed?.includes(candidateHost)) return true;
-
-  // Localhost variants for dev.
-  if (
-    candidateHost.startsWith('localhost:') ||
-    candidateHost.startsWith('127.0.0.1:') ||
-    candidateHost === 'localhost' ||
-    candidateHost === '127.0.0.1'
-  ) {
-    return true;
-  }
-
-  return false;
+export function csrfRequiredResponse(): Response {
+  return new Response(JSON.stringify({ error: 'csrf_invalid' }), {
+    status: 403,
+    headers: { 'content-type': 'application/json' },
+  });
 }
