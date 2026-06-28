@@ -131,10 +131,18 @@ function getAuthDb(): Db {
 /**
  * Lazy singleton. Built once per Node process; subsequent calls return the
  * cached instance.
+ *
+ * We widen the instance type to `any` to avoid a TS2322 from better-auth's
+ * overload-inference returning `Auth<{...}>` while the variable was typed
+ * `Auth<BetterAuthOptions>`. The runtime shape is identical and the public
+ * helper `getAuth()` is typed as `Auth<any>` so callers get full IntelliSense.
  */
-let _authInstance: ReturnType<typeof betterAuth> | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type AuthInstance = ReturnType<typeof betterAuth> & Record<string, any>;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let _authInstance: any = null;
 
-export function getAuth(): ReturnType<typeof betterAuth> {
+export function getAuth(): AuthInstance {
   if (_authInstance) return _authInstance;
 
   const secret = requireEnv('BETTER_AUTH_SECRET');
