@@ -1,6 +1,9 @@
 # syntax=docker/dockerfile:1.7
 FROM node:20-alpine AS base
-RUN corepack enable
+# Pin pnpm to a Node 20-compatible version. Corepack's "latest" picks pnpm 11+
+# which requires node:sqlite (Node 22+ only). 9.15.x is the latest pnpm 9 that
+# works on Node 20.
+RUN corepack enable && corepack prepare pnpm@9.15.9 --activate
 WORKDIR /app
 
 # --- deps stage ---
