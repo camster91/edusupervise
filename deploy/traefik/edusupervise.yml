@@ -1,0 +1,26 @@
+# Traefik dynamic router for edusupervise.ashbi.ca
+#
+# Loaded by the running Traefik v3.2 instance on vps.ashbi.ca via the file
+# provider. Drop this file into /opt/traefik/dynamic/routers/ (or wherever the
+# existing Traefik dynamic config picks up .yml files) and Traefik picks it up
+# without a restart.
+
+http:
+  routers:
+    edusupervise:
+      rule: "Host(`edusupervise.ashbi.ca`)"
+      entryPoints:
+        - websecure
+      tls:
+        certresolver: letsencrypt
+      service: edusupervise
+
+  services:
+    edusupervise:
+      loadBalancer:
+        servers:
+          - url: "http://edusupervise-web:3000"
+        healthCheck:
+          path: /api/health
+          interval: "30s"
+          timeout: "5s"

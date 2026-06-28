@@ -38,6 +38,7 @@ drizzle/.snapshots/
 /data/postgres/
 /data/redis/
 /data/backups/
+/data/mocks/
 /data/edusupervise.db
 /data/edusupervise.db-shm
 /data/edusupervise.db-wal
