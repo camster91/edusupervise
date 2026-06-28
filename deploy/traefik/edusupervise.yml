@@ -1,18 +1,40 @@
 # Traefik dynamic router for edusupervise.ashbi.ca
 #
-# Loaded by the running Traefik v3.2 instance on vps.ashbi.ca via the file
-# provider. Drop this file into /opt/traefik/dynamic/routers/ (or wherever the
-# existing Traefik dynamic config picks up .yml files) and Traefik picks it up
-# without a restart.
+# Loaded by the running Traefik v3.2 instance on vps.ashbi.ca via the
+# file provider. Drop this file into /opt/traefik/dynamic/routers/ (or
+# wherever the existing Traefik dynamic config picks up *.yml files) and
+# Traefik will pick it up without a restart.
+#
+# The web service in docker/docker-compose.yml is on the shared external
+# docker network `web` (the same one the host Traefik attaches to). The
+# compose project name is `edusupervise`, so the service is reachable as
+# `edusupervise-web:3000` on that network. Confirm with:
+#   docker network inspect web | jq '.[0].Containers[] | {Name, IPv4Address}'
+#
+# The matching docker labels on the web container (see docker/docker-compose.yml)
+# tell the Traefik docker provider about the container. The two providers
+# complement each other: docker provider supplies container discovery, file
+# provider supplies the routing rule + TLS. Both must be present.
 
 http:
   routers:
-    edusupervise:
+    # Public HTTPS router — the canonical entry point for the app.
+    edusupervise-websecure:
       rule: "Host(`edusupervise.ashbi.ca`)"
       entryPoints:
         - websecure
       tls:
-        certresolver: letsencrypt
+        certResolver: letsencrypt
+      service: edusupervise
+
+    # HTTP -> HTTPS redirect. Anyone hitting http:// gets bumped to https://
+    # without ever touching the app.
+    edusupervise-http-redirect:
+      rule: "Host(`edusupervise.ashbi.ca`)"
+      entryPoints:
+        - web
+      middlewares:
+        - redirect-to-https
       service: edusupervise
 
   services:
@@ -24,3 +46,9 @@ http:
           path: /api/health
           interval: "30s"
           timeout: "5s"
+
+  middlewares:
+    redirect-to-https:
+      redirectScheme:
+        scheme: https
+        permanent: true

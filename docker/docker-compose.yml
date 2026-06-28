@@ -4,14 +4,25 @@ services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
+    env_file:
+      - ${EDUSUPERVISE_SECRETS_DIR:-/root/edusupervise-secrets}/.env
     environment:
       POSTGRES_USER: edusupervise_owner
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       POSTGRES_DB: edusupervise
       POSTGRES_INITDB_ARGS: "--auth-host=md5"
+      # Read by db/init/01-roles.sql via psql `\set` backtick substitution.
+      # If these are missing, the init script fails loudly with role password errors.
+      EDUSUPERVISE_RUNTIME_PASSWORD: ${EDUSUPERVISE_RUNTIME_PASSWORD}
+      EDUSUPERVISE_SYSTEM_PASSWORD: ${EDUSUPERVISE_SYSTEM_PASSWORD}
     volumes:
       - /data/postgres:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:ro
+    # The POSTGRES_PASSWORD_FILE above reads /run/secrets/postgres_password
+    # inside the container; the secrets: block at the bottom maps that path
+    # to /root/edusupervise-secrets/postgres_password.txt on the host.
+    secrets:
+      - postgres_password
     mem_limit: 4g
     cpus: "2.0"
     healthcheck:
@@ -39,7 +50,8 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.web
     restart: unless-stopped
-    env_file: /root/edusupervise-secrets/.env
+    env_file:
+      - ${EDUSUPERVISE_SECRETS_DIR:-/root/edusupervise-secrets}/.env
     environment:
       DATABASE_URL: postgres://edusupervise_runtime:${EDUSUPERVISE_RUNTIME_PASSWORD}@postgres:5432/edusupervise
       REDIS_URL: redis://redis:6379
@@ -70,7 +82,8 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.worker
     restart: unless-stopped
-    env_file: /root/edusupervise-secrets/.env
+    env_file:
+      - ${EDUSUPERVISE_SECRETS_DIR:-/root/edusupervise-secrets}/.env
     environment:
       DATABASE_URL: postgres://edusupervise_system:${EDUSUPERVISE_SYSTEM_PASSWORD}@postgres:5432/edusupervise
       REDIS_URL: redis://redis:6379
@@ -92,8 +105,9 @@ services:
     command:
       - sh
       - -c
-      - "apk add --no-cache postgresql16-client >/dev/null && while true; do psql $$DATABASE_URL -f /sql/audit-retention.sql; sleep 86400; done"
-    env_file: /root/edusupervise-secrets/.env
+      - "apk add --no-cache postgresql16-client >/dev/null && while true; do psql $$DATABASE_URL -v ON_ERROR_STOP=1 -f /sql/audit-retention.sql; sleep 86400; done"
+    env_file:
+      - ${EDUSUPERVISE_SECRETS_DIR:-/root/edusupervise-secrets}/.env
     environment:
       DATABASE_URL: postgres://edusupervise_system:${EDUSUPERVISE_SYSTEM_PASSWORD}@postgres:5432/edusupervise
     volumes:
@@ -106,4 +120,4 @@ services:
 
 secrets:
   postgres_password:
-    file: /root/edusupervise-secrets/postgres_password.txt
+    file: ${EDUSUPERVISE_SECRETS_DIR:-/root/edusupervise-secrets}/postgres_password.txt

@@ -1,11 +1,25 @@
--- 01-schema.sql — initial schema. Runs as edusupervise_owner (the
--- POSTGRES_USER) on first container boot, after 00-create-roles.sh.
--- drizzle-kit migrations are the source of truth going forward; this file
--- is the bootstrap so a fresh deploy has the full schema before any app
--- code runs.
+-- 02-schema.sql — runs as edusupervise_owner (POSTGRES_USER) on first
+-- container boot, AFTER 01-roles.sql. Creates every table from spec section 4
+-- verbatim, plus the per-table ENABLE + FORCE + POLICY loop (DO block) and
+-- table-level GRANTs for runtime + system roles.
+--
+-- Drizzle-kit migrations are the source of truth going forward; this file is
+-- the bootstrap so a fresh deploy has the full schema (and RLS policies)
+-- before any app code runs.
+--
+-- Tenant-owned tables get:
+--   ALTER TABLE ... ENABLE ROW LEVEL SECURITY
+--   ALTER TABLE ... FORCE  ROW LEVEL SECURITY
+--   CREATE POLICY tenant_isolation ON <table>
+--     USING      (school_id = current_school_id())
+--     WITH CHECK (school_id = current_school_id())
+--
+-- FORCE is required because the runtime role does NOT own tables. Without
+-- FORCE, a non-owner role with no explicit policy would silently bypass RLS.
 
 \set ON_ERROR_STOP on
 
+-- gen_random_uuid() lives in pgcrypto on stock postgres:16-alpine.
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 -- =========================================
@@ -59,11 +73,11 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_school_id ON users(school_id);
-CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+CREATE INDEX IF NOT EXISTS idx_users_email      ON users(email);
 
 -- Sessions, accounts, verification are owned by better-auth (auto-created by
--- better-auth's Drizzle adapter on first auth event). The runtime role needs
--- table-level grants; 00-create-roles.sh handles that after this file runs.
+-- better-auth's Drizzle adapter on first auth event). They're tenant-owned
+-- tables and are included in the RLS loop below.
 
 -- =========================================
 -- Cycle calendar
@@ -165,7 +179,7 @@ CREATE TABLE IF NOT EXISTS reminder_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_reminder_log_school_status ON reminder_log(school_id, status);
-CREATE INDEX IF NOT EXISTS idx_reminder_log_assignment ON reminder_log(assignment_id);
+CREATE INDEX IF NOT EXISTS idx_reminder_log_assignment    ON reminder_log(assignment_id);
 
 -- =========================================
 -- Outbox (transactional queue)
@@ -200,7 +214,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_school_created ON audit_log(school_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_audit_target ON audit_log(school_id, target_type, target_id);
+CREATE INDEX IF NOT EXISTS idx_audit_target         ON audit_log(school_id, target_type, target_id);
 
 -- =========================================
 -- Stripe webhook idempotency
@@ -243,7 +257,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications(user_id, created_at DESC) WHERE read_at IS NULL;
 
 -- =========================================
--- Plan limits (global)
+-- Plan limits (global lookup, no RLS)
 -- =========================================
 
 CREATE TABLE IF NOT EXISTS plan_limits (
@@ -255,25 +269,21 @@ CREATE TABLE IF NOT EXISTS plan_limits (
   audit_retention_days INTEGER NOT NULL
 );
 
-INSERT INTO plan_limits VALUES
-  ('trial',  5,   20,  3, false, 14),
-  ('free',   3,   10,  1, false, 7),
-  ('pro',   50,  500, 10, true,  90),
-  ('school', 500, 5000, 50, true, 365)
-ON CONFLICT (plan) DO UPDATE SET
-  max_teachers = EXCLUDED.max_teachers,
-  max_duties = EXCLUDED.max_duties,
-  max_reminders_per_assignment = EXCLUDED.max_reminders_per_assignment,
-  sms_included = EXCLUDED.sms_included,
-  audit_retention_days = EXCLUDED.audit_retention_days;
-
 -- =========================================
--- RLS: enable + force + policy on every tenant table
+-- RLS — enable AND force on every tenant-owned table
 -- =========================================
+--
+-- Helper that reads the per-transaction `app.school_id` GUC. Used by every
+-- tenant policy. Returns NULL when not set; policies short-circuit on NULL
+-- so unauthenticated calls cannot read any row.
 
 CREATE OR REPLACE FUNCTION current_school_id() RETURNS UUID AS $$
   SELECT NULLIF(current_setting('app.school_id', true), '')::UUID;
 $$ LANGUAGE SQL STABLE;
+
+-- DO block: ENABLE + FORCE + POLICY for each tenant-owned table.
+-- FORCE is the multi-tenancy boundary: runtime role doesn't own tables,
+-- so without FORCE it would silently bypass RLS.
 
 DO $$
 DECLARE
@@ -285,18 +295,43 @@ BEGIN
   ]
   LOOP
     EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY', t);
-    EXECUTE format('ALTER TABLE %I FORCE ROW LEVEL SECURITY', t);
+    EXECUTE format('ALTER TABLE %I FORCE  ROW LEVEL SECURITY', t);
     EXECUTE format(
       'CREATE POLICY tenant_isolation ON %I '
-      'USING (school_id = current_school_id()) '
+      'USING      (school_id = current_school_id()) '
       'WITH CHECK (school_id = current_school_id())',
       t
     );
   END LOOP;
-END $$;
+END
+$$;
+
+-- Schools table: a user can see only their own school (self-isolation,
+-- not tenant-list-isolation; tenant list is intentionally a global no-go
+-- since one DB == one school).
 
 ALTER TABLE schools ENABLE ROW LEVEL SECURITY;
-ALTER TABLE schools FORCE ROW LEVEL SECURITY;
+ALTER TABLE schools FORCE  ROW LEVEL SECURITY;
 CREATE POLICY school_self ON schools
-  USING (id = current_school_id())
+  USING      (id = current_school_id())
   WITH CHECK (id = current_school_id());
+
+-- =========================================
+-- Grants on every table for runtime + system roles (after tables exist).
+-- Idempotent via dynamic SQL: re-runs apply to new tables without erroring.
+-- =========================================
+
+DO $$
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
+    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.%I TO edusupervise_runtime', r.tablename);
+    EXECUTE format('GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.%I TO edusupervise_system',  r.tablename);
+  END LOOP;
+  FOR r IN SELECT sequence_name FROM information_schema.sequences WHERE sequence_schema = 'public' LOOP
+    EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE public.%I TO edusupervise_runtime', r.sequence_name);
+    EXECUTE format('GRANT USAGE, SELECT ON SEQUENCE public.%I TO edusupervise_system',  r.sequence_name);
+  END LOOP;
+END
+$$;
