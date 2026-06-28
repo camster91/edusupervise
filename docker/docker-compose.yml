@@ -8,21 +8,14 @@ services:
       - ${EDUSUPERVISE_SECRETS_DIR:-/root/edusupervise-secrets}/.env
     environment:
       POSTGRES_USER: edusupervise_owner
-      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: edusupervise
       POSTGRES_INITDB_ARGS: "--auth-host=md5"
-      # Read by db/init/01-roles.sql via psql `\set` backtick substitution.
-      # If these are missing, the init script fails loudly with role password errors.
       EDUSUPERVISE_RUNTIME_PASSWORD: ${EDUSUPERVISE_RUNTIME_PASSWORD}
       EDUSUPERVISE_SYSTEM_PASSWORD: ${EDUSUPERVISE_SYSTEM_PASSWORD}
     volumes:
       - /data/postgres:/var/lib/postgresql/data
       - ./db/init:/docker-entrypoint-initdb.d:ro
-    # The POSTGRES_PASSWORD_FILE above reads /run/secrets/postgres_password
-    # inside the container; the secrets: block at the bottom maps that path
-    # to /root/edusupervise-secrets/postgres_password.txt on the host.
-    secrets:
-      - postgres_password
     mem_limit: 4g
     cpus: "2.0"
     healthcheck:
@@ -117,7 +110,3 @@ services:
         condition: service_healthy
     mem_limit: 128m
     cpus: "0.2"
-
-secrets:
-  postgres_password:
-    file: ${EDUSUPERVISE_SECRETS_DIR:-/root/edusupervise-secrets}/postgres_password.txt
