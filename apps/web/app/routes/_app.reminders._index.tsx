@@ -1,6 +1,6 @@
 // apps/web/app/routes/_app.reminders._index.tsx — placeholder
 import type { Route } from './+types/_app.reminders._index';
-import { getSession, requireSession } from '../server/auth.server.ts';
+import { getSession, requireSession } from '../../server/auth.server.ts';
 
 export function meta() {
   return [{ title: 'Reminders — EduSupervise' }];

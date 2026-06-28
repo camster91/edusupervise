@@ -32,7 +32,12 @@ import {
   type SchoolContextTx,
 } from '@edusupervise/db';
 
-import { getSession, type AppSession } from './auth.server';
+import { getSession, type Session } from './auth.server';
+
+// Alias retained for callers that previously typed their helpers against
+// `AppSession` (e.g. older draft code). The shape is identical to
+// `Session` — see auth.server.ts.
+export type AppSession = Session;
 
 // ---------------------------------------------------------------------------
 // Connection management
@@ -94,7 +99,7 @@ export function closeDb(): Promise<void> | void {
  */
 export async function withSchool<T>(
   request: Request,
-  fn: (tx: SchoolContextTx, session: AppSession) => Promise<T>,
+  fn: (tx: SchoolContextTx, session: Session) => Promise<T>,
 ): Promise<T> {
   const session = await getSession(request);
   if (!session) {
@@ -115,7 +120,7 @@ export async function withSchool<T>(
  */
 export async function withUser<T>(
   request: Request,
-  fn: (tx: SchoolContextTx, session: AppSession) => Promise<T>,
+  fn: (tx: SchoolContextTx, session: Session) => Promise<T>,
 ): Promise<T> {
   const session = await getSession(request);
   if (!session) {
@@ -191,7 +196,7 @@ export async function getCurrentSchool(
 export async function getCurrentContext(
   request: Request,
 ): Promise<{
-  session: AppSession;
+  session: Session;
   user: typeof users.$inferSelect;
   school: typeof schools.$inferSelect;
 } | null> {

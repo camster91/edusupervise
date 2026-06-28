@@ -1,6 +1,6 @@
 // apps/web/app/routes/_app.teachers._index.tsx — placeholder
 import type { Route } from './+types/_app.teachers._index';
-import { getSession, requireSession, requireRole } from '../server/auth.server.ts';
+import { getSession, requireSession, requireRole } from '../../server/auth.server.ts';
 
 export function meta() {
   return [{ title: 'Teachers — EduSupervise' }];

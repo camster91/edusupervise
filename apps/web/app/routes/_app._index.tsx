@@ -1,8 +1,8 @@
 // apps/web/app/routes/_app._index.tsx — Dashboard
 import { useLoaderData, Link } from 'react-router';
 import type { Route } from './+types/_app._index';
-import { getSession } from '../server/auth.server.ts';
-import { withSchoolContext } from '../server/db.server.ts';
+import { getSession } from '../../server/auth.server.ts';
+import { withSchoolContext } from '../../server/db.server.ts';
 import { duties, dutyAssignments, users, cycleCalendar } from '@edusupervise/db';
 import { and, eq, gte, lte, desc, isNull } from 'drizzle-orm';
 

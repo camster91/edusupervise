@@ -1,8 +1,8 @@
 // apps/web/app/routes/_app.duties._index.tsx — Duty list
 import { useLoaderData, Link } from 'react-router';
 import type { Route } from './+types/_app.duties._index';
-import { getSession, requireSession } from '../server/auth.server.ts';
-import { withSchoolContext } from '../server/db.server.ts';
+import { getSession, requireSession } from '../../server/auth.server.ts';
+import { withSchoolContext } from '../../server/db.server.ts';
 import { duties } from '@edusupervise/db';
 import { and, eq, desc } from 'drizzle-orm';
 
