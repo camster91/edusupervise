@@ -37,7 +37,7 @@ import { isbot } from 'isbot';
 import { renderToPipeableStream } from 'react-dom/server';
 import { randomUUID } from 'node:crypto';
 
-import { logger } from ../server/logger.internal;
+import { logger } from '../server/logger.server';
 
 // RR7 requires `streamTimeout` for the response stream. Five minutes is
 // the canonical default — long enough that very slow SSR (e.g. on a cold
