@@ -8,14 +8,6 @@ export default [
   route('login', 'routes/login.tsx'),
   route('logout', 'routes/logout.tsx'),
 
-  // Password reset + magic link + verifications
-  // (spec section 5: tokens in URL fragment, consumed via POST)
-  route('forgot', 'routes/forgot.tsx'),
-  route('reset', 'routes/reset.tsx'),
-  route('auth/magic', 'routes/auth.magic.tsx'),
-  route('verify-email', 'routes/verify-email.tsx'),
-  route('verify-phone', 'routes/verify-phone.tsx'),
-
   // Authenticated app shell
   layout('routes/_app.tsx', [
     route('app', 'routes/_app._index.tsx'),
