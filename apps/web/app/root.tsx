@@ -73,7 +73,6 @@ export function Layout({ children }: { children: React.ReactNode }): React.React
         {children}
         <ScrollRestoration />
         <Scripts />
-        <ToastViewport />
       </body>
     </html>
   );
@@ -86,6 +85,7 @@ export default function App(): React.ReactElement {
       <ToastProvider>
         <Outlet />
         <ToastListener />
+        <ToastViewport />
       </ToastProvider>
     </ThemeStyle>
   );
