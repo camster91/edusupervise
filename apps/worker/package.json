@@ -3,27 +3,39 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "dist/index.js",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./jobs/*": "./src/jobs/*.ts",
+    "./retry-policy": "./src/retry-policy.ts",
+    "./heartbeat": "./src/heartbeat.ts",
+    "./logger": "./src/logger.ts",
+    "./timezone": "./src/timezone.ts"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx watch src/index.ts",
     "start": "node dist/index.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:integration": "tsx scripts/run-worker-tests.ts"
   },
   "dependencies": {
     "@edusupervise/db": "workspace:*",
     "@edusupervise/email": "workspace:*",
     "@edusupervise/sms": "workspace:*",
     "@edusupervise/schemas": "workspace:*",
+    "bullmq": "^5.21.0",
     "drizzle-orm": "~0.36.4",
-    "pino": "^9.5.0",
-    "postgres": "^3.4.5"
+    "ioredis": "^5.4.1",
+    "postgres": "^3.4.5",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
     "tsx": "^4.19.2",
     "typescript": "~5.6.3",
+    "vite-tsconfig-paths": "^5.1.0",
     "vitest": "^2.1.5"
   }
 }
