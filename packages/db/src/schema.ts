@@ -1085,6 +1085,127 @@ export const coverageAssignmentsRelations = relations(coverageAssignments, ({ on
     references: [users.id],
     relationName: 'coverage_assignments_new_teacher_id_users_id_fk',
   }),
+  parentAlerts: many(parentAlerts),
+}));
+
+// ---------------------------------------------------------------------------
+// Parent-facing duty-change alerts (Phase 3)
+//
+// When the Coverage Router accepts a coverage request, EduSupervise
+// generates a targeted parent alert for each parent whose students
+// are associated with the duty (matched by route tags).
+//
+// parent_contacts: one row per parent.
+// parent_route_tags: many-to-many between parents and route tags.
+// parent_alerts: one row per (parent, coverage_assignment) — the
+//                 generated alert. Status drives the dispatch flow.
+// All tenant-scoped via RLS in the migration.
+// ---------------------------------------------------------------------------
+
+export const parentContacts = pgTable(
+  'parent_contacts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    schoolId: uuid('school_id')
+      .notNull()
+      .references(() => schools.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    phone: text('phone'),
+    email: text('email'),
+    language: text('language').notNull().default('en'),
+    optedOutAt: timestamp('opted_out_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('idx_parent_contacts_school').on(t.schoolId),
+  ],
+);
+export type ParentContact = typeof parentContacts.$inferSelect;
+export type NewParentContact = typeof parentContacts.$inferInsert;
+
+export const parentRouteTags = pgTable(
+  'parent_route_tags',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    schoolId: uuid('school_id')
+      .notNull()
+      .references(() => schools.id, { onDelete: 'cascade' }),
+    parentId: uuid('parent_id')
+      .notNull()
+      .references(() => parentContacts.id, { onDelete: 'cascade' }),
+    tag: text('tag').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('idx_parent_route_tags_school_tag').on(t.schoolId, t.tag),
+  ],
+);
+export type ParentRouteTag = typeof parentRouteTags.$inferSelect;
+export type NewParentRouteTag = typeof parentRouteTags.$inferInsert;
+
+export const parentAlerts = pgTable(
+  'parent_alerts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    schoolId: uuid('school_id')
+      .notNull()
+      .references(() => schools.id, { onDelete: 'cascade' }),
+    parentId: uuid('parent_id')
+      .notNull()
+      .references(() => parentContacts.id, { onDelete: 'cascade' }),
+    coverageAssignmentId: uuid('coverage_assignment_id')
+      .notNull()
+      .references(() => coverageAssignments.id, { onDelete: 'cascade' }),
+    channel: text('channel').notNull().default('sms'),
+    subject: text('subject'),
+    bodyShort: text('body_short').notNull(),
+    bodyLong: text('body_long'),
+    status: text('status').notNull().default('draft'),
+    sentAt: timestamp('sent_at', { withTimezone: true }),
+    failedReason: text('failed_reason'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('idx_parent_alerts_school_status').on(t.schoolId, t.status),
+    index('idx_parent_alerts_assignment').on(t.coverageAssignmentId),
+  ],
+);
+export type ParentAlert = typeof parentAlerts.$inferSelect;
+export type NewParentAlert = typeof parentAlerts.$inferInsert;
+
+export const parentContactsRelations = relations(parentContacts, ({ many }) => ({
+  routeTags: many(parentRouteTags),
+  alerts: many(parentAlerts),
+}));
+
+export const parentRouteTagsRelations = relations(parentRouteTags, ({ one }) => ({
+  parent: one(parentContacts, {
+    fields: [parentRouteTags.parentId],
+    references: [parentContacts.id],
+  }),
+}));
+
+export const parentAlertsRelations = relations(parentAlerts, ({ one }) => ({
+  parent: one(parentContacts, {
+    fields: [parentAlerts.parentId],
+    references: [parentContacts.id],
+  }),
+  assignment: one(coverageAssignments, {
+    fields: [parentAlerts.coverageAssignmentId],
+    references: [coverageAssignments.id],
+  }),
 }));
 
 export const authAccountRelations = relations(authAccount, ({ one }) => ({
@@ -1117,4 +1238,7 @@ export const schema = {
   authVerification,
   coverageEvents,
   coverageAssignments,
+  parentContacts,
+  parentRouteTags,
+  parentAlerts,
 };

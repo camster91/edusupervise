@@ -22,6 +22,7 @@ import { withSchool, getDb } from '../../server/db.server';
 import { listCoverage, type CoverageSource } from '../../server/coverage.server';
 import { users } from '@edusupervise/db';
 import { Button, EmptyState, Sheet, HeroCard, Banner } from '../components/ui';
+import { Link } from 'react-router';
 
 export function meta() {
   return [{ title: 'Coverage — EduSupervise' }];
@@ -78,10 +79,19 @@ export default function CoveragePage() {
           </p>
         </div>
         {role === 'school_admin' && (
-          <Button variant="primary" size="md" onClick={() => setCreateOpen(true)}>
-            <Plus size={18} aria-hidden />
-            New absence
-          </Button>
+          <div className="flex items-center gap-sm">
+            <Link
+              to="/app/coverage/alerts"
+              className="inline-flex items-center justify-center h-btn-md px-lg rounded-md font-medium text-accent hover:bg-accent-soft transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+            >
+              <Bell size={16} aria-hidden />
+              Parent alerts
+            </Link>
+            <Button variant="primary" size="md" onClick={() => setCreateOpen(true)}>
+              <Plus size={18} aria-hidden />
+              New absence
+            </Button>
+          </div>
         )}
       </div>
 

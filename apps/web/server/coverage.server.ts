@@ -323,6 +323,16 @@ export async function acceptCoverage(args: {
     ))
     .returning({ id: coverageAssignments.id });
   if (!row) throw new Error('Coverage assignment not found or not yours');
+
+  // Phase 3: when a teacher accepts coverage, generate parent alerts.
+  // The generator is idempotent (unique index on parent_id + assignment_id).
+  try {
+    const { generateAlertsForAssignment } = await import('./parent-alerts.server');
+    await generateAlertsForAssignment({ coverageAssignmentId: row.id });
+  } catch (err) {
+    // Don't fail the acceptance because of an alert hiccup.
+    console.warn('coverage.parent_alert_generation_failed', { assignmentId: row.id, err });
+  }
 }
 
 export async function declineCoverage(args: {
