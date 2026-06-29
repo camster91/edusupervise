@@ -21,4 +21,3 @@ export {
 // Namespaces — useful when a file wants many primitives from one module.
 export * as Shell from './shell';
 export * as UI from './ui';
-export * as Auth from './auth';
