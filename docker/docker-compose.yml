@@ -43,6 +43,12 @@ services:
       context: ..
       dockerfile: docker/Dockerfile.web
     restart: unless-stopped
+    # Expose 3011 on the host loopback so Traefik (running in host network
+    # mode) can reach it. Without this, the container is only reachable
+    # via the docker bridge network and Traefik's `http://127.0.0.1:3011`
+    # target fails.
+    ports:
+      - "127.0.0.1:3011:3011"
     env_file:
       - ${EDUSUPERVISE_SECRETS_DIR:-/root/edusupervise-secrets}/.env
     environment:
