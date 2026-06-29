@@ -14,7 +14,7 @@ import { useState } from 'react';
 import { redirect, useNavigate, Link } from 'react-router';
 import { ArrowRight, ArrowLeft, Users, ClipboardList, Sparkles, School } from 'lucide-react';
 import type { Route } from './+types/onboarding.admin._index';
-import { getSession } from '../server/auth.server';
+import { getSession } from '../../server/auth.server';
 import { Button } from '../components/ui';
 
 export function meta() {

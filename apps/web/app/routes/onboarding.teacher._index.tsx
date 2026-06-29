@@ -7,7 +7,7 @@
 import { Link, redirect } from 'react-router';
 import { ArrowRight, Calendar } from 'lucide-react';
 import type { Route } from './+types/onboarding.teacher._index';
-import { getSession } from '../server/auth.server';
+import { getSession } from '../../server/auth.server';
 
 export function meta() {
   return [{ title: 'Welcome — EduSupervise' }];
