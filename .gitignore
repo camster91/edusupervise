@@ -46,3 +46,4 @@ drizzle/.snapshots/
 # Misc
 .cache/
 .tmp/
+.audit/

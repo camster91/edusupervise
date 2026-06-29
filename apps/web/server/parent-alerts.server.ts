@@ -27,6 +27,7 @@ import {
   coverageEvents,
   users,
   duties,
+  getSystemClient,
   type Db,
 } from '@edusupervise/db';
 import { getDb, withSchoolId } from './db.server';
@@ -46,43 +47,46 @@ export async function recordParentContact(args: {
   language?: string;
   routeTags?: string[];
 }): Promise<{ id: string }> {
-  const db = getDb();
-
-  // Idempotency check on phone (when present)
-  if (args.phone) {
-    const existing = await db
-      .select({ id: parentContacts.id })
-      .from(parentContacts)
-      .where(and(
-        eq(parentContacts.schoolId, args.schoolId),
-        eq(parentContacts.phone, args.phone),
-      ))
-      .limit(1);
-    if (existing[0]) {
-      // Update tags if provided
-      if (args.routeTags && args.routeTags.length > 0) {
-        await setParentRouteTags(existing[0].id, args.routeTags);
+  // RLS-aware (slice-1 Y-02 + C-1): open a transaction with the
+  // school context set so the FORCE ROW LEVEL SECURITY policy on
+  // parent_contacts lets the SELECT + INSERT through.
+  return withSchoolId(args.schoolId, async (tx) => {
+    // Idempotency check on phone (when present)
+    if (args.phone) {
+      const existing = await tx
+        .select({ id: parentContacts.id })
+        .from(parentContacts)
+        .where(and(
+          eq(parentContacts.schoolId, args.schoolId),
+          eq(parentContacts.phone, args.phone),
+        ))
+        .limit(1);
+      if (existing[0]) {
+        // Update tags if provided
+        if (args.routeTags && args.routeTags.length > 0) {
+          await setParentRouteTags(existing[0].id, args.routeTags);
+        }
+        return { id: existing[0].id };
       }
-      return { id: existing[0].id };
     }
-  }
 
-  const [row] = await db
-    .insert(parentContacts)
-    .values({
-      schoolId: args.schoolId,
-      name: args.name,
-      phone: args.phone ?? null,
-      email: args.email ?? null,
-      language: args.language ?? 'en',
-    })
-    .returning({ id: parentContacts.id });
+    const [row] = await tx
+      .insert(parentContacts)
+      .values({
+        schoolId: args.schoolId,
+        name: args.name,
+        phone: args.phone ?? null,
+        email: args.email ?? null,
+        language: args.language ?? 'en',
+      })
+      .returning({ id: parentContacts.id });
 
-  if (args.routeTags && args.routeTags.length > 0) {
-    await setParentRouteTags(row!.id, args.routeTags);
-  }
+    if (args.routeTags && args.routeTags.length > 0) {
+      await setParentRouteTags(row!.id, args.routeTags);
+    }
 
-  return { id: row!.id };
+    return { id: row!.id };
+  });
 }
 
 async function setParentRouteTags(parentId: string, tags: string[]): Promise<void> {
@@ -166,102 +170,110 @@ export async function listParentContacts(args: {
 export async function generateAlertsForAssignment(args: {
   coverageAssignmentId: string;
 }): Promise<{ created: number; skipped: number }> {
-  const db = getDb();
+  // First pass: load the assignment using the SYSTEM role (RLS-bypass).
+  // This is the bootstrap look-up case — the caller (acceptCoverage) does
+  // not always know the schoolId until it loads the row. We use the system
+  // client for the read, then re-open with the runtime client + RLS
+  // context for every subsequent touch.
+  const systemClient = getSystemClient(
+    process.env.SYSTEM_DATABASE_URL ?? process.env.DATABASE_URL!,
+  );
+  const sysDb = systemClient.db;
+  try {
+    const [assignment] = await sysDb
+      .select({
+        id: coverageAssignments.id,
+        schoolId: coverageAssignments.schoolId,
+        dutyId: coverageAssignments.dutyId,
+        originalTeacherId: coverageAssignments.originalTeacherId,
+        newTeacherId: coverageAssignments.newTeacherId,
+        eventId: coverageAssignments.coverageEventId,
+        absenceDate: coverageEvents.absenceDate,
+        dutyLocation: duties.location,
+        dutyStartTime: duties.startTime,
+        dutyEndTime: duties.endTime,
+        originalTeacherName: users.name,
+      })
+      .from(coverageAssignments)
+      .innerJoin(coverageEvents, eq(coverageEvents.id, coverageAssignments.coverageEventId))
+      .innerJoin(duties, eq(duties.id, coverageAssignments.dutyId))
+      .innerJoin(users, eq(users.id, coverageAssignments.originalTeacherId))
+      .where(eq(coverageAssignments.id, args.coverageAssignmentId))
+      .limit(1);
+    if (!assignment) return { created: 0, skipped: 0 };
+    if (!assignment.newTeacherId) return { created: 0, skipped: 0 }; // uncovered
 
-  // Load the assignment with its duty + the original teacher name.
-  const [assignment] = await db
-    .select({
-      id: coverageAssignments.id,
-      schoolId: coverageAssignments.schoolId,
-      dutyId: coverageAssignments.dutyId,
-      originalTeacherId: coverageAssignments.originalTeacherId,
-      newTeacherId: coverageAssignments.newTeacherId,
-      eventId: coverageAssignments.coverageEventId,
-      absenceDate: coverageEvents.absenceDate,
-      dutyLocation: duties.location,
-      dutyStartTime: duties.startTime,
-      dutyEndTime: duties.endTime,
-      originalTeacherName: users.name,
-    })
-    .from(coverageAssignments)
-    .innerJoin(coverageEvents, eq(coverageEvents.id, coverageAssignments.coverageEventId))
-    .innerJoin(duties, eq(duties.id, coverageAssignments.dutyId))
-    .innerJoin(users, eq(users.id, coverageAssignments.originalTeacherId))
-    .where(eq(coverageAssignments.id, args.coverageAssignmentId))
-    .limit(1);
-  if (!assignment) return { created: 0, skipped: 0 };
-  if (!assignment.newTeacherId) return { created: 0, skipped: 0 }; // uncovered — no new teacher to alert about
+    // RLS-aware second pass: open a transaction with app.school_id set
+    // (slice-1 Y-02 + C-1) and do the new-teacher lookup + parent match +
+    // insert under that context. The FORCE ROW LEVEL SECURITY policy on
+    // coverage_assignments, parent_contacts, and parent_alerts admits
+    // the reads/writes; WITH CHECK guarantees the schoolId matches.
+    return withSchoolId(assignment.schoolId, async (tx) => {
+      const [newTeacher] = await tx
+        .select({ name: users.name })
+        .from(users)
+        .where(eq(users.id, assignment.newTeacherId))
+        .limit(1);
+      const newTeacherName = newTeacher?.name ?? 'A substitute teacher';
 
-  // Find the new teacher name for the message body.
-  const [newTeacher] = await db
-    .select({ name: users.name })
-    .from(users)
-    .where(eq(users.id, assignment.newTeacherId))
-    .limit(1);
-  const newTeacherName = newTeacher?.name ?? 'A substitute teacher';
+      // Find parents in this school whose route_tags include the duty location.
+      // Exact match — v1.
+      const matchingParents = await tx
+        .select({ id: parentContacts.id })
+        .from(parentContacts)
+        .innerJoin(parentRouteTags, eq(parentRouteTags.parentId, parentContacts.id))
+        .where(and(
+          eq(parentContacts.schoolId, assignment.schoolId),
+          eq(parentRouteTags.tag, assignment.dutyLocation),
+          isNull(parentContacts.optedOutAt),
+        ));
 
-  // Find parents in this school whose route_tags include the duty location.
-  // Exact match — v1: "Bus 7" must match tag "Bus 7". v2: fuzzy match
-  // (e.g., "Bus 7" matches tag "Bus").
-  const matchingParents = await withSchoolId(assignment.schoolId, async (tx) => {
-    return tx
-      .select({ id: parentContacts.id })
-      .from(parentContacts)
-      .innerJoin(parentRouteTags, eq(parentRouteTags.parentId, parentContacts.id))
-      .where(and(
-        eq(parentContacts.schoolId, assignment.schoolId),
-        eq(parentRouteTags.tag, assignment.dutyLocation),
-        isNull(parentContacts.optedOutAt),
-      ));
-  });
+      if (matchingParents.length === 0) return { created: 0, skipped: 0 };
 
-  if (matchingParents.length === 0) return { created: 0, skipped: 0 };
+      const subject = `Coverage update for ${assignment.dutyLocation}`;
+      const bodyShort = shortSms({
+        dutyLocation: assignment.dutyLocation,
+        dutyTime: `${formatTime12h(assignment.dutyStartTime)}–${formatTime12h(assignment.dutyEndTime)}`,
+        date: assignment.absenceDate,
+        newTeacherName,
+      });
+      const bodyLong = longEmail({
+        dutyLocation: assignment.dutyLocation,
+        dutyTime: `${formatTime12h(assignment.dutyStartTime)}–${formatTime12h(assignment.dutyEndTime)}`,
+        date: assignment.absenceDate,
+        originalTeacherName: assignment.originalTeacherName,
+        newTeacherName,
+      });
 
-  // Generate the message templates.
-  const subject = `Coverage update for ${assignment.dutyLocation}`;
-  const bodyShort = shortSms({
-    dutyLocation: assignment.dutyLocation,
-    dutyTime: `${formatTime12h(assignment.dutyStartTime)}–${formatTime12h(assignment.dutyEndTime)}`,
-    date: assignment.absenceDate,
-    newTeacherName,
-  });
-  const bodyLong = longEmail({
-    dutyLocation: assignment.dutyLocation,
-    dutyTime: `${formatTime12h(assignment.dutyStartTime)}–${formatTime12h(assignment.dutyEndTime)}`,
-    date: assignment.absenceDate,
-    originalTeacherName: assignment.originalTeacherName,
-    newTeacherName,
-  });
-
-  // Insert one alert per parent. Idempotent on (parent_id, assignment_id)
-  // — ON CONFLICT DO NOTHING (we handle the unique index in the migration).
-  let created = 0;
-  let skipped = 0;
-  for (const parent of matchingParents) {
-    try {
-      await db
-        .insert(parentAlerts)
-        .values({
-          schoolId: assignment.schoolId,
-          parentId: parent.id,
-          coverageAssignmentId: assignment.id,
-          channel: 'sms',
-          subject,
-          bodyShort,
-          bodyLong,
-          status: 'draft',
-        })
-        .onConflictDoNothing({
-          target: [parentAlerts.parentId, parentAlerts.coverageAssignmentId],
-        });
-      created += 1;
-    } catch (err) {
-      // Conflict = already generated. Skip.
-      skipped += 1;
-    }
+      let created = 0;
+      let skipped = 0;
+      for (const parent of matchingParents) {
+        try {
+          await tx
+            .insert(parentAlerts)
+            .values({
+              schoolId: assignment.schoolId,
+              parentId: parent.id,
+              coverageAssignmentId: assignment.id,
+              channel: 'sms',
+              subject,
+              bodyShort,
+              bodyLong,
+              status: 'draft',
+            })
+            .onConflictDoNothing({
+              target: [parentAlerts.parentId, parentAlerts.coverageAssignmentId],
+            });
+          created += 1;
+        } catch {
+          skipped += 1;
+        }
+      }
+      return { created, skipped };
+    });
+  } finally {
+    await systemClient.close();
   }
-
-  return { created, skipped };
 }
 
 /**
@@ -339,20 +351,27 @@ export async function listAlerts(args: {
  * Mock "send" — flips the alert from 'draft' to 'sent'. v1: just
  * updates the status. v2: actually dispatches via Twilio/Resend.
  */
-export async function markAlertSent(alertId: string): Promise<void> {
-  const db = getDb();
-  await db
-    .update(parentAlerts)
-    .set({ status: 'sent', sentAt: new Date(), updatedAt: new Date() })
-    .where(eq(parentAlerts.id, alertId));
+export async function markAlertSent(alertId: string, schoolId: string): Promise<void> {
+  // RLS-aware (slice-1 Y-02 + C-1): wrap in withSchoolId so the FORCE
+  // ROW LEVEL SECURITY policy on parent_alerts admits the UPDATE. The
+  // WITH CHECK clause also verifies school_id matches the GUC, so a
+  // wrong schoolId in the call would surface as a 0-row update + a
+  // thrown error.
+  await withSchoolId(schoolId, async (tx) => {
+    await tx
+      .update(parentAlerts)
+      .set({ status: 'sent', sentAt: new Date(), updatedAt: new Date() })
+      .where(eq(parentAlerts.id, alertId));
+  });
 }
 
-export async function cancelAlert(alertId: string): Promise<void> {
-  const db = getDb();
-  await db
-    .update(parentAlerts)
-    .set({ status: 'cancelled', updatedAt: new Date() })
-    .where(eq(parentAlerts.id, alertId));
+export async function cancelAlert(alertId: string, schoolId: string): Promise<void> {
+  await withSchoolId(schoolId, async (tx) => {
+    await tx
+      .update(parentAlerts)
+      .set({ status: 'cancelled', updatedAt: new Date() })
+      .where(eq(parentAlerts.id, alertId));
+  });
 }
 
 // ---------------------------------------------------------------------------

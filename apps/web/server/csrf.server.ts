@@ -255,24 +255,93 @@ function readCookie(request: Request, name: string): string | null {
  * through this function.
  */
 function readFormBodyField(request: Request): string | null {
-  // `clone()` so the original body remains consumable for the route.
-  const cloned = request.clone();
-  const contentType = cloned.headers.get('content-type') ?? '';
-  if (!contentType.toLowerCase().includes('application/x-www-form-urlencoded') &&
-      !contentType.toLowerCase().includes('multipart/form-data')) {
-    return null;
-  }
-  // We don't actually await here — the synchronous parser would block.
-  // Instead we look at the raw body string. This is a best-effort hint;
-  // the actual validation runs against the header in JSON/fetch case.
-  // For RR7 form actions, the canonical pattern is:
-  //   await validateCsrf(request);
-  //   const formData = await request.formData();
-  // which reads the body once. We can't read it twice — so the caller
-  // is expected to extract `csrf` from the formData themselves and pass
-  // it via the header instead. The form body fallback below only kicks
-  // in for very simple curl-style form posts.
+  // Per the RR7 contract, `request.formData()` can only be consumed once.
+  // Calling it inside validateCsrf would force every route to either
+  // (a) call validateCsrf AFTER formData() and pass the token explicitly
+  // via `validateCsrfWithFormToken`, OR (b) accept the body-consumption
+  // race. We expose option (a) as a separate helper
+  // (validateCsrfWithFormToken below); the header-based path that
+  // JSON/fetch mutations use is unaffected.
+  //
+  // This function is intentionally a no-op for the validateCsrf(request)
+  // path. Routes that POST form data MUST call
+  // `await readFormCsrfTokenFromBody(request)` themselves (or use the
+  // `validateCsrfWithFormToken` wrapper) BEFORE any other body read.
+  // The original sync-blocking concern (no Node `parseBody` in v22
+  // request body) is irrelevant because `clone().formData()` is async.
   return null;
+}
+
+/**
+ * Read the CSRF token out of a parsed FormData payload. Used by
+ * form-POST routes that have already consumed `request.formData()`.
+ * Returns null if the form has no `csrf` field.
+ */
+export function readFormCsrfToken(formData: FormData): string | null {
+  const value = formData.get(CSRF_FORM_FIELD);
+  if (typeof value !== 'string') return null;
+  return value.length > 0 ? value : null;
+}
+
+/**
+ * Form-aware variant of `validateCsrf`. Use this in actions that
+ * submit `<form>` data (no JSON, no `x-csrf-token` header from JS).
+ *
+ * Usage:
+ * ```ts
+ * export async function action({ request }: Route.ActionArgs) {
+ *   const fd = await request.formData();
+ *   const csrf = validateCsrfWithFormToken(request, fd);
+ *   if (!csrf.ok) return csrf.response;
+ *   // ... use fd ...
+ * }
+ * ```
+ *
+ * Pairs with the loader reading the cookie via `readCsrfCookie(request)`
+ * and rendering `<input type="hidden" name="csrf" value={token} />`
+ * inside the `<Form>`. See `_app.duties.new.tsx` for the canonical
+ * render.
+ */
+export function validateCsrfWithFormToken(
+  request: Request,
+  formData: FormData,
+  options: CsrfOptions = {},
+):
+  | { ok: true }
+  | { ok: false; response: Response } {
+  const method = request.method.toUpperCase();
+  if (SAFE_METHODS.has(method)) return { ok: true };
+
+  // Layer 1: origin/referer (same as validateCsrf).
+  const origin = request.headers.get('origin');
+  const referer = request.headers.get('referer');
+  const host = request.headers.get('host') ?? '';
+  if (origin) {
+    if (!originMatches(origin, host, options.allowedHosts)) {
+      return forbidden('origin_mismatch');
+    }
+  } else if (referer) {
+    if (!refererMatches(referer, host, options.allowedHosts)) {
+      return forbidden('referer_mismatch');
+    }
+  }
+
+  // Layer 2: double-submit cookie + form-body csrf field.
+  const cookieToken = readCookie(request, CSRF_COOKIE_NAME);
+  const headerToken = readFormCsrfToken(formData);
+  if (!cookieToken || !headerToken) return forbidden('missing_token');
+
+  const a = Buffer.from(cookieToken);
+  let b: Buffer;
+  if (headerToken.length === a.length) {
+    b = Buffer.from(headerToken);
+  } else {
+    b = Buffer.alloc(a.length);
+    Buffer.from(headerToken).copy(b, 0, 0, Math.min(a.length, headerToken.length));
+  }
+  if (!timingSafeEqual(a, b)) return forbidden('token_mismatch');
+
+  return { ok: true };
 }
 
 function originMatches(

@@ -7,6 +7,7 @@
 import { z } from 'zod';
 import type { Route } from './+types/api.coverage.parent-alerts.send';
 import { getSession, requireSession } from '../../server/auth.server';
+import { validateCsrf } from '../../server/csrf.server';
 import { markAlertSent, listAlerts } from '../../server/parent-alerts.server';
 
 const Body = z.object({ alertId: z.string().uuid() });
@@ -15,6 +16,8 @@ export async function action({ request }: Route.ActionArgs) {
   if (request.method !== 'POST') {
     return Response.json({ error: 'method_not_allowed' }, { status: 405 });
   }
+  const csrf = validateCsrf(request);
+  if (!csrf.ok) return csrf.response;
   const session = requireSession(await getSession(request));
   let body: unknown;
   try {
@@ -34,7 +37,7 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: 'not_found' }, { status: 404 });
   }
 
-  await markAlertSent(parsed.data.alertId);
+  await markAlertSent(parsed.data.alertId, session.schoolId);
   return Response.json({ ok: true });
 }
 

@@ -7,6 +7,7 @@
 import { z } from 'zod';
 import type { Route } from './+types/api.coverage.decline';
 import { getSession, requireSession } from '../../server/auth.server';
+import { validateCsrf } from '../../server/csrf.server';
 import { declineCoverage } from '../../server/coverage.server';
 
 const Body = z.object({
@@ -18,6 +19,8 @@ export async function action({ request }: Route.ActionArgs) {
   if (request.method !== 'POST') {
     return Response.json({ error: 'method_not_allowed' }, { status: 405 });
   }
+  const csrf = validateCsrf(request);
+  if (!csrf.ok) return csrf.response;
   const session = requireSession(await getSession(request));
   let body: unknown;
   try {

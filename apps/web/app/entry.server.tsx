@@ -38,6 +38,7 @@ import { renderToPipeableStream } from 'react-dom/server';
 import { randomUUID } from 'node:crypto';
 
 import { logger } from '../server/logger.server';
+import { CSRF_COOKIE_NAME, mintCsrfCookie } from '../server/csrf.server';
 
 // RR7 requires `streamTimeout` for the response stream. Five minutes is
 // the canonical default — long enough that very slow SSR (e.g. on a cold
@@ -83,6 +84,18 @@ export default async function handleRequest(
   // Forward the request id back to the client so log correlation works
   // even when the request starts at a CDN or proxy.
   responseHeaders.set('X-Request-Id', requestId);
+
+  // CSRF double-submit cookie: mint a fresh token on every request that
+  // doesn't already have one. The browser stores it; validation in
+  // csrf.server.ts#validateCsrf reads it back from `Cookie:` and
+  // compares against the `x-csrf-token` header (or form `csrf` field)
+  // on every mutating request. Mints happen on every request (cheap;
+  // the server stores no state) so a fresh visitor's first POST has
+  // a cookie to match.
+  const hasCsrf = (request.headers.get('cookie') ?? '').includes(CSRF_COOKIE_NAME);
+  if (!hasCsrf) {
+    responseHeaders.append('Set-Cookie', mintCsrfCookie().setCookie);
+  }
 
   // Bots get the full HTML at once — they don't execute the hydration
   // JS so partial streams just slow down indexing. Humans get a

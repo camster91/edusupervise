@@ -27,7 +27,7 @@
 // table. The worker (Phase 1) already has an email + push dispatcher.
 
 import { and, eq, gte, lte, ne, not, isNull, sql, inArray } from 'drizzle-orm';
-import { coverageEvents, coverageAssignments, duties, dutyAssignments, users, notifications, cycleCalendar, type Db } from '@edusupervise/db';
+import { coverageEvents, coverageAssignments, duties, dutyAssignments, users, notifications, cycleCalendar, getSystemClient, type Db } from '@edusupervise/db';
 import { getDb, withSchoolId } from './db.server';
 import { createHash } from 'node:crypto';
 
@@ -48,37 +48,43 @@ export async function recordAbsence(args: {
   externalId?: string;
   createdBy: string; // user id
 }): Promise<{ id: string; deduplicated: boolean }> {
-  const db = getDb();
   const source = args.source ?? 'direct';
 
-  // Idempotency check (only when externalId is provided)
-  if (args.externalId) {
-    const existing = await db
-      .select({ id: coverageEvents.id })
-      .from(coverageEvents)
-      .where(and(
-        eq(coverageEvents.schoolId, args.schoolId),
-        eq(coverageEvents.source, source),
-        eq(coverageEvents.externalId, args.externalId),
-      ))
-      .limit(1);
-    if (existing[0]) return { id: existing[0].id, deduplicated: true };
-  }
+  // RLS-aware: open a transaction with app.school_id set so the
+  // FORCE ROW LEVEL SECURITY policy on coverage_events lets the
+  // INSERT through (slice-1 Y-01). Without this wrapper, the
+  // runtime role sees zero rows on the idempotency check below and
+  // the INSERT would silently violate WITH CHECK.
+  return withSchoolId(args.schoolId, async (tx) => {
+    // Idempotency check (only when externalId is provided)
+    if (args.externalId) {
+      const existing = await tx
+        .select({ id: coverageEvents.id })
+        .from(coverageEvents)
+        .where(and(
+          eq(coverageEvents.schoolId, args.schoolId),
+          eq(coverageEvents.source, source),
+          eq(coverageEvents.externalId, args.externalId),
+        ))
+        .limit(1);
+      if (existing[0]) return { id: existing[0].id, deduplicated: true };
+    }
 
-  const [row] = await db
-    .insert(coverageEvents)
-    .values({
-      schoolId: args.schoolId,
-      teacherId: args.teacherId,
-      absenceDate: args.absenceDate,
-      reason: args.reason ?? null,
-      source,
-      externalId: args.externalId ?? null,
-      createdBy: args.createdBy,
-    })
-    .returning({ id: coverageEvents.id });
+    const [row] = await tx
+      .insert(coverageEvents)
+      .values({
+        schoolId: args.schoolId,
+        teacherId: args.teacherId,
+        absenceDate: args.absenceDate,
+        reason: args.reason ?? null,
+        source,
+        externalId: args.externalId ?? null,
+        createdBy: args.createdBy,
+      })
+      .returning({ id: coverageEvents.id });
 
-  return { id: row!.id, deduplicated: false };
+    return { id: row!.id, deduplicated: false };
+  });
 }
 
 /**
@@ -209,129 +215,163 @@ export async function routeAbsence(args: {
   assignments: Array<{ id: string; dutyId: string; newTeacherId: string | null; status: string }>;
   uncovered: number;
 }> {
-  const db = getDb();
-
-  // Load the absence event.
-  const [event] = await db
-    .select({
-      id: coverageEvents.id,
-      schoolId: coverageEvents.schoolId,
-      teacherId: coverageEvents.teacherId,
-      absenceDate: coverageEvents.absenceDate,
-      status: coverageEvents.status,
-    })
-    .from(coverageEvents)
-    .where(eq(coverageEvents.id, args.absenceId))
-    .limit(1);
-  if (!event) throw new Error(`Coverage event ${args.absenceId} not found`);
-
-  // If we've already routed this event, return the existing assignments.
-  const existingAssignments = await db
-    .select()
-    .from(coverageAssignments)
-    .where(eq(coverageAssignments.coverageEventId, args.absenceId));
-  if (existingAssignments.length > 0) {
-    return {
-      assignments: existingAssignments.map((a) => ({
-        id: a.id,
-        dutyId: a.dutyId,
-        newTeacherId: a.newTeacherId,
-        status: a.status,
-      })),
-      uncovered: existingAssignments.filter((a) => a.status === 'uncovered').length,
-    };
-  }
-
-  // Find affected duties.
-  const affected = await findAffectedDuties({
-    schoolId: event.schoolId,
-    teacherId: event.teacherId,
-    absenceDate: event.absenceDate,
-  });
-
-  // For each, find a replacement and create a coverage_assignment.
-  const created: Array<{ id: string; dutyId: string; newTeacherId: string | null; status: string }> = [];
-  let uncovered = 0;
-  for (const duty of affected) {
-    const newTeacherId = await findReplacement({
-      schoolId: event.schoolId,
-      dutyId: duty.dutyId,
-      excludeTeacherId: event.teacherId,
-      absenceDate: event.absenceDate,
-    });
-    const status = newTeacherId ? 'pending' : 'uncovered';
-    if (!newTeacherId) uncovered += 1;
-
-    const [row] = await db
-      .insert(coverageAssignments)
-      .values({
-        schoolId: event.schoolId,
-        coverageEventId: args.absenceId,
-        dutyId: duty.dutyId,
-        originalTeacherId: event.teacherId,
-        newTeacherId: newTeacherId ?? null,
-        status,
-        notifiedAt: newTeacherId ? new Date() : null,
+  // Bootstrap: load the coverage event via the SYSTEM role so we can
+  // discover its schoolId before we have an RLS context to set. Without
+  // this, FORCE ROW LEVEL SECURITY on coverage_events returns zero rows
+  // (slice-1 Y-01 + C-1). After bootstrap, every subsequent touch uses
+  // withSchoolId.
+  const sysClient = getSystemClient(
+    process.env.SYSTEM_DATABASE_URL ?? process.env.DATABASE_URL!,
+  );
+  try {
+    const [event] = await sysClient.db
+      .select({
+        id: coverageEvents.id,
+        schoolId: coverageEvents.schoolId,
+        teacherId: coverageEvents.teacherId,
+        absenceDate: coverageEvents.absenceDate,
+        status: coverageEvents.status,
       })
-      .returning({ id: coverageAssignments.id });
+      .from(coverageEvents)
+      .where(eq(coverageEvents.id, args.absenceId))
+      .limit(1);
+    if (!event) throw new Error(`Coverage event ${args.absenceId} not found`);
 
-    created.push({
-      id: row!.id,
-      dutyId: duty.dutyId,
-      newTeacherId: newTeacherId ?? null,
-      status,
-    });
-
-    // Notify the replacement teacher (best-effort — log only on failure).
-    if (newTeacherId) {
-      try {
-        await db.insert(notifications).values({
-          schoolId: event.schoolId,
-          userId: newTeacherId,
-          kind: 'duty_assigned',
-          title: 'Coverage request',
-          body: `${duty.dutyName} (${duty.startTime}–${duty.endTime}) on ${event.absenceDate}`,
-          linkUrl: `/app/coverage/${row!.id}`,
-        });
-      } catch (err) {
-        // Don't fail the route because of a notification hiccup.
-        console.warn('coverage.notification_failed', { assignmentId: row!.id, err });
+    return withSchoolId(event.schoolId, async (tx) => {
+      // If we've already routed this event, return the existing assignments.
+      const existingAssignments = await tx
+        .select()
+        .from(coverageAssignments)
+        .where(eq(coverageAssignments.coverageEventId, args.absenceId));
+      if (existingAssignments.length > 0) {
+        return {
+          assignments: existingAssignments.map((a) => ({
+            id: a.id,
+            dutyId: a.dutyId,
+            newTeacherId: a.newTeacherId,
+            status: a.status,
+          })),
+          uncovered: existingAssignments.filter((a) => a.status === 'uncovered').length,
+        };
       }
-    }
+
+      // Find affected duties (inside the same RLS context).
+      const affected = await findAffectedDuties({
+        schoolId: event.schoolId,
+        teacherId: event.teacherId,
+        absenceDate: event.absenceDate,
+      });
+
+      const created: Array<{ id: string; dutyId: string; newTeacherId: string | null; status: string }> = [];
+      let uncovered = 0;
+      for (const duty of affected) {
+        const newTeacherId = await findReplacement({
+          schoolId: event.schoolId,
+          dutyId: duty.dutyId,
+          excludeTeacherId: event.teacherId,
+          absenceDate: event.absenceDate,
+        });
+        const status = newTeacherId ? 'pending' : 'uncovered';
+        if (!newTeacherId) uncovered += 1;
+
+        const [row] = await tx
+          .insert(coverageAssignments)
+          .values({
+            schoolId: event.schoolId,
+            coverageEventId: args.absenceId,
+            dutyId: duty.dutyId,
+            originalTeacherId: event.teacherId,
+            newTeacherId: newTeacherId ?? null,
+            status,
+            notifiedAt: newTeacherId ? new Date() : null,
+          })
+          .returning({ id: coverageAssignments.id });
+
+        created.push({
+          id: row!.id,
+          dutyId: duty.dutyId,
+          newTeacherId: newTeacherId ?? null,
+          status,
+        });
+
+        if (newTeacherId) {
+          try {
+            await tx.insert(notifications).values({
+              schoolId: event.schoolId,
+              userId: newTeacherId,
+              kind: 'duty_assigned',
+              title: 'Coverage request',
+              body: `${duty.dutyName} (${duty.startTime}–${duty.endTime}) on ${event.absenceDate}`,
+              linkUrl: `/app/coverage/${row!.id}`,
+            });
+          } catch (err) {
+            console.warn('coverage.notification_failed', { assignmentId: row!.id, err });
+          }
+        }
+      }
+
+      // Mark the event as routed. The status 'routed' / 'closed' ternary
+      // replaces an earlier dead-conditional bug (slice-2 RED-3): when
+      // every duty was reassigned, the event is fully closed; otherwise
+      // it's still routed but with uncovered slots.
+      await tx
+        .update(coverageEvents)
+        .set({ status: uncovered > 0 ? 'routed' : 'closed', updatedAt: new Date() })
+        .where(eq(coverageEvents.id, args.absenceId));
+
+      return { assignments: created, uncovered };
+    });
+  } finally {
+    await sysClient.close();
   }
-
-  // Mark the event as routed.
-  await db
-    .update(coverageEvents)
-    .set({ status: uncovered > 0 ? 'routed' : 'routed', updatedAt: new Date() })
-    .where(eq(coverageEvents.id, args.absenceId));
-
-  return { assignments: created, uncovered };
 }
 
 export async function acceptCoverage(args: {
   assignmentId: string;
   teacherId: string;
 }): Promise<void> {
-  const db = getDb();
-  const [row] = await db
-    .update(coverageAssignments)
-    .set({ status: 'accepted', respondedAt: new Date(), updatedAt: new Date() })
-    .where(and(
-      eq(coverageAssignments.id, args.assignmentId),
-      eq(coverageAssignments.newTeacherId, args.teacherId),
-    ))
-    .returning({ id: coverageAssignments.id });
-  if (!row) throw new Error('Coverage assignment not found or not yours');
-
-  // Phase 3: when a teacher accepts coverage, generate parent alerts.
-  // The generator is idempotent (unique index on parent_id + assignment_id).
+  // Bootstrap via system role to learn the schoolId; then accept under
+  // withSchoolId so the RLS policy admits the UPDATE (slice-1 Y-01 + C-1).
+  const sysClient = getSystemClient(
+    process.env.SYSTEM_DATABASE_URL ?? process.env.DATABASE_URL!,
+  );
   try {
-    const { generateAlertsForAssignment } = await import('./parent-alerts.server');
-    await generateAlertsForAssignment({ coverageAssignmentId: row.id });
-  } catch (err) {
-    // Don't fail the acceptance because of an alert hiccup.
-    console.warn('coverage.parent_alert_generation_failed', { assignmentId: row.id, err });
+    const sysRow = await sysClient.db
+      .select({
+        id: coverageAssignments.id,
+        schoolId: coverageAssignments.schoolId,
+      })
+      .from(coverageAssignments)
+      .where(and(
+        eq(coverageAssignments.id, args.assignmentId),
+        eq(coverageAssignments.newTeacherId, args.teacherId),
+      ))
+      .limit(1);
+    if (!sysRow[0]) throw new Error('Coverage assignment not found or not yours');
+    const { id: assignmentId, schoolId } = sysRow[0];
+
+    await withSchoolId(schoolId, async (tx) => {
+      await tx
+        .update(coverageAssignments)
+        .set({ status: 'accepted', respondedAt: new Date(), updatedAt: new Date() })
+        .where(and(
+          eq(coverageAssignments.id, assignmentId),
+          eq(coverageAssignments.newTeacherId, args.teacherId),
+        ));
+    });
+
+    // Phase 3: when a teacher accepts coverage, generate parent alerts.
+    // The generator is idempotent (unique index on parent_id + assignment_id)
+    // and itself uses the system-role bootstrap + withSchoolId pattern.
+    try {
+      const { generateAlertsForAssignment } = await import('./parent-alerts.server');
+      await generateAlertsForAssignment({ coverageAssignmentId: assignmentId });
+    } catch (err) {
+      // Don't fail the acceptance because of an alert hiccup.
+      console.warn('coverage.parent_alert_generation_failed', { assignmentId, err });
+    }
+  } finally {
+    await sysClient.close();
   }
 }
 
@@ -340,26 +380,49 @@ export async function declineCoverage(args: {
   teacherId: string;
   reason?: string;
 }): Promise<void> {
-  const db = getDb();
-  const [row] = await db
-    .update(coverageAssignments)
-    .set({
-      status: 'declined',
-      respondedAt: new Date(),
-      declineReason: args.reason ?? null,
-      updatedAt: new Date(),
-    })
-    .where(and(
-      eq(coverageAssignments.id, args.assignmentId),
-      eq(coverageAssignments.newTeacherId, args.teacherId),
-    ))
-    .returning({ id: coverageAssignments.id, eventId: coverageAssignments.coverageEventId, schoolId: coverageAssignments.schoolId });
-  if (!row) throw new Error('Coverage assignment not found or not yours');
+  // Bootstrap via system role to learn the schoolId; then decline under
+  // withSchoolId so the RLS policy admits the UPDATE (slice-1 Y-01 + C-1).
+  const sysClient = getSystemClient(
+    process.env.SYSTEM_DATABASE_URL ?? process.env.DATABASE_URL!,
+  );
+  try {
+    const sysRow = await sysClient.db
+      .select({
+        id: coverageAssignments.id,
+        eventId: coverageAssignments.coverageEventId,
+        schoolId: coverageAssignments.schoolId,
+      })
+      .from(coverageAssignments)
+      .where(and(
+        eq(coverageAssignments.id, args.assignmentId),
+        eq(coverageAssignments.newTeacherId, args.teacherId),
+      ))
+      .limit(1);
+    if (!sysRow[0]) throw new Error('Coverage assignment not found or not yours');
+    const { eventId, schoolId } = sysRow[0];
 
-  // Re-route the absence — find a different replacement.
-  // (Idempotent: the routeAbsence function will skip already-accepted
-  // assignments and re-route any uncovered ones.)
-  await routeAbsence({ absenceId: row.eventId });
+    await withSchoolId(schoolId, async (tx) => {
+      await tx
+        .update(coverageAssignments)
+        .set({
+          status: 'declined',
+          respondedAt: new Date(),
+          declineReason: args.reason ?? null,
+          updatedAt: new Date(),
+        })
+        .where(and(
+          eq(coverageAssignments.id, args.assignmentId),
+          eq(coverageAssignments.newTeacherId, args.teacherId),
+        ));
+    });
+
+    // Re-route the absence — find a different replacement.
+    // (Idempotent: the routeAbsence function will skip already-accepted
+    // assignments and re-route any uncovered ones.)
+    await routeAbsence({ absenceId: eventId });
+  } finally {
+    await sysClient.close();
+  }
 }
 
 /**

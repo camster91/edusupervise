@@ -23,6 +23,7 @@ import {
   requireSession,
 } from '../../server/auth.server';
 import { getDb } from '../../server/db.server';
+import { readCsrfCookie, validateCsrfWithFormToken } from '../../server/csrf.server';
 import {
   listInvoicesForSchool,
   runDailyDowngradeFlip,
@@ -41,6 +42,7 @@ export function meta() {
 export async function loader({ request }: Route.LoaderArgs) {
   const session = requireSession(await getSession(request));
   requireRole(session, ['school_admin']);
+  const csrfToken = readCsrfCookie(request);
 
   const db = getDb();
   const [school] = await db
@@ -60,11 +62,11 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const invoices = await listInvoicesForSchool(session.schoolId);
   const downgrade = downgradeBannerPropsFor(school);
-  return { school, invoices, downgrade };
+  return { school, invoices, downgrade, csrfToken };
 }
 
 export default function BillingSettingsPage() {
-  const { school, invoices, downgrade } = useLoaderData<typeof loader>();
+  const { school, invoices, downgrade, csrfToken } = useLoaderData<typeof loader>();
   return (
     <div className="space-y-6">
       <h2 className="text-2xl font-bold text-slate-900">Billing</h2>
@@ -297,11 +299,13 @@ function TestDevTools() {
       </p>
       <div className="flex flex-wrap gap-2">
         <Form method="post" action="/app/settings/billing?_action=cron">
+          <input type="hidden" name="csrf" value={csrfToken ?? ''} />
           <button type="submit" className="bg-slate-200 hover:bg-slate-300 px-3 py-1 rounded text-xs">
             Run nightly cron now
           </button>
         </Form>
         <Form method="post" action="/app/settings/billing?_action=upgrade_pro">
+          <input type="hidden" name="csrf" value={csrfToken ?? ''} />
           <button type="submit" className="bg-slate-200 hover:bg-slate-300 px-3 py-1 rounded text-xs">
             Force-set plan to Pro (test only)
           </button>
@@ -321,6 +325,9 @@ export async function action({ request }: Route.ActionArgs) {
   // even in dev, only school_admin can hit this
   const session = requireSession(await getSession(request));
   requireRole(session, ['school_admin']);
+  const form = await request.formData();
+  const csrf = validateCsrfWithFormToken(request, form);
+  if (!csrf.ok) return csrf.response;
   const url = new URL(request.url);
   const intent = url.searchParams.get('_action');
 

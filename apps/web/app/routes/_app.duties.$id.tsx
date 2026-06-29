@@ -2,6 +2,7 @@
 import { useLoaderData, Link, Form, redirect } from 'react-router';
 import type { Route } from './+types/_app.duties.$id';
 import { getSession, requireSession, requireRole } from '../../server/auth.server.ts';
+import { readCsrfCookie, validateCsrfWithFormToken } from '../../server/csrf.server.ts';
 import { withSchoolId } from '../../server/db.server.ts';
 import { duties, dutyAssignments, users } from '@edusupervise/db';
 import { eq } from 'drizzle-orm';
@@ -34,17 +35,23 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     return { duty, assignments };
   });
   if (!data) throw new Response('Not found', { status: 404 });
-  return { ...data, role: session.role };
+  return { ...data, role: session.role, csrfToken };
 }
 
 export async function action({ request, params }: Route.ActionArgs) {
   const session = requireSession(await getSession(request));
   requireRole(session, ['school_admin']);
   const form = await request.formData();
+  const csrf = validateCsrfWithFormToken(request, form);
+  if (!csrf.ok) return csrf.response;
   const intent = form.get('intent');
   if (intent === 'assign') {
     const userId = String(form.get('userId') ?? '');
     const startDate = String(form.get('startDate') ?? '');
+    // zod-validate userId as UUID (slice-1 R-11 mass-assignment gap).
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+      return Response.json({ error: 'user_id_invalid' }, { status: 400 });
+    }
     if (!userId || !startDate) return Response.json({ error: 'missing_fields' }, { status: 400 });
     await withSchoolId(session.schoolId, (tx) =>
       tx.insert(dutyAssignments).values({
@@ -66,7 +73,7 @@ export async function action({ request, params }: Route.ActionArgs) {
 }
 
 export default function DutyDetail() {
-  const { duty, assignments, role } = useLoaderData<typeof loader>();
+  const { duty, assignments, role, csrfToken } = useLoaderData<typeof loader>();
   return (
     <div className="max-w-3xl space-y-6">
       <div className="flex items-baseline justify-between">
@@ -105,6 +112,7 @@ export default function DutyDetail() {
         )}
         {role === 'school_admin' && (
           <Form method="post" className="border-t border-slate-200 px-5 py-4 flex gap-2 items-end">
+            <input type="hidden" name="csrf" value={csrfToken ?? ''} />
             <input type="hidden" name="intent" value="assign" />
             <label className="block flex-1">
               <span className="text-xs font-medium text-slate-700">Teacher user ID</span>
@@ -121,6 +129,7 @@ export default function DutyDetail() {
 
       {role === 'school_admin' && (
         <Form method="post" className="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between">
+          <input type="hidden" name="csrf" value={csrfToken ?? ''} />
           <div>
             <div className="font-medium text-slate-900">Deactivate duty</div>
             <div className="text-xs text-slate-500">Duty will be hidden from active lists.</div>

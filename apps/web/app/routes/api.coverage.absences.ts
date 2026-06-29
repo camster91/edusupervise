@@ -7,6 +7,7 @@
 import { z } from 'zod';
 import type { Route } from './+types/api.coverage.absences';
 import { requireRole } from '../../server/auth.server';
+import { validateCsrf } from '../../server/csrf.server';
 import {
   recordAbsence,
   routeAbsence,
@@ -25,6 +26,8 @@ export async function action({ request }: Route.ActionArgs) {
   if (request.method !== 'POST') {
     return Response.json({ error: 'method_not_allowed' }, { status: 405 });
   }
+  const csrf = validateCsrf(request);
+  if (!csrf.ok) return csrf.response;
   const session = await requireRole(await (await import('../../server/auth.server')).getSession(request), 'school_admin');
   let body: unknown;
   try {
