@@ -7,11 +7,11 @@
 //     override on a ThemeStyle wrapper.
 
 import { Outlet, useLoaderData } from 'react-router';
-import { eq } from 'drizzle-orm';
+import { eq, and } from 'drizzle-orm';
 import { schools, notifications } from '@edusupervise/db';
 import type { Route } from './+types/_app';
 import { getSession } from '../../server/auth.server';
-import { getDb } from '../../server/db.server';
+import { withSchoolId } from '../../server/db.server';
 import { Sidebar, Topbar, TabBar } from '../components/shell';
 import { ThemeStyle } from '../components/ThemeStyle';
 
@@ -23,40 +23,44 @@ export async function loader({ request }: Route.LoaderArgs) {
       headers: { Location: '/login?next=' + encodeURIComponent(new URL(request.url).pathname) },
     });
   }
-  const db = getDb();
-  const [school] = await db
-    .select({
-      id: schools.id,
-      name: schools.name,
-      accentColor: schools.accentColor,
-      plan: schools.plan,
-    })
-    .from(schools)
-    .where(eq(schools.id, session.schoolId))
-    .limit(1);
+  // RLS-bound reads — must run inside withSchoolId so `app.school_id`
+  // is set; otherwise the runtime role's FORCE RLS policy returns zero
+  // rows for every tenant table.
+  return withSchoolId(session.schoolId, async (tx) => {
+    const [school] = await tx
+      .select({
+        id: schools.id,
+        name: schools.name,
+        accentColor: schools.accentColor,
+        plan: schools.plan,
+      })
+      .from(schools)
+      .where(eq(schools.id, session.schoolId))
+      .limit(1);
 
-  let unreadCount = 0;
-  try {
-    const rows = await db
-      .select({ id: notifications.id })
-      .from(notifications)
-      .where(eq(notifications.userId, session.userId))
-      .limit(1_000);
-    unreadCount = rows.length;
-  } catch {
-    unreadCount = 0;
-  }
+    let unreadCount = 0;
+    try {
+      const rows = await tx
+        .select({ id: notifications.id })
+        .from(notifications)
+        .where(eq(notifications.userId, session.userId))
+        .limit(1_000);
+      unreadCount = rows.length;
+    } catch {
+      unreadCount = 0;
+    }
 
-  return {
-    school,
-    user: {
-      id: session.userId,
-      name: session.name,
-      email: session.email,
-      role: session.role,
-    },
-    unreadCount,
-  };
+    return {
+      school: school ?? null,
+      user: {
+        id: session.userId,
+        name: session.name,
+        email: session.email,
+        role: session.role,
+      },
+      unreadCount,
+    };
+  });
 }
 
 export default function AppShell(): React.ReactElement {
