@@ -13,7 +13,7 @@ COPY packages/email/package.json packages/email/package.json
 COPY packages/sms/package.json packages/sms/package.json
 COPY packages/billing-adapter/package.json packages/billing-adapter/package.json
 COPY packages/schemas/package.json packages/schemas/package.json
-RUN pnpm install --no-frozen-lockfile --filter './apps/*' --filter './packages/*'
+RUN pnpm install --no-frozen-lockfile --filter './apps/*' --filter './packages/*' --prod=false
 
 # --- build stage ---
 FROM deps AS build
@@ -26,14 +26,17 @@ FROM node:22-alpine AS runtime
 ENV NODE_ENV=production
 ENV PORT=3011
 WORKDIR /app
+# Copy the full workspace tree (node_modules, source, build artifacts).
+# Pnpm creates per-workspace node_modules via symlinks pointing to the
+# .pnpm store, so we need the entire tree — not just /app/node_modules.
 COPY --from=build /app/apps/web/build ./apps/web/build
 COPY --from=build /app/apps/web/package.json ./apps/web/package.json
 COPY --from=build /app/apps/web/server ./apps/web/server
 COPY --from=build /app/apps/web/react-router.config.ts ./apps/web/react-router.config.ts
 COPY --from=build /app/apps/web/vite.config.ts ./apps/web/vite.config.ts
+COPY --from=build /app/apps/web/node_modules ./apps/web/node_modules
 COPY --from=build /app/packages ./packages
 COPY --from=build /app/node_modules ./node_modules
 EXPOSE 3011
 USER node
-# Run the built RR7 server directly with node — no pnpm wrapper at runtime.
 CMD ["node", "apps/web/build/server/index.js"]
