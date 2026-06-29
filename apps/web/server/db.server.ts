@@ -113,6 +113,25 @@ export async function withSchool<T>(
 }
 
 /**
+ * Low-level wrapper around `withSchoolContext` for code paths that
+ * already have a `schoolId` in hand (e.g. a system worker processing
+ * a webhook for a known school, a coverage.server.ts function called
+ * from a route action, a parent-alerts.server.ts function building
+ * drafts on coverage accept). Does NOT do session lookup — the caller
+ * is responsible for authorisation.
+ *
+ * Most route loaders should use `withSchool(request, fn)` instead.
+ * Use this when you have a schoolId and don't have a request object.
+ */
+export async function withSchoolId<T>(
+  schoolId: string,
+  fn: (tx: SchoolContextTx) => Promise<T>,
+): Promise<T> {
+  const db = getDb();
+  return withSchoolContext(db, schoolId, fn);
+}
+
+/**
  * Same as `withSchool` but also sets `app.user_id` for audit log
  * attribution. Use this for state-changing actions so the `audit_log`
  * row written inside the transaction is correctly attributed to the

@@ -7,7 +7,7 @@
 import { useLoaderData } from 'react-router';
 import type { Route } from './+types/_app.calendar._index';
 import { getSession, requireSession } from '../../server/auth.server';
-import { withSchool } from '../../server/db.server';
+import { withSchoolId } from '../../server/db.server';
 import { duties, cycleCalendar } from '@edusupervise/db';
 import { and, eq, gte, lte } from 'drizzle-orm';
 import { WeekStrip, EmptyState } from '../components/ui';
@@ -22,7 +22,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const today = new Date().toISOString().slice(0, 10);
 
   // Pull active duties + the next 6 days of cycle data
-  const { activeDuties, upcomingCycle } = await withSchool(session.schoolId, async (tx) => {
+  const { activeDuties, upcomingCycle } = await withSchoolId(session.schoolId, async (tx) => {
     const activeDuties = await tx
       .select({ id: duties.id, cycleDay: duties.cycleDay })
       .from(duties)

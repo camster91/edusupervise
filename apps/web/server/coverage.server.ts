@@ -28,7 +28,7 @@
 
 import { and, eq, gte, lte, ne, not, isNull, sql, inArray } from 'drizzle-orm';
 import { coverageEvents, coverageAssignments, duties, dutyAssignments, users, notifications, cycleCalendar, type Db } from '@edusupervise/db';
-import { getDb, withSchool } from './db.server';
+import { getDb, withSchoolId } from './db.server';
 import { createHash } from 'node:crypto';
 
 export type CoverageSource = 'direct' | 'frontline' | 'red_rover' | 'swing' | 'manual';
@@ -91,7 +91,7 @@ export async function findAffectedDuties(args: {
   teacherId: string;
   absenceDate: string;
 }): Promise<Array<{ dutyId: string; dutyName: string; startTime: string; endTime: string; location: string | null }>> {
-  return withSchool(args.schoolId, async (tx) => {
+  return withSchoolId(args.schoolId, async (tx) => {
     // Find the cycle day for the absence date.
     const [cycle] = await tx
       .select({ cycleDay: cycleCalendar.cycleDay })
@@ -144,7 +144,7 @@ export async function findReplacement(args: {
   excludeTeacherId: string;
   absenceDate: string;
 }): Promise<string | null> {
-  return withSchool(args.schoolId, async (tx) => {
+  return withSchoolId(args.schoolId, async (tx) => {
     // Get the duty's cycle day, time, and location.
     const [duty] = await tx
       .select({
@@ -388,7 +388,7 @@ export async function listCoverage(args: {
     status: string;
   }>;
 }>> {
-  return withSchool(args.schoolId, async (tx) => {
+  return withSchoolId(args.schoolId, async (tx) => {
     // Open events.
     const events = await tx
       .select({

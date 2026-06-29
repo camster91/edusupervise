@@ -29,7 +29,7 @@ import {
   duties,
   type Db,
 } from '@edusupervise/db';
-import { getDb, withSchool } from './db.server';
+import { getDb, withSchoolId } from './db.server';
 
 export type ParentAlertChannel = 'sms' | 'email' | 'app';
 export type ParentAlertStatus = 'draft' | 'queued' | 'sent' | 'failed' | 'cancelled';
@@ -121,7 +121,7 @@ export async function listParentContacts(args: {
   language: string;
   routeTags: string[];
 }>> {
-  return withSchool(args.schoolId, async (tx) => {
+  return withSchoolId(args.schoolId, async (tx) => {
     const parents = await tx
       .select({
         id: parentContacts.id,
@@ -203,7 +203,7 @@ export async function generateAlertsForAssignment(args: {
   // Find parents in this school whose route_tags include the duty location.
   // Exact match — v1: "Bus 7" must match tag "Bus 7". v2: fuzzy match
   // (e.g., "Bus 7" matches tag "Bus").
-  const matchingParents = await withSchool(assignment.schoolId, async (tx) => {
+  const matchingParents = await withSchoolId(assignment.schoolId, async (tx) => {
     return tx
       .select({ id: parentContacts.id })
       .from(parentContacts)
@@ -290,7 +290,7 @@ export async function listAlerts(args: {
   absenceDate: string;
   newTeacherName: string | null;
 }>> {
-  return withSchool(args.schoolId, async (tx) => {
+  return withSchoolId(args.schoolId, async (tx) => {
     const alerts = await tx
       .select({
         id: parentAlerts.id,

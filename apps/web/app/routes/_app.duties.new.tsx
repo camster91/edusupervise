@@ -2,7 +2,7 @@
 import { Form, redirect, useActionData } from 'react-router';
 import type { Route } from './+types/_app.duties.new';
 import { getSession, requireRole, requireSession } from '../../server/auth.server.ts';
-import { withSchool } from '../../server/db.server.ts';
+import { withSchoolId } from '../../server/db.server.ts';
 import { duties } from '@edusupervise/db';
 
 export function meta() {
@@ -41,7 +41,7 @@ export async function action({ request }: Route.ActionArgs) {
   if (!Number.isFinite(duration) || duration <= 0) {
     return Response.json({ error: 'duration_invalid' }, { status: 400 });
   }
-  const [duty] = await withSchool(session.schoolId, (tx) =>
+  const [duty] = await withSchoolId(session.schoolId, (tx) =>
     tx.insert(duties).values({
       cycleDay,
       startTime,

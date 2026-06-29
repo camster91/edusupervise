@@ -24,7 +24,7 @@ import { and, eq, gte, lte, desc, isNull } from 'drizzle-orm';
 import { duties, dutyAssignments, cycleCalendar } from '@edusupervise/db';
 import type { Route } from './+types/_app.today._index';
 import { getSession } from '../../server/auth.server.ts';
-import { withSchool } from '../../server/db.server.ts';
+import { withSchoolId } from '../../server/db.server.ts';
 import { HeroCard, EmptyState, WeekStrip, Sheet, Button } from '../components/ui';
 
 export function meta() {
@@ -40,7 +40,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     });
   }
 
-  const data = await withSchool(session.schoolId, async (tx) => {
+  const data = await withSchoolId(session.schoolId, async (tx) => {
     const now = new Date();
     const today = now.toISOString().slice(0, 10);
     const tomorrow = new Date(now.getTime() + 86_400_000).toISOString().slice(0, 10);

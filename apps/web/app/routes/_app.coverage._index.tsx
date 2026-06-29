@@ -18,7 +18,7 @@ import {
 import { and, eq } from 'drizzle-orm';
 import type { Route } from './+types/_app.coverage._index';
 import { getSession, requireSession } from '../../server/auth.server';
-import { withSchool, getDb } from '../../server/db.server';
+import { withSchoolId, getDb } from '../../server/db.server';
 import { listCoverage, type CoverageSource } from '../../server/coverage.server';
 import { users } from '@edusupervise/db';
 import { Button, EmptyState, Sheet, HeroCard, Banner } from '../components/ui';
@@ -36,7 +36,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   // For admins: list teachers in the school so they can pick one.
   let teachers: Array<{ id: string; name: string }> = [];
   if (session.role === 'school_admin') {
-    teachers = await withSchool(session.schoolId, async (tx) => {
+    teachers = await withSchoolId(session.schoolId, async (tx) => {
       return tx
         .select({ id: users.id, name: users.name })
         .from(users)

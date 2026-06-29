@@ -6,7 +6,7 @@ import { useLoaderData, Link } from 'react-router';
 import { Plus } from 'lucide-react';
 import type { Route } from './+types/_app.duties._index';
 import { getSession, requireSession } from '../../server/auth.server.ts';
-import { withSchool } from '../../server/db.server.ts';
+import { withSchoolId } from '../../server/db.server.ts';
 import { duties } from '@edusupervise/db';
 import { eq } from 'drizzle-orm';
 import { Button, EmptyState } from '../components/ui';
@@ -17,7 +17,7 @@ export function meta() {
 
 export async function loader({ request }: Route.LoaderArgs) {
   const session = requireSession(await getSession(request));
-  const rows = await withSchool(session.schoolId, (tx) =>
+  const rows = await withSchoolId(session.schoolId, (tx) =>
     tx
       .select({
         id: duties.id,
