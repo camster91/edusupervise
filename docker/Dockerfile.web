@@ -39,4 +39,7 @@ COPY --from=build /app/packages ./packages
 COPY --from=build /app/node_modules ./node_modules
 EXPOSE 3011
 USER node
-CMD ["node", "apps/web/build/server/index.js"]
+# Use react-router-serve to run the RR7 bundle. apps/web/build/server/index.js
+# is a request handler, not a full HTTP server; react-router-serve provides
+# the Node HTTP wrapper.
+CMD ["node", "apps/web/node_modules/@react-router/serve/dist/cli.js", "apps/web/build/server/index.js"]
