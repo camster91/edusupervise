@@ -1,13 +1,18 @@
-// apps/web/app/routes/_app.duties._index.tsx — Duty list
+// apps/web/app/routes/_app.duties._index.tsx — Duty list (Phase 2A refactor)
+//
+// Design system: surface cards, semantic tokens, HIG button variants.
+
 import { useLoaderData, Link } from 'react-router';
+import { Plus } from 'lucide-react';
 import type { Route } from './+types/_app.duties._index';
 import { getSession, requireSession } from '../../server/auth.server.ts';
 import { withSchool } from '../../server/db.server.ts';
 import { duties } from '@edusupervise/db';
-import { and, eq, desc } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
+import { Button, EmptyState } from '../components/ui';
 
 export function meta() {
-  return [{ title: 'Duties — EduSupervise' }];
+  return [{ title: 'Roster — EduSupervise' }];
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
@@ -39,38 +44,70 @@ export default function DutiesList() {
     return acc;
   }, {});
   return (
-    <div className="space-y-4">
+    <div className="max-w-3xl mx-auto space-y-xl">
       <div className="flex items-baseline justify-between">
-        <h2 className="text-2xl font-bold text-slate-900">Duties</h2>
+        <div>
+          <h1 className="text-title-1 text-primary font-bold">Roster</h1>
+          <p className="text-callout text-secondary mt-xs">
+            {rows.length} {rows.length === 1 ? 'duty' : 'duties'} across {Object.keys(byDay).length} cycle {Object.keys(byDay).length === 1 ? 'day' : 'days'}
+          </p>
+        </div>
         {role === 'school_admin' && (
-          <Link to="/app/duties/new" className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg">
-            + New duty
-          </Link>
+          <Button
+            variant="primary"
+            size="md"
+            onClick={() => { window.location.href = '/app/duties/new'; }}
+          >
+            <Plus size={18} aria-hidden />
+            New duty
+          </Button>
         )}
       </div>
+
       {rows.length === 0 ? (
-        <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-500">
-          No duties yet. {role === 'school_admin' && <Link to="/app/duties/new" className="text-blue-600 hover:underline">Create the first one</Link>}.
+        <div className="bg-surface rounded-xl border border-border">
+          <EmptyState
+            icon={<Plus size={48} aria-hidden />}
+            title="No duties yet"
+            description="Add the first duty slot — cafeteria, recess, bus, dismissal, or any supervision assignment."
+            action={role === 'school_admin'
+              ? { label: 'Create the first duty', href: '/app/duties/new' }
+              : { label: 'Browse swap board', href: '/app/coverage' }
+            }
+          />
         </div>
       ) : (
         Object.entries(byDay).map(([day, list]) => (
-          <section key={day} className="bg-white border border-slate-200 rounded-xl overflow-hidden">
-            <div className="bg-slate-50 px-5 py-3 border-b border-slate-200 text-sm font-medium text-slate-700">
-              Day {day} · {list.length} {list.length === 1 ? 'duty' : 'duties'}
-            </div>
-            <ul className="divide-y divide-slate-200">
+          <section
+            key={day}
+            className="bg-surface rounded-xl border border-border shadow-elev-1 overflow-hidden"
+          >
+            <header className="bg-surface-2 px-xl py-md border-b border-divider">
+              <h2 className="text-callout text-secondary font-semibold">
+                Day {day}
+                <span className="text-tertiary font-normal ml-sm">
+                  · {list.length} {list.length === 1 ? 'duty' : 'duties'}
+                </span>
+              </h2>
+            </header>
+            <ul role="list" className="divide-y divide-divider">
               {list.map((d) => (
                 <li key={d.id}>
-                  <Link to={`/app/duties/${d.id}`} className="block px-5 py-4 hover:bg-slate-50 transition-colors">
-                    <div className="flex items-center gap-4">
-                      <div className="text-xs font-mono text-slate-500 w-24">{d.startTime} – {d.endTime}</div>
-                      <div className="flex-1">
-                        <div className="font-medium text-slate-900">{d.location}</div>
-                        <div className="text-xs text-slate-500">
-                          {d.duration ?? '—'} min
-                          {d.requiresVest ? ' · vest' : ''}
-                          {d.requiresRadio ? ' · radio' : ''}
-                        </div>
+                  <Link
+                    to={`/app/duties/${d.id}`}
+                    className="flex items-center gap-md px-xl py-md hover:bg-surface-2 transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-inset"
+                  >
+                    <div className="text-callout text-secondary font-medium tabular w-28 shrink-0">
+                      {d.startTime} – {d.endTime}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-body text-primary font-semibold">
+                        {d.location}
+                      </div>
+                      <div className="text-footnote text-secondary mt-xs">
+                        {d.duration ?? '—'} min
+                        {d.requiresVest ? ' · vest' : ''}
+                        {d.requiresRadio ? ' · radio' : ''}
                       </div>
                     </div>
                   </Link>

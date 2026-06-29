@@ -1,0 +1,194 @@
+/* apps/web/app/styles/tokens.css
+ *
+ * Single source of truth for EduSupervise design tokens.
+ * Apple HIG color/type/space/motion/elevation semantics.
+ * Source spec: docs/superpowers/specs/2026-06-29-edusupervise-design-system.md
+ *
+ * No raw colors, sizes, easings, or shadows in component code —
+ * always reference one of these CSS vars (via Tailwind utility or
+ * direct `var(--...)`).
+ */
+
+:root {
+  /* ------------------------------------------------------------------
+   * COLOR — semantic, not appearance-based
+   * ------------------------------------------------------------------ */
+
+  /* Surfaces */
+  --color-bg:            #F8F9FB;   /* page background */
+  --color-surface:       #FFFFFF;   /* cards, sheets, hero */
+  --color-surface-2:     #F1F3F7;   /* nested surfaces, table headers */
+  --color-surface-3:     #E9ECF2;   /* pressed states, hover in dark mode */
+
+  /* Text */
+  --color-text-primary:    #0A0E1A;
+  --color-text-secondary:  #525866;
+  --color-text-tertiary:   #8A91A0;
+  --color-text-on-accent:  #FFFFFF;  /* text on accent-colored surfaces */
+
+  /* Borders */
+  --color-border:        #E4E7EE;
+  --color-border-strong: #C7CCD6;
+  --color-divider:       #EDEFF3;   /* hairline dividers */
+
+  /* Brand — overridable per school. Default = Apple system blue. */
+  --color-accent:        #007AFF;
+  --color-accent-hover:  #0066D6;
+  --color-accent-soft:   #E5F1FF;   /* selection, focus surface */
+  --color-accent-fg:     #FFFFFF;   /* foreground on accent (e.g. primary button) */
+
+  /* Status (fixed — never overridden per school) */
+  --color-success:       #34C759;
+  --color-success-soft:  #E5F8EC;
+  --color-warning:       #FF9500;
+  --color-warning-soft:  #FFF4E5;
+  --color-error:         #FF3B30;
+  --color-error-soft:    #FFEBE9;
+  --color-info:          #5AC8FA;
+  --color-info-soft:     #E5F6FE;
+
+  /* ------------------------------------------------------------------
+   * TYPOGRAPHY — Inter (web/PWA), 1.2x scale, anchored on 16px body
+   * ------------------------------------------------------------------ */
+
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont,
+               'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+
+  /* Type scale */
+  --text-display:    34px;  --leading-display:    41px;  --weight-display:    700;
+  --text-title-1:    28px;  --leading-title-1:    34px;  --weight-title-1:    700;
+  --text-title-2:    22px;  --leading-title-2:    28px;  --weight-title-2:    600;
+  --text-title-3:    20px;  --leading-title-3:    25px;  --weight-title-3:    600;
+  --text-body:       16px;  --leading-body:       24px;  --weight-body:       400;
+  --text-body-em:    16px;  --leading-body-em:    24px;  --weight-body-em:    600;
+  --text-callout:    15px;  --leading-callout:    20px;  --weight-callout:    400;
+  --text-subhead:    13px;  --leading-subhead:    18px;  --weight-subhead:    600;
+  --text-footnote:   12px;  --leading-footnote:   16px;  --weight-footnote:   400;
+  --text-caption-2:  11px;  --leading-caption-2:  13px;  --weight-caption-2:  500;
+
+  /* ------------------------------------------------------------------
+   * SPACING — 8pt grid, 4pt half-step
+   * ------------------------------------------------------------------ */
+
+  --space-0:    0;
+  --space-xs:   4px;
+  --space-sm:   8px;
+  --space-md:   12px;
+  --space-lg:   16px;
+  --space-xl:   24px;
+  --space-2xl:  32px;
+  --space-3xl:  48px;
+  --space-4xl:  64px;
+
+  /* ------------------------------------------------------------------
+   * RADIUS
+   * ------------------------------------------------------------------ */
+
+  --radius-sm:    6px;    /* inputs, chips, small buttons */
+  --radius-md:   10px;    /* buttons (default) */
+  --radius-lg:   14px;    /* cards */
+  --radius-xl:   20px;    /* hero cards, sheets */
+  --radius-2xl:  28px;    /* modal sheets on iPad */
+  --radius-full: 9999px;  /* pills, avatars, badges */
+
+  /* ------------------------------------------------------------------
+   * ELEVATION — three levels, no chunky shadows
+   * ------------------------------------------------------------------ */
+
+  --elev-0: none;
+  --elev-1: 0 1px 2px rgba(10, 14, 26, 0.04), 0 1px 1px rgba(10, 14, 26, 0.06);
+  --elev-2: 0 4px 12px rgba(10, 14, 26, 0.08), 0 1px 4px rgba(10, 14, 26, 0.04);
+  --elev-3: 0 8px 24px rgba(10, 14, 26, 0.12), 0 4px 8px rgba(10, 14, 26, 0.06);
+
+  /* ------------------------------------------------------------------
+   * MOTION — Apple spring physics, short, never bouncy
+   * ------------------------------------------------------------------ */
+
+  --duration-fast:   150ms;
+  --duration-base:   200ms;
+  --duration-slow:   250ms;
+  --duration-sheet:  350ms;
+  --ease-out:        cubic-bezier(0.32, 0.72, 0, 1);
+  --ease-spring:     cubic-bezier(0.7, 0.7, 0.3, 1);
+
+  /* ------------------------------------------------------------------
+   * SIZING — minimum touch targets, common component sizes
+   * ------------------------------------------------------------------ */
+
+  --touch-target-min: 44px;       /* HIG minimum */
+  --tab-bar-height:  49px;       /* iOS tab bar */
+  --topbar-height:   56px;       /* HIG top bar */
+  --input-height:    44px;       /* form input */
+  --button-sm:       32px;
+  --button-md:       40px;
+  --button-lg:       48px;
+
+  /* ------------------------------------------------------------------
+   * LAYOUT — sidebar / tab bar widths, breakpoints
+   * ------------------------------------------------------------------ */
+
+  --sidebar-expanded: 240px;
+  --sidebar-collapsed: 64px;
+  --max-content-width: 960px;     /* iPad / desktop main column */
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;         /* iPad portrait */
+  --breakpoint-lg: 1024px;        /* iPad landscape / small desktop */
+  --breakpoint-xl: 1280px;
+}
+
+/* --------------------------------------------------------------------
+ * DARK MODE — auto via prefers-color-scheme
+ * -------------------------------------------------------------------- */
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg:            #0A0E1A;
+    --color-surface:       #14171F;
+    --color-surface-2:     #1C2030;
+    --color-surface-3:     #252A3A;
+
+    --color-text-primary:    #F8F9FB;
+    --color-text-secondary:  #9BA1B0;
+    --color-text-tertiary:   #5A6172;
+    --color-text-on-accent:  #FFFFFF;
+
+    --color-border:        #252A3A;
+    --color-border-strong: #3A4055;
+    --color-divider:       #1C2030;
+
+    --color-accent:        #0A84FF;
+    --color-accent-hover:  #409CFF;
+    --color-accent-soft:   #1A2A40;
+    --color-accent-fg:     #FFFFFF;
+
+    --color-success:       #30D158;
+    --color-success-soft:  #14361F;
+    --color-warning:       #FF9F0A;
+    --color-warning-soft:  #3A2810;
+    --color-error:         #FF453A;
+    --color-error-soft:    #3A1410;
+    --color-info:          #64D2FF;
+    --color-info-soft:     #143040;
+
+    --elev-0: none;
+    --elev-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 1px rgba(0, 0, 0, 0.5);
+    --elev-2: 0 4px 12px rgba(0, 0, 0, 0.5), 0 1px 4px rgba(0, 0, 0, 0.4);
+    --elev-3: 0 8px 24px rgba(0, 0, 0, 0.6), 0 4px 8px rgba(0, 0, 0, 0.4);
+  }
+}
+
+/* --------------------------------------------------------------------
+ * REDUCED MOTION
+ * -------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

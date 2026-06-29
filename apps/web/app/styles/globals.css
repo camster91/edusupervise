@@ -1,0 +1,61 @@
+/* apps/web/app/styles/globals.css
+ *
+ * The single CSS entry that triggers Tailwind processing. Imported
+ * by apps/web/app/root.tsx. The token definitions live in
+ * apps/web/app/styles/tokens.css (imported below) — this file is
+ * only the Tailwind directives + a small set of base resets.
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Pull in the design tokens (CSS custom properties). Must come
+ * AFTER @tailwind directives so the vars are available to the
+ * generated utilities. */
+@import './tokens.css';
+
+/* --------------------------------------------------------------------
+ * Base resets — only the minimum needed beyond Tailwind preflight.
+ * -------------------------------------------------------------------- */
+
+html {
+  /* Prevent the iOS Safari "tap delay" on touch devices. The 300ms
+   * delay was removed in iOS 13+ but legacy WebViews may still apply
+   * it. `touch-action: manipulation` is the modern replacement. */
+  touch-action: manipulation;
+  /* Prevent the URL bar from auto-hiding on mobile Safari when the
+   * user taps a control — the layout shift is jarring. RR7 uses
+   * scrollRestoration; we let it do its thing. */
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  /* Smoother font rendering on macOS / iOS */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Tabular numerals by default — duty times look better that way */
+  font-variant-numeric: tabular-nums;
+}
+
+/* Tabular numerals for any element that displays time / count */
+.tabular,
+time,
+[data-tabular] {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Liquid Glass nav effect — used on iOS 26+ tab bar / sidebar.
+ * Browsers that don't support backdrop-filter just get the
+ * fallback background. */
+@supports (backdrop-filter: blur(20px) saturate(180%)) {
+  .glass {
+    background: color-mix(in srgb, var(--color-surface) 80%, transparent);
+    backdrop-filter: blur(20px) saturate(180%);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+  }
+}
