@@ -77,3 +77,14 @@ CREATE INDEX IF NOT EXISTS "idx_parent_contacts_school" ON "parent_contacts" ("s
 CREATE INDEX IF NOT EXISTS "idx_parent_route_tags_school_tag" ON "parent_route_tags" ("school_id", "tag");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_parent_alerts_school_status" ON "parent_alerts" ("school_id", "status");--> statement-breakpoint
 CREATE INDEX IF NOT EXISTS "idx_parent_alerts_assignment" ON "parent_alerts" ("coverage_assignment_id");--> statement-breakpoint
+
+-- Table-level grants. The init-time grant procedure in 02-schema.sql
+-- only runs on fresh DBs (via /docker-entrypoint-initdb.d), so on
+-- existing DBs where these tables were created by this migration we
+-- need to grant explicitly. Idempotent.
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.parent_contacts   TO edusupervise_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.parent_contacts   TO edusupervise_system;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.parent_route_tags TO edusupervise_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.parent_route_tags TO edusupervise_system;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.parent_alerts     TO edusupervise_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.parent_alerts     TO edusupervise_system;--> statement-breakpoint

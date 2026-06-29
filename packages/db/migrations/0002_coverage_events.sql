@@ -67,3 +67,12 @@ CREATE INDEX IF NOT EXISTS "coverage_assignments_new_teacher_idx" ON "coverage_a
 -- Idempotency: match an incoming Frontline / Red Rover absence to an
 -- existing event so we don't double-route if the webhook fires twice.
 CREATE UNIQUE INDEX IF NOT EXISTS "coverage_events_external_id_unique" ON "coverage_events" ("source", "external_id") WHERE "external_id" IS NOT NULL;--> statement-breakpoint
+
+-- Table-level grants. The init-time grant procedure in 02-schema.sql
+-- only runs on fresh DBs (via /docker-entrypoint-initdb.d), so on
+-- existing DBs where these tables were created by this migration we
+-- need to grant explicitly. Idempotent.
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.coverage_events      TO edusupervise_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.coverage_events      TO edusupervise_system;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.coverage_assignments TO edusupervise_runtime;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.coverage_assignments TO edusupervise_system;--> statement-breakpoint
