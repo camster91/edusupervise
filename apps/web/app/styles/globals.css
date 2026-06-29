@@ -6,14 +6,14 @@
  * only the Tailwind directives + a small set of base resets.
  */
 
+/* Pull in the design tokens (CSS custom properties) FIRST. CSS spec
+ * requires @import to precede all other statements except @charset
+ * and @layer. */
+@import './tokens.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-/* Pull in the design tokens (CSS custom properties). Must come
- * AFTER @tailwind directives so the vars are available to the
- * generated utilities. */
-@import './tokens.css';
 
 /* --------------------------------------------------------------------
  * Base resets — only the minimum needed beyond Tailwind preflight.
