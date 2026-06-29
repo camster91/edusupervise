@@ -42,4 +42,10 @@ USER node
 # Use react-router-serve to run the RR7 bundle. apps/web/build/server/index.js
 # is a request handler, not a full HTTP server; react-router-serve provides
 # the Node HTTP wrapper.
+#
+# NODE_PATH=/app/node_modules lets the bundle find pnpm's virtual store
+# (postgres, drizzle-orm, etc.) — pnpm uses per-workspace node_modules
+# with symlinks, but the bundled code looks up modules relative to the
+# bundle directory which lacks those symlinks.
+ENV NODE_PATH=/app/node_modules
 CMD ["node", "apps/web/node_modules/@react-router/serve/dist/cli.js", "apps/web/build/server/index.js"]
