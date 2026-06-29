@@ -25,7 +25,6 @@ export async function loader({ request }: Route.LoaderArgs) {
         startTime: duties.startTime,
         endTime: duties.endTime,
         location: duties.location,
-        duration: duties.duration,
         isActive: duties.isActive,
         requiresVest: duties.requiresVest,
         requiresRadio: duties.requiresRadio,
