@@ -4,7 +4,7 @@
 // assignment. Idempotent.
 
 import { z } from 'zod';
-import { json } from 'react-router';
+import { json } from '@react-router/node';
 import type { Route } from './+types/api.coverage.accept';
 import { getSession, requireSession } from '../../server/auth.server';
 import { acceptCoverage } from '../../server/coverage.server';

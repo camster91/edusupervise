@@ -2,7 +2,7 @@
 // parent alert (Phase 3).
 
 import { z } from 'zod';
-import { json } from 'react-router';
+import { json } from '@react-router/node';
 import type { Route } from './+types/api.coverage.parent-alerts.cancel';
 import { getSession, requireSession } from '../../server/auth.server';
 import { cancelAlert, listAlerts } from '../../server/parent-alerts.server';

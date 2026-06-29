@@ -5,7 +5,7 @@
 // dispatch via Twilio (SMS) or Resend (email).
 
 import { z } from 'zod';
-import { json } from 'react-router';
+import { json } from '@react-router/node';
 import type { Route } from './+types/api.coverage.parent-alerts.send';
 import { getSession, requireSession } from '../../server/auth.server';
 import { markAlertSent, listAlerts } from '../../server/parent-alerts.server';

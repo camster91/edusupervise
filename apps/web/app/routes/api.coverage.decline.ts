@@ -5,7 +5,7 @@
 // different replacement is found.
 
 import { z } from 'zod';
-import { json } from 'react-router';
+import { json } from '@react-router/node';
 import type { Route } from './+types/api.coverage.decline';
 import { getSession, requireSession } from '../../server/auth.server';
 import { declineCoverage } from '../../server/coverage.server';

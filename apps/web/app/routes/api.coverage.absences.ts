@@ -5,7 +5,7 @@
 // each of the absent teacher's duties on that date.
 
 import { z } from 'zod';
-import { json } from 'react-router';
+import { json } from '@react-router/node';
 import type { Route } from './+types/api.coverage.absences';
 import { requireRole } from '../../server/auth.server';
 import {
