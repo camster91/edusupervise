@@ -27,8 +27,21 @@ export default [
     route('app/reminders', 'routes/_app.reminders._index.tsx'),
     route('app/teachers', 'routes/_app.teachers._index.tsx'),
     route('app/settings', 'routes/_app.settings._index.tsx'),
+    route('app/settings/billing', 'routes/_app.settings.billing.tsx'),
   ]),
 
   // Health check (no auth)
   route('api/health', 'routes/api.health.tsx'),
+
+  // Billing — spec section 6
+  route('api/billing/checkout', 'routes/api.billing.checkout.tsx'),
+  route('api/billing/portal', 'routes/api.billing.portal.tsx'),
+  route('api/billing/webhook', 'routes/api.billing.webhook.tsx'),
+  route('api/billing/invoices', 'routes/api.billing.invoices.tsx'),
+  // Audit-export CSV: the `[.csv]` filename escape becomes a literal
+  // `.csv` in the URL (RR7 file-based routing convention).
+  route(
+    'api/billing/audit-export.csv',
+    'routes/api.billing.audit-export[.csv].tsx',
+  ),
 ] satisfies RouteConfig;
