@@ -24,9 +24,9 @@ import type { Route } from './+types/auth.magic';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { getSystemClient, users } from '@edusupervise/db';
-import { newSessionTokenFor, sessionCookieAttributes } from '~/server/auth.server';
-import { validateCsrf } from '~/server/csrf.server';
-import { checkMagicLinkByEmail } from '~/server/rate-limit.server';
+import { newSessionTokenFor, sessionCookieAttributes } from '../server/auth.server';
+import { validateCsrf } from '../server/csrf.server';
+import { checkMagicLinkByEmail } from '../server/rate-limit.server';
 import {
   TOKEN_KIND,
   consumeToken,
@@ -34,7 +34,7 @@ import {
   findUserByEmail,
   mintToken,
   persistToken,
-} from '~/server/auth-flows.server';
+} from '../server/auth-flows.server';
 
 const requestSchema = z.object({
   intent: z.literal('request'),

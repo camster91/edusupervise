@@ -3,20 +3,24 @@
 // Creates a school + first school_admin in a single transaction. Issues a
 // session cookie on success and redirects to /app.
 //
-// CSRF note: per spec section 5, full double-submit cookie is wired in
-// server/csrf.server.ts. For the deploy-with-mocks tier, we accept that
-// same-origin POSTs don't have cross-origin CSRF risk and defer the
-// frontend-side `x-csrf-token` injection until real auth is wired.
+// Why the system role: the runtime role is RLS-bound on `users` (the
+// `tenant_isolation` policy requires `school_id = current_school_id()`
+// for both USING and WITH CHECK, so a fresh user row whose `school_id`
+// was JUST minted can't be inserted by the runtime role — the new
+// `school_id` isn't yet in `current_school_id()` until we set it, but
+// we can't set it until the row exists. Chicken-and-egg. The system
+// role has BYPASSRLS and is the documented bootstrap path for the
+// very first user of a brand-new school.
 
 import { Form, redirect, useActionData } from 'react-router';
 import type { Route } from './+types/signup';
-import { getDb } from '../../server/db.server.ts';
+import { getSystemClient, schools, users } from '@edusupervise/db';
 import {
   hashPassword,
   newSessionTokenFor,
   sessionCookieAttributes,
-} from '../../server/auth.server.ts';
-import { schools, users } from '@edusupervise/db';
+} from '../../server/auth.server';
+import { validateCsrf } from '../../server/csrf.server';
 import { sql } from 'drizzle-orm';
 
 export function meta() {
@@ -52,13 +56,16 @@ function validate(input: unknown): { ok: true; value: SignupInput } | { ok: fals
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  // CSRF first — cheapest rejection of cross-origin POSTs.
+  const csrf = validateCsrf(request);
+  if (!csrf.ok) return csrf.response;
+
   const form = await request.formData();
   const v = validate(Object.fromEntries(form));
   if (!v.ok) {
     return Response.json({ error: v.error }, { status: 400 });
   }
   const { schoolName, schoolSlug, adminName, adminEmail, adminPassword } = v.value;
-  const db = getDb();
   const passwordHash = await hashPassword(adminPassword);
   const now = new Date();
   const year = now.getMonth() >= 8 ? now.getFullYear() : now.getFullYear() - 1;
@@ -68,6 +75,17 @@ export async function action({ request }: Route.ActionArgs) {
   const schoolYearStart = new Date(sep1.getTime() + offset * 86_400_000);
   const schoolYearEnd = new Date(schoolYearStart.getTime() + 305 * 86_400_000);
   const trialEndsAt = new Date(Date.now() + 30 * 86_400_000);
+
+  const systemUrl =
+    process.env.SYSTEM_DATABASE_URL ?? process.env.DATABASE_URL;
+  if (!systemUrl) {
+    return Response.json(
+      { error: 'server_misconfigured' },
+      { status: 500, headers: { 'content-type': 'application/json' } },
+    );
+  }
+  const { db, close } = getSystemClient(systemUrl);
+
   try {
     const result = await db.transaction(async (tx) => {
       const [school] = await tx
@@ -98,7 +116,9 @@ export async function action({ request }: Route.ActionArgs) {
     });
     const { token } = newSessionTokenFor(result.user.id);
     return redirect('/app', {
-      headers: { 'Set-Cookie': `edusupervise.session=${token}; ${sessionCookieAttributes()}` },
+      headers: {
+        'Set-Cookie': `edusupervise.session=${token}; ${sessionCookieAttributes()}`,
+      },
     });
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);
@@ -106,6 +126,8 @@ export async function action({ request }: Route.ActionArgs) {
       return Response.json({ error: 'school_or_email_taken' }, { status: 409 });
     }
     return Response.json({ error: 'signup_failed', detail: msg }, { status: 500 });
+  } finally {
+    await close();
   }
 }
 

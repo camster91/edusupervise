@@ -22,15 +22,15 @@ import type { Route } from './+types/verify-email';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { getSystemClient, users } from '@edusupervise/db';
-import { newSessionTokenFor, sessionCookieAttributes } from '~/server/auth.server';
-import { validateCsrf } from '~/server/csrf.server';
+import { newSessionTokenFor, sessionCookieAttributes } from '../server/auth.server';
+import { validateCsrf } from '../server/csrf.server';
 import {
   TOKEN_KIND,
   consumeToken,
   findUserByEmail,
   mintToken,
   persistToken,
-} from '~/server/auth-flows.server';
+} from '../server/auth-flows.server';
 
 const consumeSchema = z.object({
   token: z.string().min(1),

@@ -13,9 +13,10 @@ export default defineConfig({
     },
   },
   resolve: {
-    // Resolve `@edusupervise/*` workspace imports to source .ts files
-    // (vitest can't follow pnpm symlinks the same way tsx/esbuild does
-    // when the source is `.ts` rather than `dist/*.js`).
+    // Allow extensionless relative imports to resolve to .ts/.tsx
+    // (mirrors apps/web/vite.config.ts so dynamic `import('...')`
+    // from a test can find the route files' relative server/* imports).
+    extensions: ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs'],
     alias: {
       "@edusupervise/db": new URL("./packages/db/src/index.ts", import.meta.url).pathname,
       "@edusupervise/db/schema": new URL("./packages/db/src/schema.ts", import.meta.url).pathname,
