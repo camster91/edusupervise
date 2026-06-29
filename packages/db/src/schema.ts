@@ -972,6 +972,121 @@ export const authSessionRelations = relations(authSession, ({ one }) => ({
   user: one(users, { fields: [authSession.userId], references: [users.id] }),
 }));
 
+// ---------------------------------------------------------------------------
+// Coverage Router (Phase 2B)
+//
+// The Coverage Router is the load-bearing adjacent opportunity from the
+// research synthesis (slice 2, opportunity 1). When a teacher is out,
+// it extends the duty scheduler to absorb the absent teacher's duties
+// and notify a replacement. No incumbent owns the "duty when teacher
+// is out" gap.
+//
+// coverage_events: one row per absence event (teacher is out on a date).
+// coverage_assignments: one row per (coverage_event, duty) — the rerouted duty.
+// Both tenant-scoped via RLS (FORCE ROW LEVEL SECURITY) in the migration.
+// ---------------------------------------------------------------------------
+
+export const coverageEvents = pgTable(
+  'coverage_events',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    schoolId: uuid('school_id')
+      .notNull()
+      .references(() => schools.id, { onDelete: 'cascade' }),
+    teacherId: uuid('teacher_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    absenceDate: date('absence_date').notNull(),
+    reason: text('reason'),
+    status: text('status').notNull().default('open'),
+    source: text('source').notNull().default('direct'),
+    externalId: text('external_id'),
+    createdBy: uuid('created_by')
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('idx_coverage_events_school_date_status').on(
+      t.schoolId,
+      t.absenceDate,
+      t.status,
+    ),
+  ],
+);
+export type CoverageEvent = typeof coverageEvents.$inferSelect;
+export type NewCoverageEvent = typeof coverageEvents.$inferInsert;
+
+export const coverageAssignments = pgTable(
+  'coverage_assignments',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    schoolId: uuid('school_id')
+      .notNull()
+      .references(() => schools.id, { onDelete: 'cascade' }),
+    coverageEventId: uuid('coverage_event_id')
+      .notNull()
+      .references(() => coverageEvents.id, { onDelete: 'cascade' }),
+    dutyId: uuid('duty_id')
+      .notNull()
+      .references(() => duties.id, { onDelete: 'cascade' }),
+    originalTeacherId: uuid('original_teacher_id')
+      .notNull()
+      .references(() => users.id),
+    newTeacherId: uuid('new_teacher_id').references(() => users.id),
+    status: text('status').notNull().default('pending'),
+    notifiedAt: timestamp('notified_at', { withTimezone: true }),
+    respondedAt: timestamp('responded_at', { withTimezone: true }),
+    declineReason: text('decline_reason'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index('idx_coverage_assignments_school_status').on(t.schoolId, t.status),
+    index('idx_coverage_assignments_new_teacher').on(t.newTeacherId, t.status),
+  ],
+);
+export type CoverageAssignment = typeof coverageAssignments.$inferSelect;
+export type NewCoverageAssignment = typeof coverageAssignments.$inferInsert;
+
+export const coverageEventsRelations = relations(coverageEvents, ({ one, many }) => ({
+  teacher: one(users, {
+    fields: [coverageEvents.teacherId],
+    references: [users.id],
+  }),
+  assignments: many(coverageAssignments),
+}));
+
+export const coverageAssignmentsRelations = relations(coverageAssignments, ({ one }) => ({
+  event: one(coverageEvents, {
+    fields: [coverageAssignments.coverageEventId],
+    references: [coverageEvents.id],
+  }),
+  duty: one(duties, {
+    fields: [coverageAssignments.dutyId],
+    references: [duties.id],
+  }),
+  originalTeacher: one(users, {
+    fields: [coverageAssignments.originalTeacherId],
+    references: [users.id],
+    relationName: 'coverage_assignments_original_teacher_id_users_id_fk',
+  }),
+  newTeacher: one(users, {
+    fields: [coverageAssignments.newTeacherId],
+    references: [users.id],
+    relationName: 'coverage_assignments_new_teacher_id_users_id_fk',
+  }),
+}));
+
 export const authAccountRelations = relations(authAccount, ({ one }) => ({
   user: one(users, { fields: [authAccount.userId], references: [users.id] }),
 }));
@@ -1000,4 +1115,6 @@ export const schema = {
   authSession,
   authAccount,
   authVerification,
+  coverageEvents,
+  coverageAssignments,
 };
