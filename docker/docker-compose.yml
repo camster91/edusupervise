@@ -53,6 +53,13 @@ services:
       - ${EDUSUPERVISE_SECRETS_DIR:-/root/edusupervise-secrets}/.env
     environment:
       DATABASE_URL: postgres://edusupervise_runtime:${EDUSUPERVISE_RUNTIME_PASSWORD}@postgres:5432/edusupervise
+      # SYSTEM_DATABASE_URL is the BYPASSRLS role used by signup + login
+      # for cross-tenant bootstrap (creating a brand-new school + first
+      # user, looking up a user by email before school_id is known). The
+      # web container needs BOTH: DATABASE_URL for normal request handling
+      # (runtime role, FORCE RLS) and SYSTEM_DATABASE_URL for the
+      # cross-tenant auth surface (system role, BYPASSRLS).
+      SYSTEM_DATABASE_URL: postgres://edusupervise_system:${EDUSUPERVISE_SYSTEM_PASSWORD}@postgres:5432/edusupervise
       REDIS_URL: redis://redis:6379
       NODE_ENV: production
       LOG_LEVEL: ${LOG_LEVEL:-info}

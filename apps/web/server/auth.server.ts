@@ -12,7 +12,7 @@
 import { eq, and } from 'drizzle-orm';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import bcrypt from 'bcryptjs';
-import { users } from '@edusupervise/db';
+import { users, getSystemClient } from '@edusupervise/db';
 
 export type UserRole = 'school_admin' | 'teacher' | 'substitute';
 
@@ -94,29 +94,40 @@ function parseCookie(header: string, name: string): string | null {
 }
 
 async function loadSessionFromDb(userId: string): Promise<Session | null> {
-  const { getDb } = await import('./db.server');
-  const db = getDb();
-  const rows = await db
-    .select({
-      id: users.id,
-      schoolId: users.schoolId,
-      email: users.email,
-      role: users.role,
-      name: users.name,
-      isActive: users.isActive,
-    })
-    .from(users)
-    .where(and(eq(users.id, userId), eq(users.isActive, true)))
-    .limit(1);
-  const row = rows[0];
-  if (!row) return null;
-  return {
-    userId: row.id,
-    schoolId: row.schoolId,
-    email: row.email,
-    role: row.role,
-    name: row.name,
-  };
+  // Use the system role (BYPASSRLS) for the user lookup. At session-
+  // validate time we don't yet know the user's school, so the runtime
+  // role's RLS policy on `users` (which requires
+  // `school_id = current_school_id()`) would return zero rows.
+  // See: devops-gotchas.md "Auth-server user lookup must use system role".
+  const systemUrl =
+    process.env.SYSTEM_DATABASE_URL ?? process.env.DATABASE_URL;
+  if (!systemUrl) return null;
+  const { db, close } = getSystemClient(systemUrl);
+  try {
+    const rows = await db
+      .select({
+        id: users.id,
+        schoolId: users.schoolId,
+        email: users.email,
+        role: users.role,
+        name: users.name,
+        isActive: users.isActive,
+      })
+      .from(users)
+      .where(and(eq(users.id, userId), eq(users.isActive, true)))
+      .limit(1);
+    const row = rows[0];
+    if (!row) return null;
+    return {
+      userId: row.id,
+      schoolId: row.schoolId,
+      email: row.email,
+      role: row.role,
+      name: row.name,
+    };
+  } finally {
+    await close();
+  }
 }
 
 export async function hashPassword(plain: string): Promise<string> {
