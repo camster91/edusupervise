@@ -4,7 +4,6 @@
 // Authenticated. Returns the same shape as the page loader
 // (listCoverage() output).
 
-import { json } from '@react-router/node';
 import type { Route } from './+types/api.coverage.events';
 import { getSession, requireSession } from '../../server/auth.server';
 import { listCoverage } from '../../server/coverage.server';
@@ -17,5 +16,5 @@ export async function loader({ request }: Route.LoaderArgs) {
     schoolId: session.schoolId,
     forTeacherId,
   });
-  return json({ events });
+  return Response.json({ events });
 }

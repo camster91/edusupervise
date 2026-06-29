@@ -5,7 +5,6 @@
 // each of the absent teacher's duties on that date.
 
 import { z } from 'zod';
-import { json } from '@react-router/node';
 import type { Route } from './+types/api.coverage.absences';
 import { requireRole } from '../../server/auth.server';
 import {
@@ -24,18 +23,18 @@ const Body = z.object({
 
 export async function action({ request }: Route.ActionArgs) {
   if (request.method !== 'POST') {
-    return json({ error: 'method_not_allowed' }, { status: 405 });
+    return Response.json({ error: 'method_not_allowed' }, { status: 405 });
   }
   const session = await requireRole(await (await import('../../server/auth.server')).getSession(request), 'school_admin');
   let body: unknown;
   try {
     body = await request.json();
   } catch {
-    return json({ error: 'invalid_json' }, { status: 400 });
+    return Response.json({ error: 'invalid_json' }, { status: 400 });
   }
   const parsed = Body.safeParse(body);
   if (!parsed.success) {
-    return json({ error: 'validation_failed', issues: parsed.error.issues }, { status: 400 });
+    return Response.json({ error: 'validation_failed', issues: parsed.error.issues }, { status: 400 });
   }
 
   const { id, deduplicated } = await recordAbsence({
@@ -49,13 +48,13 @@ export async function action({ request }: Route.ActionArgs) {
   });
 
   if (!parsed.data.autoRoute) {
-    return json({ id, deduplicated, assignments: [], uncovered: 0 });
+    return Response.json({ id, deduplicated, assignments: [], uncovered: 0 });
   }
 
   const result = await routeAbsence({ absenceId: id });
-  return json({ id, deduplicated, ...result });
+  return Response.json({ id, deduplicated, ...result });
 }
 
 export async function loader() {
-  return json({ error: 'method_not_allowed' }, { status: 405 });
+  return Response.json({ error: 'method_not_allowed' }, { status: 405 });
 }

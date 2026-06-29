@@ -4,7 +4,6 @@
 // Authenticated. Returns the alerts for the current school. Supports
 // filtering by status (draft, queued, sent, failed, cancelled).
 
-import { json } from '@react-router/node';
 import type { Route } from './+types/api.coverage.parent-alerts';
 import { getSession, requireSession } from '../../server/auth.server';
 import { listAlerts, type ParentAlertStatus } from '../../server/parent-alerts.server';
@@ -24,5 +23,5 @@ export async function loader({ request }: Route.LoaderArgs) {
     status,
     limit: Number.isFinite(limit) ? limit : 200,
   });
-  return json({ alerts });
+  return Response.json({ alerts });
 }
