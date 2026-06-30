@@ -74,8 +74,17 @@ function mintRequestId(request: Request): string {
  * HSTS: only set in production (Set-Cookie + Secure imply HTTPS
  * already, but we want the browser to remember it for the next visit
  * without the Strict-Transport-Security header we send here).
+ *
+ * Content-Type MUST be set here, not just nosniff — browsers refuse
+ * to sniff when nosniff is on, and without an explicit Content-Type
+ * the HTML body is rendered as raw text. Caught by the post-deploy
+ * browser re-test (verifier, 2026-06-30).
  */
 function applySecurityHeaders(headers: Headers, isProduction: boolean): void {
+  // Tell the browser the body is HTML. With X-Content-Type-Options:
+  // nosniff below, the browser will NOT auto-detect — so this is
+  // required for SSR pages to render at all.
+  headers.set('Content-Type', 'text/html; charset=utf-8');
   // Prevent MIME-type sniffing (the browser must respect our declared type)
   headers.set('X-Content-Type-Options', 'nosniff');
   // Block clickjacking — EduSupervise never embeds in an iframe.
