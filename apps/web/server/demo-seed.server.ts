@@ -127,6 +127,11 @@ export async function seedDemoData(
   const teacherIds: string[] = [];
   const nowIso = new Date().toISOString();
   for (const t of spec.teachers) {
+    // Upsert: if a teacher with this email already exists in this
+    // school (because reset-demo re-runs the seed), update name +
+    // active status but keep the existing id. This makes the seed
+    // idempotent — verified live 2026-06-30, was hitting 23505
+    // duplicate-key on the second reset.
     const [row] = await tx
       .insert(users)
       .values({
@@ -138,8 +143,17 @@ export async function seedDemoData(
         emailVerifiedAt: sql`${nowIso}::timestamptz`,
         isActive: true,
       })
+      .onConflictDoUpdate({
+        target: [users.schoolId, users.email],
+        set: {
+          name: t.name,
+          role: t.role,
+          isActive: true,
+          emailVerifiedAt: sql`${nowIso}::timestamptz`,
+        },
+      })
       .returning({ id: users.id });
-    if (!row) throw new Error('demo seed: teacher insert failed');
+    if (!row) throw new Error('demo seed: teacher upsert failed');
     teacherIds.push(row.id);
   }
 

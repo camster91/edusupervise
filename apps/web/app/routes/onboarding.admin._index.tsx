@@ -12,7 +12,7 @@
 // Back is hidden in steps 1 and 4 (commit points).
 
 import { useState } from 'react';
-import { redirect, useNavigate, Link } from 'react-router';
+import { redirect, useLoaderData, useNavigate, Link } from 'react-router';
 import { eq } from 'drizzle-orm';
 import { ArrowRight, ArrowLeft, ClipboardList, Sparkles, School, Copy, Check } from 'lucide-react';
 import type { Route } from './+types/onboarding.admin._index';

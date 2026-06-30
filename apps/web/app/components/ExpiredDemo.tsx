@@ -1,18 +1,29 @@
 // apps/web/app/components/ExpiredDemo.tsx
 //
-// Full-screen "your demo expired" page. Rendered by the loader on
-// every /app/* route when the school's plan='demo_expired'.
+// Full-screen "your demo expired" page. Rendered by the _app loader
+// when the school's plan='demo_expired'.
 //
 // Two actions:
 //   - "Restart demo" → POST /app/api/demo/reset (form, CSRF-protected)
 //   - "Sign up for real" → /signup
+//
+// CSRF: read from the parent route's loader data via
+// useRouteLoaderData. The __Host- cookie is HttpOnly in Chromium
+// so useCsrfToken() (which reads document.cookie) always returns
+// null. The parent _app loader already exposes csrfToken from the
+// request cookie server-side; we just re-use it here.
 
-import { Form } from 'react-router';
+import { Form, useRouteLoaderData } from 'react-router';
 import { Clock, Sparkles, RefreshCw, ExternalLink } from 'lucide-react';
-import { useCsrfToken } from '~/lib/csrf';
 
 export function ExpiredDemo(): React.ReactElement {
-  const csrfToken = useCsrfToken();
+  // The csrf token comes from _app.tsx's loader, which reads it from
+  // the request cookie server-side. The form's hidden field needs
+  // the same value so the action's CSRF check matches.
+  const parentData = useRouteLoaderData('routes/_app') as
+    | { csrfToken?: string }
+    | undefined;
+  const csrfToken = parentData?.csrfToken ?? '';
   return (
     <div className="min-h-[60vh] grid place-items-center px-md">
       <div className="max-w-md w-full bg-surface rounded-2xl border border-border shadow-elev-2 p-2xl text-center">

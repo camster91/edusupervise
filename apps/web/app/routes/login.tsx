@@ -15,7 +15,7 @@
 // The user lookup needs the system role (BYPASSRLS) because at sign-in
 // time we don't yet know the user's school — the runtime role's
 // RLS-bound `users` query would return zero rows.
-import { Form, redirect, useActionData } from 'react-router';
+import { Form, redirect, useActionData, useLoaderData } from 'react-router';
 import type { Route } from './+types/login';
 import { eq, and } from 'drizzle-orm';
 import { getSystemClient, users } from '@edusupervise/db';
@@ -24,20 +24,32 @@ import {
   newSessionTokenFor,
   sessionCookieAttributes,
 } from '../../server/auth.server';
-import { validateCsrf } from '../../server/csrf.server';
+import { readCsrfCookie, validateCsrfWithFormToken } from '../../server/csrf.server';
 import { checkLoginByIp } from '../../server/rate-limit.server';
 
 export function meta() {
   return [{ title: 'Sign in — EduSupervise' }];
 }
 
-export async function loader() {
-  return null;
+/**
+ * Loader returns the CSRF token from the request cookie so the form
+ * can include it in a hidden field. Without this, browser form POSTs
+ * fail with 403 because the cookie is HttpOnly in Chromium even when
+ * the Set-Cookie header says otherwise (verifier finding,
+ * 2026-06-30, B1).
+ */
+export async function loader({ request }: { request: Request }) {
+  return { csrfToken: readCsrfCookie(request) ?? '' };
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  // CSRF first — cheapest rejection of cross-origin POSTs.
-  const csrf = validateCsrf(request);
+  // Parse the form first so we can use validateCsrfWithFormToken
+  // (which reads both cookie and form csrf field). The cookie-only
+  // validateCsrf() doesn't work for browser form POSTs because the
+  // `__Host-` cookie is HttpOnly in Chromium (verifier finding
+  // 2026-06-30, B1).
+  const form = await request.formData();
+  const csrf = validateCsrfWithFormToken(request, form);
   if (!csrf.ok) return csrf.response;
 
   // Rate-limit by client IP. We honour X-Forwarded-For so the limit
@@ -56,8 +68,6 @@ export async function action({ request }: Route.ActionArgs) {
       },
     );
   }
-
-  const form = await request.formData();
   const email = String(form.get('email') ?? '').trim().toLowerCase();
   const password = String(form.get('password') ?? '');
   if (!email || !password) {
@@ -104,12 +114,14 @@ export async function action({ request }: Route.ActionArgs) {
 
 export default function LoginPage() {
   const data = useActionData() as { error?: string } | undefined;
+  const { csrfToken } = useLoaderData<typeof loader>();
   return (
     <main className="min-h-screen grid place-items-center bg-slate-50 px-4">
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
         <h1 className="text-2xl font-bold text-slate-900 mb-1">Welcome back</h1>
         <p className="text-sm text-slate-600 mb-6">Sign in to EduSupervise.</p>
         <Form method="post" className="space-y-4">
+          <input type="hidden" name="csrf" value={csrfToken} />
           <label className="block">
             <span className="text-sm font-medium text-slate-700">Email</span>
             <input name="email" type="email" required autoComplete="email"
