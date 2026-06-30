@@ -1,15 +1,17 @@
 // apps/web/app/routes/_app.settings._index.tsx — school settings
 //
 // Shows:
+//   - School name (with rename form)
 //   - School join code (for sharing with teachers — migration 0006)
 //   - Copy / rename controls for the join code
 //   - Plan + demo-expires-at (if applicable)
 //   - Roster teaser (full roster lands in /app/settings/roster — future)
 //
-// Admin only (school_admin role required at the loader).
+// Admin only (school_admin role required at the loader + action).
 
-import { eq } from 'drizzle-orm';
-import { useLoaderData } from 'react-router';
+import { eq, sql } from 'drizzle-orm';
+import { Form, useActionData, useLoaderData, useNavigation } from 'react-router';
+import { Save } from 'lucide-react';
 import { schools } from '@edusupervise/db';
 import type { Route } from './+types/_app.settings._index';
 import {
@@ -19,6 +21,9 @@ import {
 } from '../../server/auth.server';
 import { withSchoolId } from '../../server/db.server';
 import { CopyableJoinCode } from '../components/CopyableJoinCode';
+import { validateCsrfWithFormToken } from '../../server/csrf.server';
+import { useCsrfToken } from '../lib/csrf';
+import { logger } from '../../server/logger.server';
 
 export function meta() {
   return [{ title: 'Settings — EduSupervise' }];
@@ -44,8 +49,59 @@ export async function loader({ request }: Route.LoaderArgs) {
   });
 }
 
+interface ActionResult {
+  ok: boolean;
+  error?: string;
+}
+
+export async function action({ request }: Route.ActionArgs) {
+  const session = requireSession(await getSession(request));
+  requireRole(session, ['school_admin']);
+
+  const form = await request.formData();
+  const csrf = validateCsrfWithFormToken(request, form);
+  if (!csrf.ok) return csrf.response;
+
+  const intent = String(form.get('intent') ?? '');
+  if (intent === 'rename_school') {
+    const newName = String(form.get('name') ?? '').trim();
+    if (newName.length < 2 || newName.length > 80) {
+      return Response.json(
+        { ok: false, error: 'School name must be 2–80 characters.' } satisfies ActionResult,
+        { status: 400 },
+      );
+    }
+    await withSchoolId(session.schoolId, async (tx) => {
+      await tx
+        .update(schools)
+        .set({
+          name: newName,
+          updatedAt: sql`${new Date().toISOString()}::timestamptz`,
+        })
+        .where(eq(schools.id, session.schoolId));
+    });
+    logger.info(
+      { userId: session.userId, schoolId: session.schoolId, newName },
+      'settings: renamed school',
+    );
+    return Response.json({ ok: true } satisfies ActionResult);
+  }
+
+  return Response.json(
+    { ok: false, error: 'Unknown action.' } satisfies ActionResult,
+    { status: 400 },
+  );
+}
+
 export default function SettingsPage() {
   const { school } = useLoaderData<typeof loader>();
+  const csrfToken = useCsrfToken();
+  const actionData = useActionData() as ActionResult | undefined;
+  const nav = useNavigation();
+  const submitting =
+    nav.state !== 'idle' &&
+    nav.formData?.get('intent') === 'rename_school';
+
   if (!school) {
     return (
       <div className="space-y-4">
@@ -61,10 +117,14 @@ export default function SettingsPage() {
     <div className="space-y-xl max-w-2xl">
       <header>
         <h2 className="text-title-2 text-primary font-bold">Settings</h2>
-        <p className="text-callout text-secondary mt-xs">
-          {school.name}
-        </p>
       </header>
+
+      <RenameSchoolCard
+        currentName={school.name}
+        csrfToken={csrfToken}
+        submitting={!!submitting}
+        actionData={actionData}
+      />
 
       <CopyableJoinCode joinCode={school.joinCode} />
 
@@ -83,6 +143,71 @@ export default function SettingsPage() {
         </p>
       </section>
     </div>
+  );
+}
+
+function RenameSchoolCard({
+  currentName,
+  csrfToken,
+  submitting,
+  actionData,
+}: {
+  currentName: string;
+  csrfToken: string;
+  submitting: boolean;
+  actionData: ActionResult | undefined;
+}): React.ReactElement {
+  return (
+    <section className="bg-surface border border-border rounded-xl p-xl">
+      <h3 className="text-title-3 text-primary font-semibold mb-sm">
+        School name
+      </h3>
+      <p className="text-callout text-secondary mb-md">
+        The name that teachers see when they sign up at{' '}
+        <code className="font-mono text-body">/signup</code> and that shows up
+        in their notifications.
+      </p>
+      <Form method="post" className="space-y-sm">
+        <input type="hidden" name="csrf" value={csrfToken} />
+        <input type="hidden" name="intent" value="rename_school" />
+        <label className="block">
+          <span className="sr-only">School name</span>
+          <input
+            type="text"
+            name="name"
+            defaultValue={currentName}
+            required
+            minLength={2}
+            maxLength={80}
+            className="w-full h-input px-md bg-surface border border-border rounded-md text-body text-primary focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition-colors duration-fast"
+          />
+        </label>
+        {actionData?.error && (
+          <p
+            role="alert"
+            className="text-callout text-danger rounded-md bg-danger-soft px-md py-sm"
+          >
+            {actionData.error}
+          </p>
+        )}
+        {actionData?.ok && (
+          <p
+            role="status"
+            className="text-callout text-success rounded-md bg-success-soft px-md py-sm"
+          >
+            Saved.
+          </p>
+        )}
+        <button
+          type="submit"
+          disabled={submitting}
+          className="h-btn-md px-xl rounded-md font-semibold bg-accent text-on-accent hover:opacity-90 disabled:opacity-60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 transition-colors duration-fast inline-flex items-center gap-sm"
+        >
+          <Save size={16} aria-hidden />
+          {submitting ? 'Saving…' : 'Save name'}
+        </button>
+      </Form>
+    </section>
   );
 }
 
