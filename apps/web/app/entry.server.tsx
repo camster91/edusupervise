@@ -61,6 +61,45 @@ function mintRequestId(request: Request): string {
 }
 
 /**
+ * Apply the baseline security headers that helmet would normally set.
+ * RR7 doesn't run Express middleware, so we set these on the response
+ * Headers object directly before SSR streams. CSP is intentionally
+ * NOT included here — adding it requires auditing the design-system's
+ * inline styles, which is a follow-up task (see audit R-15).
+ *
+ * Why not just call helmet() middleware: RR7's entry doesn't pass
+ * through Express. We could wrap express + helmet as a sub-app but
+ * that's a bigger change than just setting the headers we need.
+ *
+ * HSTS: only set in production (Set-Cookie + Secure imply HTTPS
+ * already, but we want the browser to remember it for the next visit
+ * without the Strict-Transport-Security header we send here).
+ */
+function applySecurityHeaders(headers: Headers, isProduction: boolean): void {
+  // Prevent MIME-type sniffing (the browser must respect our declared type)
+  headers.set('X-Content-Type-Options', 'nosniff');
+  // Block clickjacking — EduSupervise never embeds in an iframe.
+  // (If we add an embeddable widget later, switch to SAMEORIGIN.)
+  headers.set('X-Frame-Options', 'DENY');
+  // Limit referrer leakage — we send Referer only on same-origin
+  // requests, not when following an off-site link to a parent alert.
+  headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // Restrict browser features the app doesn't need (geolocation,
+  // microphone, payment, USB, etc.). Reduces XSS blast radius.
+  headers.set('Permissions-Policy',
+    'geolocation=(), microphone=(), camera=(), payment=(), usb=()');
+  if (isProduction) {
+    // 1-year HSTS — once a browser sees this on edusupervise.ashbi.ca
+    // it will refuse to load the site over HTTP for the next 12 months.
+    // Safe because the domain already serves valid HTTPS via Traefik.
+    headers.set(
+      'Strict-Transport-Security',
+      'max-age=31536000; includeSubDomains',
+    );
+  }
+}
+
+/**
  * Default handler exported by RR7's docs. We add per-request pino
  * logging on top: log start, log end with status + duration, and surface
  * any thrown error via the error boundary (which RR7 handles by calling
@@ -84,6 +123,11 @@ export default async function handleRequest(
   // Forward the request id back to the client so log correlation works
   // even when the request starts at a CDN or proxy.
   responseHeaders.set('X-Request-Id', requestId);
+
+  // Apply baseline security headers (replaces missing helmet wiring —
+  // audit slice-5 R-15). CSP is a follow-up because the design system
+  // uses inline styles.
+  applySecurityHeaders(responseHeaders, process.env.NODE_ENV === 'production');
 
   // CSRF double-submit cookie: mint a fresh token on every request that
   // doesn't already have one. The browser stores it; validation in
