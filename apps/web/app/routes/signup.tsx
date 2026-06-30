@@ -16,7 +16,7 @@
 import { useSearchParams } from 'react-router';
 import { Users, User, Sparkles } from 'lucide-react';
 import { SignupCard } from '../components/SignupCard';
-import { readCsrfCookie, mintCsrfCookie } from '../server/csrf.server';
+import { readCsrfCookie, mintCsrfCookie } from '../../server/csrf.server';
 
 export function meta() {
   return [{ title: 'Sign up — EduSupervise' }];
