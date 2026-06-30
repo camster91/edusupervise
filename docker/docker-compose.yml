@@ -76,6 +76,15 @@ services:
       - /data/uploads:/app/uploads
     mem_limit: 1.5g
     cpus: "1.0"
+    healthcheck:
+      # Hit the JSON health endpoint. Traefik would surface 502s but a
+      # wedged Node process serving only stale connections would not —
+      # so we curl directly inside the container network.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3011/api/health | grep -q '\"status\":\"ok\"' || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.edusupervise.rule=Host(`${APP_HOST:-edusupervise.ashbi.ca}`)"
@@ -104,6 +113,17 @@ services:
         condition: service_healthy
     mem_limit: 1g
     cpus: "1.0"
+    healthcheck:
+      # The worker has no HTTP endpoint. Probe Postgres + Redis
+      # connectivity (the two external deps). If either is down the
+      # worker can't process BullMQ jobs anyway.
+      test:
+        - CMD-SHELL
+        - "pg_isready -h postgres -p 5432 -d edusupervise && node -e \"const r=require('ioredis'); const c=new r(process.env.REDIS_URL); c.ping().then(p=>{process.exit(p==='PONG'?0:1)}).catch(()=>process.exit(1))\""
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   cron:
     image: alpine:3.20
@@ -132,3 +152,12 @@ services:
         condition: service_healthy
     mem_limit: 128m
     cpus: "0.2"
+    healthcheck:
+      # Cron is a sleep-loop; just confirm Postgres is still reachable.
+      # If it's not, the next nightly SQL run will fail loudly anyway,
+      # but a healthcheck surfaces the outage faster.
+      test: ["CMD-SHELL", "pg_isready -h postgres -p 5432 -d edusupervise"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+      start_period: 60s
