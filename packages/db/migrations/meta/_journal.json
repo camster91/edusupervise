@@ -15,6 +15,41 @@
       "when": 1782688681946,
       "tag": "0001_brave_gravity",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782710000000,
+      "tag": "0002_coverage_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1782711000000,
+      "tag": "0003_parent_alerts",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1782800000000,
+      "tag": "0004_rls_coverage_parent",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1782820000000,
+      "tag": "0005_duty_assigned_notification_kind",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782830000000,
+      "tag": "0006_signup_and_demo",
+      "breakpoints": true
     }
   ]
 }
