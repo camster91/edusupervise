@@ -7,8 +7,15 @@
 //
 // All three POST to their own /api/signup/* endpoint (CSRF-protected,
 // rate-limited). The card UI lives in `SignupCard`; this route is
-// only the page wrapper + initial loader (which pre-mints the CSRF
-// cookie so the cards have a token ready).
+// only the page wrapper.
+//
+// CSRF cookie mint happens in `entry.server.tsx` (every GET that
+// lacks the cookie gets one in the response) — do NOT mint it here
+// again. Doing so produces two `Set-Cookie` headers for the same
+// name; browsers pick one arbitrarily, which used to mean the form's
+// hidden csrf input was populated with a different value than the
+// cookie the action would compare against (track-2 worker finding,
+// 2026-06-30).
 //
 // On URL: ?school=CODE (lowercase) the Join card opens by default with
 // the code pre-filled — useful when admins paste the URL into chat.
@@ -16,27 +23,16 @@
 import { useSearchParams } from 'react-router';
 import { Users, User, Sparkles } from 'lucide-react';
 import { SignupCard } from '../components/SignupCard';
-import { readCsrfCookie, mintCsrfCookie } from '../../server/csrf.server';
 
 export function meta() {
   return [{ title: 'Sign up — EduSupervise' }];
 }
 
-export async function loader({ request }: { request: Request }) {
-  // Mint a CSRF cookie if one isn't already present so the cards have
-  // a token ready on the first paint.
-  const existing = readCsrfCookie(request);
-  if (existing) {
-    return { csrfCookiePresent: true as const };
-  }
-  const { setCookie } = mintCsrfCookie();
-  return new Response(JSON.stringify({ csrfCookiePresent: false as const }), {
-    status: 200,
-    headers: {
-      'content-type': 'application/json',
-      'Set-Cookie': setCookie,
-    },
-  });
+export function loader() {
+  // No loader logic. The CSRF cookie is minted by entry.server.tsx
+  // for every request that lacks one — see the file header for why
+  // we don't also mint it here.
+  return null;
 }
 
 export default function SignupPage() {
@@ -138,7 +134,7 @@ function JoinSchoolFields({ presetCode }: { presetCode: string }): React.ReactEl
         spellCheck={false}
         placeholder="SUNRISE-43"
         pattern="[A-Za-z0-9-]{4,12}"
-        className="w-full h-input px-md bg-surface border border-border rounded-md text-body text-primary uppercase tracking-wide font-mono focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition-colors duration-fast"
+        className="w-full h-input px-md bg-surface border border-border rounded-md text-body text-primary focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition-colors duration-fast"
       />
     </label>
   );
