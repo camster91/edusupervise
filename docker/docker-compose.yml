@@ -91,6 +91,9 @@ services:
       - "traefik.http.routers.edusupervise.entrypoints=websecure"
       - "traefik.http.routers.edusupervise.tls.certresolver=letsencrypt"
       - "traefik.http.services.edusupervise.loadbalancer.server.port=3011"
+      # audit slice-5 R-18: enable gzip/brotli compression on the proxy.
+      # The middleware is defined in /etc/traefik/dynamic/middlewares.yml.
+      - "traefik.http.routers.edusupervise.middlewares=compress-everything@file"
 
   worker:
     build:
