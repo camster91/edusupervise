@@ -7,6 +7,11 @@ export default [
   route('signup', 'routes/signup.tsx'),
   route('login', 'routes/login.tsx'),
   route('logout', 'routes/logout.tsx'),
+  route('forgot', 'routes/forgot.tsx'),
+  route('reset', 'routes/reset.tsx'),
+  route('verify-email', 'routes/verify-email.tsx'),
+  route('verify-phone', 'routes/verify-phone.tsx'),
+  route('auth/magic', 'routes/auth.magic.tsx'),
 
   // Onboarding (Phase 2A — Apple HIG spec)
   route('onboarding/teacher', 'routes/onboarding.teacher._index.tsx'),
