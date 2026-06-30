@@ -48,4 +48,10 @@ USER node
 # with symlinks, but the bundled code looks up modules relative to the
 # bundle directory which lacks those symlinks.
 ENV NODE_PATH=/app/node_modules
-CMD ["node", "apps/web/node_modules/@react-router/serve/dist/cli.js", "apps/web/build/server/index.js"]
+# IMPORTANT: react-router-serve resolves the static asset directory
+# (`build.assetsBuildDirectory`) against `process.cwd()`, NOT relative
+# to the bundle location. So `cd /app/apps/web` first — otherwise the
+# /assets/*.css and /assets/*.js URLs return 404 and the browser
+# renders the page as plain text blocks.
+# (Symptom captured 2026-06-30 live: /assets/root-maJnWpU3.css → 404.)
+CMD ["sh", "-c", "cd /app/apps/web && exec node apps/web/node_modules/@react-router/serve/dist/cli.js apps/web/build/server/index.js"]
