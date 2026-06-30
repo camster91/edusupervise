@@ -226,7 +226,24 @@ The existing `plan-downgrade.sql` runs as a chained step after `audit-retention.
 - `apps/web/app/routes/signup.tsx` — replace existing school+admin form with three-card layout.
 - `apps/web/app/routes/_app.tsx` — render `<DemoBanner />` when `plan === 'demo'`.
 - `apps/web/app/routes/_app.settings._index.tsx` — show `join_code` with copy button.
+- `apps/web/app/routes/onboarding.admin._index.tsx` — fix step 2 (see "Admin wizard step 2 fix" below).
 - `db/cron/plan-downgrade.sql` — add demo expiry update.
+
+### Admin wizard step 2 fix
+
+Currently `onboarding.admin._index.tsx` step 2 ("Add your teachers") is broken — it asks for a teacher count, says "we'll create placeholder accounts you can edit in the next step," but the next button just advances to step 3 without doing anything. The wizard's promise never lands.
+
+In the new public-signup world, admins no longer create teacher accounts — teachers sign up themselves with the school code. Step 2 is replaced with a "Share your school code" card that:
+
+1. Displays the school's `join_code` prominently (large monospace font, e.g. `SUNRISE-43`).
+2. Has a "Copy code" button (clipboard API, toast on success).
+3. Has a "Copy invite link" button (copies `https://edusupervise.ashbi.ca/signup?school=ENCODED_CODE`).
+4. Shows a one-paragraph explainer: "Share this code with your teachers. They'll enter it at /signup to join your school. Anyone with the code can join, so don't post it publicly."
+5. Lists any pending `signup_attempts` with `outcome='invalid_code'` from the last 24h as a soft hint (this lets the admin know if a teacher typed the code wrong).
+
+The wizard structure stays at 4 steps (Welcome → Share code → Duty template → Done) — the change is purely the step-2 content. No additional DB writes, no extra API endpoints.
+
+No additional loader work — `onboarding.admin._index.tsx` loader already has access to the school via the existing `withSchoolId` wrapper; the change is purely rendering the new card.
 
 ## Data flow
 
