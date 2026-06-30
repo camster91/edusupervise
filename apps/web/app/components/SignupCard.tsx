@@ -8,7 +8,7 @@
 // The mode-specific field is rendered by the `modeSpecific` slot.
 
 import { useState } from 'react';
-import { Form, useNavigation } from 'react-router';
+import { Form, useActionData, useNavigation } from 'react-router';
 import { useCsrfToken } from '~/lib/csrf';
 import { ChevronDown } from 'lucide-react';
 
@@ -30,8 +30,20 @@ export function SignupCard(props: SignupCardProps): React.ReactElement {
   const [open, setOpen] = useState(props.defaultOpen ?? false);
   const csrfToken = useCsrfToken();
   const nav = useNavigation();
+  // useActionData picks up the response body from /api/signup/{join,solo,demo}
+  // even though that route is separate from this /signup page. RR7's Form
+  // navigates to the action's response, and useActionData reflects the data
+  // returned. We filter by formAction so the card only shows errors from
+  // its OWN submit (not from the other two cards on the same page).
+  const actionData = useActionData() as { error?: string } | undefined;
   const submitting = nav.state !== 'idle' && nav.formAction === props.action;
-  const error = (nav.data as { error?: string } | undefined)?.error;
+  // Show the error either from the in-flight nav (when the response is still
+  // pending display) or from the most recent settled action for this formAction.
+  const navError =
+    nav.formAction === props.action
+      ? (nav.data as { error?: string } | undefined)?.error
+      : undefined;
+  const error = navError ?? actionData?.error;
 
   return (
     <div

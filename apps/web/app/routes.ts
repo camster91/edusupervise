@@ -38,6 +38,9 @@ export default [
   // Health check (no auth)
   route('api/health', 'routes/api.health.tsx'),
 
+  // Favicon (served as SVG, silently replaces the 404)
+  route('favicon.ico', 'routes/favicon[.]ico.ts'),
+
   // Public signup (3-card /signup page, migration 0006)
   route('api/signup/join', 'routes/api.signup.join.ts'),
   route('api/signup/solo', 'routes/api.signup.solo.ts'),
