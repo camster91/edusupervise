@@ -54,4 +54,4 @@ ENV NODE_PATH=/app/node_modules
 # /assets/*.css and /assets/*.js URLs return 404 and the browser
 # renders the page as plain text blocks.
 # (Symptom captured 2026-06-30 live: /assets/root-maJnWpU3.css → 404.)
-CMD ["sh", "-c", "cd /app/apps/web && exec node apps/web/node_modules/@react-router/serve/dist/cli.js apps/web/build/server/index.js"]
+CMD ["sh", "-c", "cd /app/apps/web && exec node node_modules/@react-router/serve/dist/cli.js build/server/index.js"]
