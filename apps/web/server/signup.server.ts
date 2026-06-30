@@ -163,7 +163,7 @@ export async function signupJoin(
           passwordHash,
           name: input.name,
           role: 'teacher',
-          emailVerifiedAt: new Date(),
+          emailVerifiedAt: sql`${new Date().toISOString()}::timestamptz`,
           isActive: true,
         })
         .returning({ id: users.id });
@@ -237,7 +237,7 @@ export async function signupSolo(
             schoolYearStart: sql`${schoolYearStart.toISOString().slice(0, 10)}::date`,
             schoolYearEnd: sql`${schoolYearEnd.toISOString().slice(0, 10)}::date`,
             plan: 'free',
-            trialEndsAt,
+            trialEndsAt: sql`${trialEndsAt.toISOString()}::timestamptz`,
             joinCode,
           })
           .returning({ id: schools.id });
@@ -251,7 +251,7 @@ export async function signupSolo(
             passwordHash,
             name: input.name,
             role: 'school_admin',
-            emailVerifiedAt: new Date(),
+            emailVerifiedAt: sql`${new Date().toISOString()}::timestamptz`,
             isActive: true,
           })
           .returning({ id: users.id });
@@ -334,7 +334,7 @@ export async function signupDemo(
           plan: 'demo',
           trialEndsAt: null,
           joinCode,
-          demoExpiresAt,
+          demoExpiresAt: sql`${demoExpiresAt.toISOString()}::timestamptz`,
           demoSeedVariant: 'elementary',
         })
         .returning({ id: schools.id });
@@ -348,7 +348,7 @@ export async function signupDemo(
           passwordHash,
           name: input.name,
           role: 'school_admin',
-          emailVerifiedAt: new Date(),
+          emailVerifiedAt: sql`${new Date().toISOString()}::timestamptz`,
           isActive: true,
         })
         .returning({ id: users.id });
@@ -712,12 +712,13 @@ export async function resetDemoSchool(args: {
       await seedDemoData(tx, args.schoolId, variant, args.userId);
 
       // Extend demo expiry
+      const newDemoExpiresAt = new Date(Date.now() + 30 * 86_400_000).toISOString();
       await tx
         .update(schools)
         .set({
           plan: 'demo',
-          demoExpiresAt: new Date(Date.now() + 30 * 86_400_000),
-          updatedAt: new Date(),
+          demoExpiresAt: sql`${newDemoExpiresAt}::timestamptz`,
+          updatedAt: sql`${new Date().toISOString()}::timestamptz`,
         })
         .where(eq(schools.id, args.schoolId));
     });

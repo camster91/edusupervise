@@ -125,6 +125,7 @@ export async function seedDemoData(
 
   // -- 1. Create teachers --
   const teacherIds: string[] = [];
+  const nowIso = new Date().toISOString();
   for (const t of spec.teachers) {
     const [row] = await tx
       .insert(users)
@@ -134,7 +135,7 @@ export async function seedDemoData(
         passwordHash: null, // demo teachers don't log in
         name: t.name,
         role: t.role,
-        emailVerifiedAt: new Date(),
+        emailVerifiedAt: sql`${nowIso}::timestamptz`,
         isActive: true,
       })
       .returning({ id: users.id });
@@ -208,7 +209,7 @@ export async function seedDemoData(
         schoolId,
         dutyId: row.id,
         userId: teacherIds[slot.assignedToIdx]!,
-        startDate: spec.schoolYearStart,
+        startDate: sql`${spec.schoolYearStart.toISOString().slice(0, 10)}::date`,
         endDate: null,
         createdBy: adminUserId,
       });
@@ -239,6 +240,7 @@ export async function seedDemoData(
   const lunchB = dutyIds[1];
   let coverageAssignmentId: string | null = null;
   if (lunchB) {
+    const notifiedAtIso = new Date(Date.now() - 5 * 60_000).toISOString();
     const [ca] = await tx
       .insert(coverageAssignments)
       .values({
@@ -248,7 +250,7 @@ export async function seedDemoData(
         originalTeacherId: absentTeacherId,
         newTeacherId: teacherIds[3], // Mr. Okafor
         status: 'pending',
-        notifiedAt: new Date(Date.now() - 5 * 60_000), // 5 min ago
+        notifiedAt: sql`${notifiedAtIso}::timestamptz`,
       })
       .returning({ id: coverageAssignments.id });
     if (ca) coverageAssignmentId = ca.id;
@@ -299,6 +301,9 @@ export async function seedDemoData(
   if (yesterdayEvent && parent2Id) {
     const lunchA = dutyIds[0];
     if (lunchA) {
+      const notifiedAtIso = new Date(yesterday.getTime() + 8 * 3600_000).toISOString();
+      const respondedAtIso = new Date(yesterday.getTime() + 8 * 3600_000 + 60_000).toISOString();
+      const sentAtIso = new Date(yesterday.getTime() + 8 * 3600_000 + 5 * 60_000).toISOString();
       const [ya] = await tx
         .insert(coverageAssignments)
         .values({
@@ -308,8 +313,8 @@ export async function seedDemoData(
           originalTeacherId: absentTeacherId,
           newTeacherId: teacherIds[4], // Ms. Rivera covered yesterday
           status: 'accepted',
-          notifiedAt: new Date(yesterday.getTime() + 8 * 3600_000),
-          respondedAt: new Date(yesterday.getTime() + 8 * 3600_000 + 60_000),
+          notifiedAt: sql`${notifiedAtIso}::timestamptz`,
+          respondedAt: sql`${respondedAtIso}::timestamptz`,
         })
         .returning({ id: coverageAssignments.id });
       if (ya) {
@@ -322,7 +327,7 @@ export async function seedDemoData(
           bodyShort: `Cafeteria Lunch A (11:00 AM–11:30 AM) on ${formatDate(yesterday)} was covered by Ms. Rivera. Reply STOP to opt out.`,
           bodyLong: null,
           status: 'sent',
-          sentAt: new Date(yesterday.getTime() + 8 * 3600_000 + 5 * 60_000),
+          sentAt: sql`${sentAtIso}::timestamptz`,
         });
       }
     }
