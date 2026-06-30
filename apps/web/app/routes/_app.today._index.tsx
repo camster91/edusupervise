@@ -26,6 +26,23 @@ import type { Route } from './+types/_app.today._index';
 import { getSession } from '../../server/auth.server.ts';
 import { withSchoolId } from '../../server/db.server.ts';
 import { HeroCard, EmptyState, WeekStrip, Sheet, Button } from '../components/ui';
+import { SkeletonCard } from '../components/Skeleton';
+
+/**
+ * Hydrate fallback: shown while the loader is fetching initial data
+ * during SSR-to-client hydration. Audit slice-4 R-F2 finding:
+ * without this, /app/today flash-of-empty-state was visible for
+ * 200-500ms on every navigation.
+ */
+export function HydrateFallback(): React.ReactElement {
+  return (
+    <div className="space-y-xl max-w-3xl">
+      <SkeletonCard rows={1} />
+      <SkeletonCard rows={4} />
+      <SkeletonCard rows={3} />
+    </div>
+  );
+}
 
 export function meta() {
   return [{ title: 'Today — EduSupervise' }];
