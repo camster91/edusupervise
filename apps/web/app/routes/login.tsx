@@ -24,7 +24,11 @@ import {
   newSessionTokenFor,
   sessionCookieAttributes,
 } from '../../server/auth.server';
-import { readCsrfCookie, validateCsrfWithFormToken } from '../../server/csrf.server';
+import {
+  mintCsrfCookie,
+  readCsrfCookie,
+  validateCsrfWithFormToken,
+} from '../../server/csrf.server';
 import { checkLoginByIp } from '../../server/rate-limit.server';
 
 export function meta() {
@@ -32,14 +36,19 @@ export function meta() {
 }
 
 /**
- * Loader returns the CSRF token from the request cookie so the form
- * can include it in a hidden field. Without this, browser form POSTs
- * fail with 403 because the cookie is HttpOnly in Chromium even when
- * the Set-Cookie header says otherwise (verifier finding,
- * 2026-06-30, B1).
+ * Loader returns the CSRF token so the form can include it in a
+ * hidden field. Mints a new cookie + token if the request doesn't
+ * already carry one — the form needs the real token to render on
+ * first paint. See signup.tsx for the full pattern.
  */
-export async function loader({ request }: { request: Request }) {
-  return { csrfToken: readCsrfCookie(request) ?? '' };
+export function loader({ request }: { request: Request }) {
+  const existing = readCsrfCookie(request);
+  if (existing) return { csrfToken: existing };
+  const { token, setCookie } = mintCsrfCookie();
+  return new Response(JSON.stringify({ csrfToken: token }), {
+    status: 200,
+    headers: { 'content-type': 'application/json', 'set-cookie': setCookie },
+  });
 }
 
 export async function action({ request }: Route.ActionArgs) {

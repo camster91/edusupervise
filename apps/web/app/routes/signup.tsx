@@ -9,13 +9,22 @@
 // rate-limited). The card UI lives in `SignupCard`; this route is
 // only the page wrapper.
 //
-// CSRF cookie mint happens in `entry.server.tsx` (every GET that
-// lacks the cookie gets one in the response) — do NOT mint it here
-// again. Doing so produces two `Set-Cookie` headers for the same
-// name; browsers pick one arbitrarily, which used to mean the form's
-// hidden csrf input was populated with a different value than the
-// cookie the action would compare against (track-2 worker finding,
-// 2026-06-30).
+// CSRF cookie mint+read (verifier finding, 2026-06-30):
+//   The previous version of this loader just read the cookie from
+//   request.headers.cookie and returned it. But on the FIRST visit,
+//   the cookie wasn't in the request (entry.server.tsx was queuing
+//   it for the response), so the loader returned csrfToken="" and
+//   the form was rendered with an empty hidden field. Even after
+//   the browser stored the cookie, the verifier observed that the
+//   form still rendered with value="" because RR7's .data request
+//   (which re-fetches loader data after a click) hit a route where
+//   the cookie lookup raced with the cookie mint.
+//
+//   The correct fix is to mint the cookie IN THIS LOADER when
+//   missing, attach the Set-Cookie header to the response, and
+//   return the freshly-minted token in loader data. This guarantees
+//   the cookie is set on the browser AND the loader data has the
+//   token, in the same response.
 //
 // On URL: ?school=CODE (lowercase) the Join card opens by default with
 // the code pre-filled — useful when admins paste the URL into chat.
@@ -23,26 +32,33 @@
 import { useLoaderData, useSearchParams } from 'react-router';
 import { Users, User, Sparkles } from 'lucide-react';
 import { SignupCard } from '../components/SignupCard';
-import { readCsrfCookie } from '../../server/csrf.server';
+import { mintCsrfCookie, readCsrfCookie } from '../../server/csrf.server';
 
 export function meta() {
   return [{ title: 'Sign up — EduSupervise' }];
 }
 
 /**
- * Loader reads the CSRF cookie from the request and returns it as
- * loader data. The form's hidden csrf input then uses this value
- * via useLoaderData() — bypassing the need for JS to read a
- * HttpOnly cookie (verifier finding, 2026-06-30).
- *
- * Why this works: the browser stores the cookie on the response
- * from entry.server.tsx, and includes it on the next request. The
- * server-side loader reads it (request.headers.cookie is fully
- * accessible), and the form gets the value via loader data on
- * first paint (SSR) — no useEffect, no client-side cookie read.
+ * Loader returns the CSRF token to use in form bodies, minting one
+ * (and attaching Set-Cookie) if the request doesn't already carry
+ * the cookie. This is the source of truth for the CSRF token —
+ * entry.server.tsx no longer mints it (avoids duplicate Set-Cookie).
  */
 export function loader({ request }: { request: Request }) {
-  return { csrfToken: readCsrfCookie(request) ?? '' };
+  const existing = readCsrfCookie(request);
+  if (existing) {
+    return { csrfToken: existing };
+  }
+  // No cookie yet — mint and set on the response so the browser
+  // gets the cookie AND we return the token to populate the form.
+  const { token, setCookie } = mintCsrfCookie();
+  return new Response(JSON.stringify({ csrfToken: token }), {
+    status: 200,
+    headers: {
+      'content-type': 'application/json',
+      'set-cookie': setCookie,
+    },
+  });
 }
 
 export default function SignupPage() {

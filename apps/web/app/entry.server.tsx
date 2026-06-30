@@ -38,7 +38,6 @@ import { renderToPipeableStream } from 'react-dom/server';
 import { randomUUID } from 'node:crypto';
 
 import { logger } from '../server/logger.server';
-import { CSRF_COOKIE_NAME, mintCsrfCookie } from '../server/csrf.server';
 
 // RR7 requires `streamTimeout` for the response stream. Five minutes is
 // the canonical default — long enough that very slow SSR (e.g. on a cold
@@ -138,17 +137,20 @@ export default async function handleRequest(
   // uses inline styles.
   applySecurityHeaders(responseHeaders, process.env.NODE_ENV === 'production');
 
-  // CSRF double-submit cookie: mint a fresh token on every request that
-  // doesn't already have one. The browser stores it; validation in
-  // csrf.server.ts#validateCsrf reads it back from `Cookie:` and
-  // compares against the `x-csrf-token` header (or form `csrf` field)
-  // on every mutating request. Mints happen on every request (cheap;
-  // the server stores no state) so a fresh visitor's first POST has
-  // a cookie to match.
-  const hasCsrf = (request.headers.get('cookie') ?? '').includes(CSRF_COOKIE_NAME);
-  if (!hasCsrf) {
-    responseHeaders.append('Set-Cookie', mintCsrfCookie().setCookie);
-  }
+  // CSRF cookie minting lives in the per-route loaders that need
+  // the token (signup.tsx, login.tsx, _app.tsx, settings). They
+  // attach Set-Cookie to their response AND return the token in
+  // loader data. Doing it here would duplicate Set-Cookie headers
+  // and produce races between two mints with different tokens.
+  //
+  // For routes WITHOUT a csrf-aware loader (e.g. /, /signup direct
+  // nav with a fresh user), we still want a cookie on the browser
+  // so the .data request that fires after the user clicks a card
+  // has something to read. The signup loader's mint covers the
+  // primary use case; for other routes we let the action-level
+  // CSRF check fail-and-redirect if the cookie is missing.
+  //
+  // The single-source-of-truth mint is in csrf.server.ts#mintCsrfCookie.
 
   // Bots get the full HTML at once — they don't execute the hydration
   // JS so partial streams just slow down indexing. Humans get a

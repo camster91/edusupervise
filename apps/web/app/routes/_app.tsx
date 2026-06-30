@@ -18,6 +18,7 @@ import { schools, notifications } from '@edusupervise/db';
 import type { Route } from './+types/_app';
 import { getSession } from '../../server/auth.server';
 import { withSchoolId } from '../../server/db.server';
+import { mintCsrfCookie, readCsrfCookie } from '../../server/csrf.server';
 import { Sidebar, Topbar, TabBar } from '../components/shell';
 import { ThemeStyle } from '../components/ThemeStyle';
 import { DemoBanner } from '../components/DemoBanner';
@@ -34,7 +35,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   // RLS-bound reads — must run inside withSchoolId so `app.school_id`
   // is set; otherwise the runtime role's FORCE RLS policy returns zero
   // rows for every tenant table.
-  return withSchoolId(session.schoolId, async (tx) => {
+  const loaderData = await withSchoolId(session.schoolId, async (tx) => {
     const [school] = await tx
       .select({
         id: schools.id,
@@ -70,10 +71,28 @@ export async function loader({ request }: Route.LoaderArgs) {
       unreadCount,
     };
   });
+
+  // Also expose the CSRF token from the request cookie so child
+  // components (DemoBanner, settings forms) can include it in
+  // hidden form fields. If the request doesn't carry the cookie
+  // yet (first visit), mint one + attach Set-Cookie to the
+  // response so the form's hidden field is populated.
+  const existing = readCsrfCookie(request);
+  if (existing) {
+    return { ...loaderData, csrfToken: existing };
+  }
+  const { token, setCookie } = mintCsrfCookie();
+  return new Response(
+    JSON.stringify({ ...loaderData, csrfToken: token }),
+    {
+      status: 200,
+      headers: { 'content-type': 'application/json', 'set-cookie': setCookie },
+    },
+  );
 }
 
 export default function AppShell(): React.ReactElement {
-  const { school, user, unreadCount } = useLoaderData<typeof loader>();
+  const { school, user, unreadCount, csrfToken } = useLoaderData<typeof loader>();
   const isDemo = school?.plan === 'demo';
   const isExpired = school?.plan === 'demo_expired';
 
@@ -81,7 +100,7 @@ export default function AppShell(): React.ReactElement {
     <ThemeStyle accent={school?.accentColor ?? '#3b82f6'}>
       <div className="min-h-screen bg-bg flex flex-col">
         {isDemo && school?.demoExpiresAt && (
-          <DemoBanner demoExpiresAt={school.demoExpiresAt} />
+          <DemoBanner demoExpiresAt={school.demoExpiresAt} csrfToken={csrfToken} />
         )}
         <div className="flex-1 min-h-screen flex">
           <Sidebar role={user.role} />

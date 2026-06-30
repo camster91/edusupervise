@@ -21,8 +21,11 @@ import {
 } from '../../server/auth.server';
 import { withSchoolId } from '../../server/db.server';
 import { CopyableJoinCode } from '../components/CopyableJoinCode';
-import { validateCsrfWithFormToken } from '../../server/csrf.server';
-import { useCsrfToken } from '../lib/csrf';
+import {
+  mintCsrfCookie,
+  readCsrfCookie,
+  validateCsrfWithFormToken,
+} from '../../server/csrf.server';
 import { logger } from '../../server/logger.server';
 
 export function meta() {
@@ -33,7 +36,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const session = requireSession(await getSession(request));
   requireRole(session, ['school_admin']);
 
-  return withSchoolId(session.schoolId, async (tx) => {
+  const data = await withSchoolId(session.schoolId, async (tx) => {
     const [school] = await tx
       .select({
         id: schools.id,
@@ -47,6 +50,21 @@ export async function loader({ request }: Route.LoaderArgs) {
       .limit(1);
     return { school: school ?? null };
   });
+
+  // Read CSRF token from the request cookie so the rename form's
+  // hidden field gets a real value via loader data. Mints + sets
+  // Set-Cookie when missing (first visit), matching the pattern
+  // in /signup, /login, /_app loaders.
+  const existing = readCsrfCookie(request);
+  if (existing) return { ...data, csrfToken: existing };
+  const { token, setCookie } = mintCsrfCookie();
+  return new Response(
+    JSON.stringify({ ...data, csrfToken: token }),
+    {
+      status: 200,
+      headers: { 'content-type': 'application/json', 'set-cookie': setCookie },
+    },
+  );
 }
 
 interface ActionResult {
@@ -94,8 +112,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function SettingsPage() {
-  const { school } = useLoaderData<typeof loader>();
-  const csrfToken = useCsrfToken();
+  const { school, csrfToken } = useLoaderData<typeof loader>();
   const actionData = useActionData() as ActionResult | undefined;
   const nav = useNavigation();
   const submitting =
