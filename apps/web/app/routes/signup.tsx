@@ -20,22 +20,33 @@
 // On URL: ?school=CODE (lowercase) the Join card opens by default with
 // the code pre-filled — useful when admins paste the URL into chat.
 
-import { useSearchParams } from 'react-router';
+import { useLoaderData, useSearchParams } from 'react-router';
 import { Users, User, Sparkles } from 'lucide-react';
 import { SignupCard } from '../components/SignupCard';
+import { readCsrfCookie } from '../../server/csrf.server';
 
 export function meta() {
   return [{ title: 'Sign up — EduSupervise' }];
 }
 
-export function loader() {
-  // No loader logic. The CSRF cookie is minted by entry.server.tsx
-  // for every request that lacks one — see the file header for why
-  // we don't also mint it here.
-  return null;
+/**
+ * Loader reads the CSRF cookie from the request and returns it as
+ * loader data. The form's hidden csrf input then uses this value
+ * via useLoaderData() — bypassing the need for JS to read a
+ * HttpOnly cookie (verifier finding, 2026-06-30).
+ *
+ * Why this works: the browser stores the cookie on the response
+ * from entry.server.tsx, and includes it on the next request. The
+ * server-side loader reads it (request.headers.cookie is fully
+ * accessible), and the form gets the value via loader data on
+ * first paint (SSR) — no useEffect, no client-side cookie read.
+ */
+export function loader({ request }: { request: Request }) {
+  return { csrfToken: readCsrfCookie(request) ?? '' };
 }
 
 export default function SignupPage() {
+  const { csrfToken } = useLoaderData<typeof loader>();
   const [params] = useSearchParams();
   const presetCode = params.get('school')?.toUpperCase().trim() ?? '';
 
@@ -55,6 +66,7 @@ export default function SignupPage() {
         <div className="space-y-md">
           <SignupCard
             id="join"
+            csrfToken={csrfToken}
             icon={<Users size={22} className="text-accent" aria-hidden />}
             title="Join a school"
             description="Enter the join code your admin shared with you. You'll join as a teacher."
@@ -69,6 +81,7 @@ export default function SignupPage() {
 
           <SignupCard
             id="solo"
+            csrfToken={csrfToken}
             icon={<User size={22} className="text-accent" aria-hidden />}
             title="I'm flying solo"
             description="Create a school for just yourself. You're the admin, so you can manage duties and billing."
@@ -94,6 +107,7 @@ export default function SignupPage() {
 
           <SignupCard
             id="demo"
+            csrfToken={csrfToken}
             icon={<Sparkles size={22} className="text-accent" aria-hidden />}
             title="Try the demo"
             description="Pre-seeded sample school with 5 teachers, 4 duties, and a live coverage scenario. Resets in 30 days."
