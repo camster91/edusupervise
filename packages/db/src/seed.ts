@@ -169,6 +169,7 @@ async function main(): Promise<void> {
           schoolYearStart: start.toISOString().slice(0, 10), // 'YYYY-MM-DD'
           schoolYearEnd: end.toISOString().slice(0, 10),
           plan: 'trial',
+          joinCode: 'MAPLE-42',
         })
         .returning({ id: schools.id });
       if (!inserted) throw new Error('seed: failed to insert demo school');
