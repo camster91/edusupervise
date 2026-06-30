@@ -235,6 +235,26 @@ export async function requestEmailVerification(email: string): Promise<ForgotRes
 }
 
 /**
+ * Dispatch a token-bearing email (password reset, magic link,
+ * email verify) to the right provider. Used by forgot.tsx +
+ * auth.magic.tsx.
+ *
+ * Real implementation: switch on kind → route to @edusupervise/email
+ * or @edusupervise/sms (Resend or Twilio). Today: log + return ok.
+ */
+export async function dispatchAuthEmail(
+  _kind: TokenKind,
+  email: string,
+  _token: string,
+): Promise<ForgotResult> {
+  logger.info(
+    { kind: _kind, email, stub: true },
+    'auth-flows.dispatchAuthEmail: stubbed — would send via Resend/Twilio',
+  );
+  return { ok: true, status: 'sent' };
+}
+
+/**
  * Stub: pretend to send a verification SMS.
  */
 export async function requestPhoneVerification(phone: string): Promise<ForgotResult> {
