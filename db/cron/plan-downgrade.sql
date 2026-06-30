@@ -1,11 +1,12 @@
--- Nightly plan-downgrade flip.
+-- Nightly plan-downgrade flip + demo expiry flip.
 -- Run from the `cron` container in compose (alpine + postgresql16-client),
 -- in the SAME loop slot as `db/cron/audit-retention.sql`.
 --
 -- 1. Flip schools whose plan_downgrade_effective_at has elapsed.
--- 2. Write an audit_log entry for each flip (system-initiated;
+-- 2. Flip demo schools whose demo_expires_at has elapsed (migration 0006).
+-- 3. Write an audit_log entry for each flip (system-initiated;
 --    user_id IS NULL).
--- 3. Clear plan_downgrade_pending_to + plan_downgrade_effective_at.
+-- 4. Clear plan_downgrade_pending_to + plan_downgrade_effective_at.
 --
 -- Notification fan-out (one row per active school_admin) is done by
 -- the application code path (apps/web/server/billing.server.ts#
@@ -26,6 +27,18 @@ UPDATE schools
     OR plan_downgrade_pending_to IS NOT NULL
    AND plan_downgrade_effective_at IS NOT NULL
    AND plan_downgrade_effective_at <= now();
+
+-- Migration 0006: demo schools auto-flip to read-only after 30 days.
+-- The school remains on disk — the user can extend via
+-- /app/api/demo/reset (which flips plan back to 'demo' and resets
+-- demo_expires_at). We do NOT delete the school or its data; the
+-- user might restart the demo.
+UPDATE schools
+   SET plan = 'demo_expired',
+       updated_at = now()
+ WHERE plan = 'demo'
+   AND demo_expires_at IS NOT NULL
+   AND demo_expires_at <= now();
 
 -- Audit row per flipped school. We capture the previous plan in the
 -- metadata so a post-mortem replay doesn't need the originating

@@ -77,6 +77,12 @@ export const schoolPlanEnum = pgEnum('school_plan', [
   'free',
   'pro',
   'school',
+  // Migration 0006: demo is a 30-day sandbox school created at /signup
+  // via the "Try the demo" card. demo_expired is the read-only state
+  // after demo_expires_at has elapsed; the user can still extend it
+  // via /app/api/demo/reset.
+  'demo',
+  'demo_expired',
 ]);
 export type SchoolPlan = (typeof schoolPlanEnum.enumValues)[number];
 
@@ -138,6 +144,20 @@ export const schools = pgTable(
     stripeSubscriptionId: text('stripe_subscription_id').unique(),
     logoUrl: text('logo_url'),
     accentColor: text('accent_color').default('#3b82f6'),
+    // Migration 0006: public signup uses `join_code` as the shareable
+    // identifier teachers type at /signup to join a school. Format is
+    // WORD-NN (e.g. SUNRISE-43). The migration backfilled existing rows
+    // from the first 4 hex chars of id + a 2-digit hash; admins can rename
+    // from /app/settings.
+    joinCode: text('join_code').notNull().unique(),
+    // When `plan='demo'`, this is the timestamp at which the demo flips
+    // to `plan='demo_expired'` via the nightly cron. NULL for non-demo
+    // schools.
+    demoExpiresAt: timestamp('demo_expires_at', { withTimezone: true }),
+    // Which deterministic seed dataset was used for this demo school
+    // (e.g. 'elementary'). NULL for non-demo schools. Used by
+    // `seedDemoData` to pick the right fixture set on reset.
+    demoSeedVariant: text('demo_seed_variant'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -157,6 +177,10 @@ export const schools = pgTable(
     check(
       'schools_year_within_14_months',
       sql`${t.schoolYearEnd} <= ${t.schoolYearStart} + interval '14 months'`,
+    ),
+    check(
+      'schools_join_code_format',
+      sql`${t.joinCode} ~ '^[A-Z][A-Z0-9]{1,7}-[0-9]{2,3}$'`,
     ),
     index('idx_schools_slug').on(t.slug),
   ],
@@ -480,6 +504,50 @@ export const auditLog = pgTable(
 );
 export type AuditLog = typeof auditLog.$inferSelect;
 export type NewAuditLog = typeof auditLog.$inferInsert;
+
+// ---------------------------------------------------------------------------
+// Signup attempts (Migration 0006)
+//
+// Append-only audit + rate-limit log for /api/signup/* endpoints.
+// Global table (no school_id FK to schools ON DELETE RESTRICT — instead
+// `school_id` is a soft reference with ON DELETE SET NULL so that a
+// school being purged doesn't cascade-delete its signup history).
+// ---------------------------------------------------------------------------
+
+export const signupAttempts = pgTable(
+  'signup_attempts',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    email: text('email').notNull(),
+    ipAddress: inet('ip_address'),
+    userAgent: text('user_agent'),
+    mode: text('mode').notNull(),
+    outcome: text('outcome').notNull(),
+    schoolId: uuid('school_id').references(() => schools.id, {
+      onDelete: 'set null',
+    }),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    check(
+      'signup_attempts_mode_check',
+      sql`${t.mode} IN ('join', 'solo', 'demo')`,
+    ),
+    check(
+      'signup_attempts_outcome_check',
+      sql`${t.outcome} IN ('success', 'invalid_code', 'duplicate_email', 'quota_full', 'rate_limited', 'error')`,
+    ),
+    index('idx_signup_attempts_email_created').on(t.email, t.createdAt),
+    index('idx_signup_attempts_ip_created')
+      .on(t.ipAddress, t.createdAt)
+      .where(sql`${t.ipAddress} IS NOT NULL`),
+    index('idx_signup_attempts_outcome').on(t.outcome, t.createdAt),
+  ],
+);
+export type SignupAttempt = typeof signupAttempts.$inferSelect;
+export type NewSignupAttempt = typeof signupAttempts.$inferInsert;
 
 // ---------------------------------------------------------------------------
 // Stripe webhook idempotency
@@ -1231,6 +1299,7 @@ export const schema = {
   reminderLog,
   outbox,
   auditLog,
+  signupAttempts,
   stripeEvents,
   workerHeartbeats,
   notifications,

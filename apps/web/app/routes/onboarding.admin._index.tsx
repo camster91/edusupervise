@@ -1,9 +1,10 @@
 // apps/web/app/routes/onboarding.admin._index.tsx — Admin wizard (HIG spec,
 // design system section 3.4).
 //
-// 3-4 card SMS-style flow:
+// 4-card SMS-style flow:
 //   1. Welcome + school name
-//   2. Add your teachers
+//   2. Share your join code  (replaces the broken "Add teachers" step
+//      that asked for a count but did nothing — see migration 0006)
 //   3. Choose a duty template
 //   4. You're all set
 //
@@ -12,9 +13,12 @@
 
 import { useState } from 'react';
 import { redirect, useNavigate, Link } from 'react-router';
-import { ArrowRight, ArrowLeft, Users, ClipboardList, Sparkles, School } from 'lucide-react';
+import { eq } from 'drizzle-orm';
+import { ArrowRight, ArrowLeft, ClipboardList, Sparkles, School, Copy, Check } from 'lucide-react';
 import type { Route } from './+types/onboarding.admin._index';
+import { schools } from '@edusupervise/db';
 import { getSession } from '../../server/auth.server';
+import { withSchoolId } from '../../server/db.server';
 import { Button } from '../components/ui';
 
 export function meta() {
@@ -24,23 +28,48 @@ export function meta() {
 export async function loader({ request }: Route.LoaderArgs) {
   const session = await getSession(request);
   if (!session) throw redirect('/login');
-  return { schoolName: 'Your school' };
+  return withSchoolId(session.schoolId, async (tx) => {
+    const [school] = await tx
+      .select({
+        id: schools.id,
+        name: schools.name,
+        joinCode: schools.joinCode,
+      })
+      .from(schools)
+      .where(eq(schools.id, session.schoolId))
+      .limit(1);
+    return {
+      schoolName: school?.name ?? 'Your school',
+      joinCode: school?.joinCode ?? null,
+    };
+  });
 }
 
 type Step = 0 | 1 | 2 | 3;
-const STEPS = ['Welcome', 'Add teachers', 'Duty template', 'You\'re set'] as const;
+const STEPS = ['Welcome', 'Share code', 'Duty template', 'You\'re set'] as const;
 
 export default function AdminOnboarding() {
-  const { schoolName } = useLoaderData<typeof loader>();
+  const { schoolName, joinCode } = useLoaderData<typeof loader>();
   const [step, setStep] = useState<Step>(0);
   const [name, setName] = useState(schoolName);
-  const [teacherCount, setTeacherCount] = useState(0);
   const [template, setTemplate] = useState<string>('elementary');
+  const [copied, setCopied] = useState(false);
   const navigate = useNavigate();
 
   const next = () => setStep((s) => Math.min(3, (s + 1) as Step));
   const back = () => setStep((s) => Math.max(0, (s - 1) as Step));
   const done = () => navigate('/app/today');
+
+  async function copyCode() {
+    if (!joinCode) return;
+    try {
+      await navigator.clipboard.writeText(joinCode);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      // no-op fallback
+    }
+  }
 
   return (
     <div className="min-h-screen bg-bg flex flex-col">
@@ -86,27 +115,31 @@ export default function AdminOnboarding() {
 
           {step === 1 && (
             <Step
-              icon={<Users size={32} className="text-accent" aria-hidden />}
-              title="Add your teachers"
-              description="You can add them now or import a CSV later from Settings."
+              icon={<School size={32} className="text-accent" aria-hidden />}
+              title="Share your join code"
+              description="Teachers sign themselves up at /signup with this code."
             >
-              <div>
-                <label className="block">
-                  <span className="text-subhead text-secondary font-semibold mb-xs block">
-                    How many teachers does your school have?
-                  </span>
-                  <input
-                    type="number"
-                    min="0"
-                    value={teacherCount}
-                    onChange={(e) => setTeacherCount(Number(e.target.value))}
-                    className="w-full h-input px-md bg-surface border border-border rounded-md text-body text-primary focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition-colors duration-fast tabular"
-                  />
-                </label>
-                <p className="text-footnote text-secondary mt-sm">
-                  We'll create placeholder accounts you can edit in the next step.
-                </p>
-              </div>
+              {joinCode ? (
+                <div>
+                  <code className="block w-full text-title-2 text-primary font-mono font-semibold tracking-wide bg-bg border border-border rounded-md px-md py-sm text-center select-all">
+                    {joinCode}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={copyCode}
+                    className="mt-md w-full h-btn-md rounded-md font-semibold bg-accent text-on-accent hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 transition-colors duration-fast inline-flex items-center justify-center gap-sm"
+                  >
+                    {copied ? <Check size={18} aria-hidden /> : <Copy size={18} aria-hidden />}
+                    {copied ? 'Copied' : 'Copy code'}
+                  </button>
+                  <p className="text-footnote text-secondary mt-md">
+                    Anyone with this code can join your school. Don't share it publicly.
+                    You can rename it later in Settings.
+                  </p>
+                </div>
+              ) : (
+                <p className="text-callout text-secondary">Loading join code…</p>
+              )}
             </Step>
           )}
 
@@ -174,8 +207,9 @@ export default function AdminOnboarding() {
               description="Your school is ready. We'll take you to your dashboard now."
             >
               <div className="bg-success-soft text-success rounded-md p-md text-callout">
-                <strong>Tip:</strong> Import your teacher roster from CSV in Settings →
-                Roster to skip manual entry.
+                <strong>Tip:</strong> Share your join code with your teachers so
+                they can sign up at <code>/signup</code>. You can always find it
+                again in Settings → School.
               </div>
             </Step>
           )}

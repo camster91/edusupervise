@@ -65,3 +65,25 @@ export function csrfFormField(): { name: string; value: string } {
   const token = readCsrfToken();
   return { name: CSRF_FORM_FIELD, value: token ?? '' };
 }
+
+/**
+ * React hook that returns the current CSRF token from the cookie.
+ * Returns `null` during SSR / before the cookie is set (which is
+ * normal — the cookie is set on the first GET response, so the first
+ * render after hydration reads it).
+ *
+ * Components that include this token in a hidden form field should
+ * re-render once the token becomes available (the hook triggers a
+ * `useState` update on mount, which is sufficient — RR7 will re-render
+ * the form once the cookie is in `document.cookie`).
+ */
+import { useEffect, useState } from 'react';
+
+export function useCsrfToken(): string {
+  const [token, setToken] = useState<string>('');
+  useEffect(() => {
+    const v = readCsrfToken();
+    if (v) setToken(v);
+  }, []);
+  return token;
+}
