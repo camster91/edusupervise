@@ -10,12 +10,12 @@ import { useEffect, useState } from 'react';
 import { Form, useActionData } from 'react-router';
 import type { Route } from './+types/reset';
 import { eq } from 'drizzle-orm';
-import { hashPassword, newSessionTokenFor, sessionCookieAttributes } from '../server/auth.server';
-import { validateCsrf } from '../server/csrf.server';
+import { hashPassword, newSessionTokenFor, sessionCookieAttributes } from '../../server/auth.server';
+import { validateCsrf } from '../../server/csrf.server';
 import {
   TOKEN_KIND,
   consumeToken,
-} from '../server/auth-flows.server';
+} from '../../server/auth-flows.server';
 import { getSystemClient, users } from '@edusupervise/db';
 import { z } from 'zod';
 

@@ -22,15 +22,15 @@ import type { Route } from './+types/forgot';
 import { getSystemClient } from '@edusupervise/db';
 import { z } from 'zod';
 
-import { validateCsrf } from '../server/csrf.server';
-import { checkForgotByEmail } from '../server/rate-limit.server';
+import { validateCsrf } from '../../server/csrf.server';
+import { checkForgotByEmail } from '../../server/rate-limit.server';
 import {
   TOKEN_KIND,
   dispatchAuthEmail,
   findUserByEmail,
   mintToken,
   persistToken,
-} from '../server/auth-flows.server';
+} from '../../server/auth-flows.server';
 
 // Re-use the auth-schema email normalization (lowercase + trim) so
 // the route doesn't drift from the spec's email rules.

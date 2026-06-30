@@ -23,9 +23,9 @@ import type { Route } from './+types/verify-phone';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { getSystemClient, users } from '@edusupervise/db';
-import { validateCsrf } from '../server/csrf.server';
-import { checkPhoneVerify } from '../server/rate-limit.server';
-import { sendVerificationCode, verifyCode } from '../server/verify-phone.server';
+import { validateCsrf } from '../../server/csrf.server';
+import { checkPhoneVerify } from '../../server/rate-limit.server';
+import { sendVerificationCode, verifyCode } from '../../server/verify-phone.server';
 
 const phoneSchema = z
   .string()
