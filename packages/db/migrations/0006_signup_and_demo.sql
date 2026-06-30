@@ -1,23 +1,34 @@
--- Migration 0006: Public signup + demo mode (spec docs/superpowers/specs/2026-06-29--public-signup-and-demo-mode.md)
+-- Migration 0006: Public signup + demo mode
+-- (docs/superpowers/specs/2026-06-29--public-signup-and-demo-mode.md)
 --
--- This migration is run MANUALLY in 3 psql invocations because Postgres
--- does not allow more than one ALTER TYPE ... ADD VALUE inside a single
--- transaction. Order matters: enum values must exist before the
--- DEFAULT / CHECK constraints that reference them.
+-- IMPORTANT: This migration was rewritten on 2026-06-30 because the
+-- live DB uses a CHECK constraint on schools.plan (not a pgEnum). The
+-- Drizzle-side pgEnum in packages/db/src/schema.ts is just a
+-- TypeScript abstraction; the actual DB constraint is `schools_plan_check`.
 --
---   psql ... -c "ALTER TYPE school_plan ADD VALUE IF NOT EXISTS 'demo';"
---   psql ... -c "ALTER TYPE school_plan ADD VALUE IF NOT EXISTS 'demo_expired';"
---   psql ... -f 0006_signup_and_demo.sql
+-- Run as a single psql invocation (no separate ALTER TYPE calls).
 --
--- Idempotent: every ADD COLUMN / CREATE INDEX / CREATE TABLE uses
+-- Idempotent: every ALTER TABLE / CREATE INDEX / CREATE TABLE uses
 -- IF NOT EXISTS where the syntax supports it; GRANT statements are
 -- additive (Postgres grants are idempotent by default).
 
--- ============================================================================
--- Step 3 content (run AFTER both ALTER TYPE statements above have committed)
--- ============================================================================
-
 \set ON_ERROR_STOP on
+
+-- ---------------------------------------------------------------------------
+-- Extend schools.plan CHECK to include 'demo' and 'demo_expired'
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE schools DROP CONSTRAINT IF EXISTS schools_plan_check;
+ALTER TABLE schools
+  ADD CONSTRAINT schools_plan_check
+  CHECK (plan = ANY (ARRAY[
+    'trial'::text,
+    'free'::text,
+    'pro'::text,
+    'school'::text,
+    'demo'::text,
+    'demo_expired'::text
+  ]));
 
 -- ---------------------------------------------------------------------------
 -- schools: add join_code, demo_expires_at, demo_seed_variant
@@ -26,11 +37,11 @@
 ALTER TABLE schools
   ADD COLUMN IF NOT EXISTS join_code text;
 
--- Backfill existing rows with a unique code derived from id. The fallback
--- is the first 4 chars of the uuid uppercased + a 2-digit hash of the
--- full uuid (00–99). On UNIQUE collision we retry up to 10 times; if all
--- fail the row gets a sentinel 'LEGACY-NN' code which an admin can
--- rename from /app/settings.
+-- Backfill existing rows with a unique code derived from id. The format
+-- is HEXHEX-NN where HEXHEX is the first 4 chars of the uuid uppercased
+-- and NN is a 2-digit hash of the full uuid (00–99). On UNIQUE collision
+-- we retry up to 10 times; if all fail the row gets a sentinel 'LEGACY-NN'
+-- code which an admin can rename from /app/settings.
 DO $$
 DECLARE
   r record;
@@ -62,6 +73,24 @@ ALTER TABLE schools
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_schools_join_code ON schools (join_code);
 
+-- ---------------------------------------------------------------------------
+-- Update the schema-level CHECK constraints documented in
+-- packages/db/src/schema.ts (the Drizzle side mirrors these but the SQL
+-- is the source of truth for live DB).
+--
+--   schools_join_code_format:
+--     ^[A-Z][A-Z0-9]{1,7}-[0-9]{2,3}$
+-- ---------------------------------------------------------------------------
+
+ALTER TABLE schools DROP CONSTRAINT IF EXISTS schools_join_code_format_check;
+ALTER TABLE schools
+  ADD CONSTRAINT schools_join_code_format_check
+  CHECK (join_code ~ '^[A-Z][A-Z0-9]{1,7}-[0-9]{2,3}$');
+
+-- ---------------------------------------------------------------------------
+-- demo_expires_at + demo_seed_variant
+-- ---------------------------------------------------------------------------
+
 ALTER TABLE schools
   ADD COLUMN IF NOT EXISTS demo_expires_at timestamptz;
 
@@ -71,10 +100,9 @@ ALTER TABLE schools
 -- ---------------------------------------------------------------------------
 -- signup_attempts: rate-limit + audit trail for /api/signup/* endpoints.
 --
--- Global table (no school_id) so a fresh signup attempt is logged before
--- we know which school the user is joining. Indexed on (email, created_at)
--- and (ip_address, created_at) so the rate-limit query is a cheap
--- range scan.
+-- Global table (no school_id FK to schools ON DELETE RESTRICT — instead
+-- `school_id` is a soft reference with ON DELETE SET NULL so that a
+-- school being purged doesn't cascade-delete its signup history).
 -- ---------------------------------------------------------------------------
 
 CREATE TABLE IF NOT EXISTS signup_attempts (
