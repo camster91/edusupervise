@@ -38,6 +38,14 @@ export default [
   // Health check (no auth)
   route('api/health', 'routes/api.health.tsx'),
 
+  // Public signup (3-card /signup page, migration 0006)
+  route('api/signup/join', 'routes/api.signup.join.ts'),
+  route('api/signup/solo', 'routes/api.signup.solo.ts'),
+  route('api/signup/demo', 'routes/api.signup.demo.ts'),
+
+  // Demo reset (authenticated school_admin only)
+  route('app/api/demo/reset', 'routes/app.api.demo.reset.ts'),
+
   // Billing
   route('api/billing/checkout', 'routes/api.billing.checkout.tsx'),
   route('api/billing/portal', 'routes/api.billing.portal.tsx'),
