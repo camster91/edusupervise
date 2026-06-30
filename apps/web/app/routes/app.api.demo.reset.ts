@@ -14,7 +14,9 @@ import { resetDemoSchool } from '../../server/signup.server';
 import { logger } from '../../server/logger.server';
 
 export async function loader() {
-  return new Response('Method Not Allowed', { status: 405 });
+  // GET on this POST-only endpoint — redirect to /app/today so an
+  // accidental URL-bar hit lands in the app (not on a bare 405).
+  return redirect('/app/today');
 }
 
 export async function action({ request }: Route.ActionArgs) {

@@ -19,7 +19,9 @@ import {
 import { logger } from '../../server/logger.server';
 
 export async function loader() {
-  return new Response('Method Not Allowed', { status: 405 });
+  // GET on this POST-only endpoint — likely someone testing the URL.
+  // Redirect to /signup so the visit lands on the actual form.
+  return redirect('/signup');
 }
 
 function clientIp(request: Request): string | null {
