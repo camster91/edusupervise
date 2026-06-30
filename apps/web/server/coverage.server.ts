@@ -30,6 +30,7 @@ import { and, eq, gte, lte, ne, not, isNull, sql, inArray } from 'drizzle-orm';
 import { coverageEvents, coverageAssignments, duties, dutyAssignments, users, notifications, cycleCalendar, getSystemClient, type Db } from '@edusupervise/db';
 import { getDb, withSchoolId } from './db.server';
 import { createHash } from 'node:crypto';
+import { recordAudit, AUDIT } from './audit.server';
 
 export type CoverageSource = 'direct' | 'frontline' | 'red_rover' | 'swing' | 'manual';
 
@@ -370,6 +371,16 @@ export async function acceptCoverage(args: {
       // Don't fail the acceptance because of an alert hiccup.
       console.warn('coverage.parent_alert_generation_failed', { assignmentId, err });
     }
+
+    // Audit row — operational trail (who accepted what coverage when).
+    await recordAudit({
+      schoolId,
+      userId: args.teacherId,
+      action: AUDIT.COVERAGE_ACCEPT,
+      targetType: 'coverage_assignment',
+      targetId: assignmentId,
+      metadata: { assignmentId, teacherId: args.teacherId },
+    });
   } finally {
     await sysClient.close();
   }
@@ -420,6 +431,21 @@ export async function declineCoverage(args: {
     // (Idempotent: the routeAbsence function will skip already-accepted
     // assignments and re-route any uncovered ones.)
     await routeAbsence({ absenceId: eventId });
+
+    // Audit row.
+    await recordAudit({
+      schoolId,
+      userId: args.teacherId,
+      action: AUDIT.COVERAGE_DECLINE,
+      targetType: 'coverage_assignment',
+      targetId: args.assignmentId,
+      metadata: {
+        assignmentId: args.assignmentId,
+        teacherId: args.teacherId,
+        reason: args.reason ?? null,
+        reRoutedEventId: eventId,
+      },
+    });
   } finally {
     await sysClient.close();
   }

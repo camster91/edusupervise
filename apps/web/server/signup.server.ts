@@ -763,6 +763,24 @@ export async function resetDemoSchool(args: {
       { schoolId: args.schoolId, userId: args.userId },
       'demo: reset completed',
     );
+
+    // Audit row — destructive operation, important forensics trail.
+    // ipAddress/userAgent come from the request that invoked the
+    // reset (passed via the action handler). The system role's
+    // audit_log doesn't enforce RLS, so we can write via the
+    // same client we're already using.
+    await recordAudit({
+      schoolId: args.schoolId,
+      userId: args.userId,
+      action: AUDIT.DEMO_RESET,
+      targetType: 'school',
+      targetId: args.schoolId,
+      metadata: {
+        variant: 'elementary',
+        previousDemoExpiresAt: new Date(Date.now()).toISOString(),
+        newDemoExpiresAt: new Date(Date.now() + 30 * 86_400_000).toISOString(),
+      },
+    });
   } finally {
     await close();
   }

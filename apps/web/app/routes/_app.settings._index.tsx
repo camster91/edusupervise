@@ -26,6 +26,7 @@ import {
   readCsrfCookie,
   validateCsrfWithFormToken,
 } from '../../server/csrf.server';
+import { recordAudit, AUDIT } from '../../server/audit.server';
 import { logger } from '../../server/logger.server';
 
 export function meta() {
@@ -102,6 +103,14 @@ export async function action({ request }: Route.ActionArgs) {
       { userId: session.userId, schoolId: session.schoolId, newName },
       'settings: renamed school',
     );
+    await recordAudit({
+      schoolId: session.schoolId,
+      userId: session.userId,
+      action: AUDIT.SCHOOL_RENAME,
+      targetType: 'school',
+      targetId: session.schoolId,
+      metadata: { newName },
+    });
     return Response.json({ ok: true } satisfies ActionResult);
   }
 
