@@ -28,6 +28,7 @@ import {
 import { hashPassword } from './auth.server';
 import { logger } from './logger.server';
 import { seedDemoData } from './demo-seed.server';
+import { recordAudit, AUDIT, requestMetadata } from './audit.server';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -170,6 +171,17 @@ export async function signupJoin(
 
       await logAttempt(input.email, ctx, 'join', 'success', school.id, user.id);
       logger.info({ userId: user.id, schoolId: school.id, mode: 'join' }, 'signup: success');
+      // Audit row — non-fatal if it fails (see audit.server.ts).
+      await recordAudit({
+        schoolId: school.id,
+        userId: user.id,
+        action: AUDIT.USER_SIGNUP_JOIN,
+        targetType: 'user',
+        targetId: user.id,
+        metadata: { email: input.email.toLowerCase(), mode: 'join' },
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+      });
       return { ok: true, userId: user.id, schoolId: school.id };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -265,6 +277,20 @@ export async function signupSolo(
         { userId: result.user.id, schoolId: result.school.id, mode: 'solo' },
         'signup: success',
       );
+      await recordAudit({
+        schoolId: result.school.id,
+        userId: result.user.id,
+        action: AUDIT.USER_SIGNUP_SOLO,
+        targetType: 'school',
+        targetId: result.school.id,
+        metadata: {
+          email: input.email.toLowerCase(),
+          schoolName,
+          mode: 'solo',
+        },
+        ipAddress: ctx.ipAddress,
+        userAgent: ctx.userAgent,
+      });
       return { ok: true, userId: result.user.id, schoolId: result.school.id };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
@@ -366,6 +392,16 @@ export async function signupDemo(
       { userId: result.user.id, schoolId: result.school.id, mode: 'demo' },
       'signup: success',
     );
+    await recordAudit({
+      schoolId: result.school.id,
+      userId: result.user.id,
+      action: AUDIT.USER_SIGNUP_DEMO,
+      targetType: 'school',
+      targetId: result.school.id,
+      metadata: { email: input.email.toLowerCase(), mode: 'demo' },
+      ipAddress: ctx.ipAddress,
+      userAgent: ctx.userAgent,
+    });
     return { ok: true, userId: result.user.id, schoolId: result.school.id };
   } catch (err) {
     logger.error({ err, mode: 'demo' }, 'signup: failed');
