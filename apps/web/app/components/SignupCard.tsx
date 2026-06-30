@@ -9,7 +9,6 @@
 
 import { useState } from 'react';
 import { Form, useActionData, useNavigation } from 'react-router';
-import { useCsrfToken } from '~/lib/csrf';
 import { ChevronDown } from 'lucide-react';
 
 export interface SignupCardProps {
@@ -24,11 +23,20 @@ export interface SignupCardProps {
   defaultOpen?: boolean;
   /** Hidden field set when the card is open (e.g. pre-filled schoolCode). */
   hiddenFields?: Record<string, string>;
+  /**
+   * CSRF token to write into the hidden form field. MUST be supplied
+   * by the caller — read it server-side from the request cookie and
+   * pass it down. We can't read it from `document.cookie` because
+   * Chromium treats the `__Host-` cookie prefix as HttpOnly even
+   * when the Set-Cookie header says otherwise (verifier finding,
+   * 2026-06-30).
+   */
+  csrfToken: string;
 }
 
 export function SignupCard(props: SignupCardProps): React.ReactElement {
   const [open, setOpen] = useState(props.defaultOpen ?? false);
-  const csrfToken = useCsrfToken();
+  const csrfToken = props.csrfToken;
   const nav = useNavigation();
   // useActionData picks up the response body from /api/signup/{join,solo,demo}
   // even though that route is separate from this /signup page. RR7's Form

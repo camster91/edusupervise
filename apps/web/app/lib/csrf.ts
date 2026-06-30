@@ -68,6 +68,7 @@ export function csrfFormField(): { name: string; value: string } {
 
 /**
  * React hook that returns the current CSRF token from the cookie.
+ *
  * Returns an empty string during SSR (where `document` is unavailable)
  * and the actual cookie value on the client.
  *
@@ -77,6 +78,16 @@ export function csrfFormField(): { name: string; value: string } {
  * response). Reading it synchronously in render means the form's
  * hidden csrf input is populated on the very first paint, so a fast
  * form submit never sees an empty value.
+ *
+ * ⚠️ Note (2026-06-30 verifier finding): the `__Host-` cookie prefix
+ * combined with Chromium's cookie-attribute parsing means
+ * `document.cookie` may return 'placeholder' / empty for cookies
+ * whose name uses the prefix — even when the Set-Cookie header
+ * includes HttpOnly=false. Use this hook ONLY in dev environments
+ * where the cookie is non-HttpOnly. In production, prefer passing
+ * the token via loader data (see apps/web/app/routes/signup.tsx
+ * loader, which reads from the request's own cookie server-side
+ * and returns the token to the form via loader data).
  */
 export function useCsrfToken(): string {
   if (typeof document === 'undefined') return '';

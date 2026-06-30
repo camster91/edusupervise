@@ -1,0 +1,12 @@
+{
+  "last_cycle": [
+    {
+      "task_id": "track-1-demo-signup",
+      "verdict": "manual_retry",
+      "reason": "Verifier correctly identified a real bug: Chromium treats the __Host- CSRF cookie as HttpOnly even when Set-Cookie says HttpOnly=false, so the form's hidden csrf input stays empty. Fix is in the working tree (loader-csrf pattern across signup, login, _app, settings, ExpiredDemo; plus onboarding.admin useLoaderData import; plus demo seed idempotency via ON CONFLICT). Deploying now — when you re-run, the form's hidden csrf input will be populated from loader data (not document.cookie). Rate-limit may still trip from prior track-1/3/4/5 probes on the same egress IP — first POST after the rate-limit window expires (about 1hr from 14:35) should be the canary. If it still 429s, wait the remaining window. Take a screenshot of /signup showing the now-populated csrf hidden input (length > 0) before submitting — that is the one-line visual proof the loader-data wiring is correct."
+    }
+  ],
+  "next_cycle": [],
+  "plan_complete": false,
+  "message_to_user": "Track-1 verifier rejected (correctly) — the CSRF cookie HttpOnly-in-Chromium bug is real. Fix is being deployed this minute (loader-csrf pattern across 5 routes + useLoaderData import + idempotent seed). Manual retry is gated on deploy; verifier should re-run after deploy lands."
+}

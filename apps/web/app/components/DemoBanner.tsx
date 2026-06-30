@@ -13,14 +13,18 @@
 import { useState } from 'react';
 import { Form } from 'react-router';
 import { Sparkles, RefreshCw, ExternalLink, AlertTriangle } from 'lucide-react';
-import { useCsrfToken } from '~/lib/csrf';
 
 export interface DemoBannerProps {
   demoExpiresAt: string;       // ISO date string
+  /**
+   * CSRF token to write into the reset form's hidden field. Caller
+   * MUST pass this from loader data (read server-side from the
+   * request cookie). We can't read the `__Host-` cookie from JS.
+   */
+  csrfToken: string;
 }
 
-export function DemoBanner({ demoExpiresAt }: DemoBannerProps): React.ReactElement | null {
-  const csrfToken = useCsrfToken();
+export function DemoBanner({ demoExpiresAt, csrfToken }: DemoBannerProps): React.ReactElement | null {
   const expires = new Date(demoExpiresAt);
   const now = new Date();
   const msLeft = expires.getTime() - now.getTime();
