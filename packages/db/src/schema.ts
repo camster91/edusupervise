@@ -1071,7 +1071,7 @@ export const coverageEventsRelations = relations(coverageEvents, ({ one, many })
   assignments: many(coverageAssignments),
 }));
 
-export const coverageAssignmentsRelations = relations(coverageAssignments, ({ one }) => ({
+export const coverageAssignmentsRelations = relations(coverageAssignments, ({ one, many }) => ({
   event: one(coverageEvents, {
     fields: [coverageAssignments.coverageEventId],
     references: [coverageEvents.id],

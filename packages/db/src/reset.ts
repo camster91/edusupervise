@@ -41,7 +41,10 @@ async function main(): Promise<void> {
         'This script drops the public schema and is for dev only.',
     );
   }
-  const sql = postgres(databaseUrl, { max: 1 });
+  // The DATABASE_URL presence guard above proves this is defined;
+  // the non-null assertion tells TypeScript that too without making
+  // the surrounding code deal with a possibly-undefined string.
+  const sql = postgres(databaseUrl!, { max: 1 });
   try {
     console.log('reset: dropping public schema ...');
     await sql.unsafe(`DROP SCHEMA IF EXISTS public CASCADE`);

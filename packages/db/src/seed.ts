@@ -37,15 +37,14 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import postgres from 'postgres';
 import {
-  addMonthsUtc,
   duties,
   dutyAssignments,
-  firstMondayOfSeptember,
   planLimits,
   schools,
   users,
   type NewDuty,
 } from './schema.js';
+import { addMonthsUtc, firstMondayOfSeptember } from './cycle-math.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 
@@ -117,7 +116,10 @@ async function main(): Promise<void> {
     throw new Error('seed: ALLOW_DEV_SEED must be set to run in non-prod');
   }
 
-  const sql = postgres(databaseUrl, { max: 1 });
+  // The DATABASE_URL presence guard above proves this is defined;
+  // the non-null assertion tells TypeScript that too without making
+  // the surrounding code deal with a possibly-undefined string.
+  const sql = postgres(databaseUrl!, { max: 1 });
   const db = drizzle(sql, { schema: { planLimits, schools, users, duties, dutyAssignments } });
 
   try {
