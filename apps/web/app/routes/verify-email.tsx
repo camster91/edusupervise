@@ -118,32 +118,6 @@ export async function action({ request }: Route.ActionArgs) {
   }
 }
 
-/**
- * Helper used by the signup route (and admin-invite) to issue a
- * verification email. Returns true on success.
- */
-export async function sendEmailVerification(
-  email: string,
-): Promise<{ ok: boolean; url?: string; error?: string }> {
-  const systemUrl =
-    process.env.SYSTEM_DATABASE_URL ?? process.env.DATABASE_URL;
-  if (!systemUrl) {
-    return { ok: false, error: 'server_misconfigured' };
-  }
-  const { db, close } = getSystemClient(systemUrl);
-  try {
-    const user = await findUserByEmail(db, email);
-    if (!user) return { ok: false, error: 'user_not_found' };
-    const { token, expiresAt } = mintToken(TOKEN_KIND.VERIFY_EMAIL, user.email);
-    await persistToken(db, TOKEN_KIND.VERIFY_EMAIL, user.email, token, expiresAt);
-    const appUrl = process.env.APP_URL ?? 'http://localhost:3000';
-    const url = `${appUrl}/verify-email?auto=1#token=${encodeURIComponent(token)}&email=${encodeURIComponent(user.email)}`;
-    return { ok: true, url };
-  } finally {
-    await close();
-  }
-}
-
 export default function VerifyEmailPage() {
   const data = useActionData() as
     | { ok?: boolean; redirectTo?: string; error?: string; detail?: string }

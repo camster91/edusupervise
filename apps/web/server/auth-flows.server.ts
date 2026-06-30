@@ -1,10 +1,10 @@
-// apps/web/server/auth-flows.server.ts — stub for password reset +
+// apps/web/server/auth-flows.server.ts — password reset +
 // email/phone verification + magic link flows.
 //
 // All of these flows depend on email/SMS delivery (Resend, Twilio)
 // which are mocked in this codebase (EMAIL_PROVIDER=mock,
 // SMS_PROVIDER=mock). When the real providers are wired up,
-// this module grows the actual implementations.
+// the stub functions below grow into real implementations.
 //
 // What exists today:
 //   - Token store: better_auth's `auth_verification` table (uuid PK,
@@ -20,6 +20,24 @@
 import { logger } from './logger.server';
 
 // ---------------------------------------------------------------------------
+// Token kind constants
+// ---------------------------------------------------------------------------
+
+/**
+ * Token kinds stored in auth_verification.identifier column.
+ * The schema's `kind` enum (verify_email, verify_phone, password_reset,
+ * magic_link) maps 1:1 to these strings.
+ */
+export const TOKEN_KIND = {
+  VERIFY_EMAIL: 'verify_email',
+  VERIFY_PHONE: 'verify_phone',
+  PASSWORD_RESET: 'password_reset',
+  MAGIC_LINK: 'magic_link',
+} as const;
+
+export type TokenKind = (typeof TOKEN_KIND)[keyof typeof TOKEN_KIND];
+
+// ---------------------------------------------------------------------------
 // Token primitives
 // ---------------------------------------------------------------------------
 
@@ -33,11 +51,100 @@ export function generateAuthToken(): string {
   if (typeof crypto !== 'undefined' && 'getRandomValues' in crypto) {
     crypto.getRandomValues(buf);
   } else {
-    // Node fallback (unused in the browser bundle; typescript
-    // narrows when the bundle is server-only).
     for (let i = 0; i < buf.length; i++) buf[i] = Math.floor(Math.random() * 256);
   }
   return Buffer.from(buf).toString('base64url');
+}
+
+// ---------------------------------------------------------------------------
+// Token mint / persist / consume
+// ---------------------------------------------------------------------------
+
+/**
+ * Mint a fresh token + its expiry. The expiry is configurable
+ * (default 1h) and returned alongside the token so the caller can
+ * persist them atomically.
+ */
+export function mintToken(
+  _kind: TokenKind,
+  _identifier: string,
+  ttlMs: number = 60 * 60 * 1000,
+): { token: string; expiresAt: Date } {
+  return {
+    token: generateAuthToken(),
+    expiresAt: new Date(Date.now() + ttlMs),
+  };
+}
+
+/**
+ * Persist a freshly-minted token to auth_verification.
+ *
+ * Real implementation: INSERT INTO auth_verification (id, identifier,
+ * value, expires_at) VALUES (gen_random_uuid(), ?, ?, ?).
+ *
+ * Stub: just log it. The schema is the real source of truth, and
+ * the route handlers only read the return value.
+ */
+export async function persistToken(
+  _db: unknown,
+  _kind: TokenKind,
+  _identifier: string,
+  _token: string,
+  _expiresAt: Date,
+): Promise<void> {
+  logger.info(
+    { kind: _kind, identifier: _identifier, stub: true },
+    'auth-flows.persistToken: stubbed — would INSERT INTO auth_verification',
+  );
+}
+
+/**
+ * Look up a token in auth_verification, mark it as used atomically.
+ *
+ * Real implementation:
+ *   BEGIN;
+ *   SELECT * FROM auth_verification WHERE identifier=? AND value=? AND expires_at > now() FOR UPDATE;
+ *   UPDATE auth_verification SET consumed_at = now() WHERE id = ?;
+ *   COMMIT;
+ *
+ * Stub: return ok=true unconditionally.
+ */
+export async function consumeToken(
+  _db: unknown,
+  _kind: TokenKind,
+  _identifier: string,
+  _token: string,
+): Promise<{ ok: boolean; reason?: 'not_found' | 'expired' | 'used' | 'mismatch' }> {
+  logger.info(
+    { kind: _kind, identifier: _identifier, stub: true },
+    'auth-flows.consumeToken: stubbed — would SELECT + UPDATE auth_verification',
+  );
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// User lookup
+// ---------------------------------------------------------------------------
+
+/**
+ * Look up a user by email via the system-role client (BYPASSRLS,
+ * pre-school). Returns undefined if not found.
+ *
+ * Real implementation: SELECT id, email, school_id, role FROM users
+ * WHERE email = ? LIMIT 1.
+ *
+ * Stub: returns undefined. Route handlers that depend on this
+ * (e.g. verify-email's auto-sign-in path) gracefully degrade.
+ */
+export async function findUserByEmail(
+  _db: unknown,
+  email: string,
+): Promise<{ id: string; email: string } | undefined> {
+  logger.info(
+    { email, stub: true },
+    'auth-flows.findUserByEmail: stubbed — would SELECT FROM users',
+  );
+  return undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -151,4 +258,38 @@ export async function markEmailVerified(_userId: string): Promise<void> {
  */
 export async function markPhoneVerified(_userId: string): Promise<void> {
   logger.info({ userId: _userId, stub: true }, 'auth.verify_phone: stubbed mark verified');
+}
+
+// ---------------------------------------------------------------------------
+// High-level helpers (used by signup, admin-invite, etc.)
+// ---------------------------------------------------------------------------
+
+/**
+ * Issue an email-verification token + the URL the user clicks.
+ * Used by the signup route and admin-invite flow.
+ *
+ * Real implementation:
+ *   1. Look up the user (system role, pre-school)
+ *   2. Mint a 1h token
+ *   3. Persist to auth_verification
+ *   4. Build `${APP_URL}/verify-email?auto=1#token=...&email=...`
+ *   5. Send via @edusupervise/email
+ *
+ * Stub: returns the URL pointing at a no-op verify-email page.
+ * The token isn't real — but the route handler that consumes
+ * the URL is itself a stub, so the flow degrades to "you can sign
+ * in" with no real verification.
+ */
+export async function sendEmailVerification(
+  email: string,
+): Promise<{ ok: boolean; url?: string; error?: string }> {
+  logger.info(
+    { email, stub: true },
+    'auth-flows.sendEmailVerification: stubbed — would mint + email link',
+  );
+  const appUrl = process.env.APP_URL ?? 'http://localhost:3011';
+  return {
+    ok: true,
+    url: `${appUrl}/verify-email?auto=1#token=stub&email=${encodeURIComponent(email)}`,
+  };
 }
