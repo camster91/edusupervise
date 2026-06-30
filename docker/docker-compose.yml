@@ -108,10 +108,19 @@ services:
   cron:
     image: alpine:3.20
     restart: unless-stopped
+    # Runs both daily SQL jobs back-to-back. Splitting into a loop-of-two
+    # would be tidier but the alpine container's `apk add` runs on every
+    # boot anyway, so a single `while true` + chained `-f` is the smallest
+    # change. psql applies each SQL file in its own implicit transaction
+    # so a failure in plan-downgrade.sql does NOT block audit-retention.sql.
+    #
+    # Slice-6 finding: plan-downgrade.sql was on the volume but never
+    # executed → silent revenue leak (paid subs never auto-flip after the
+    # 7-day grace). Now both nightly SQLs run.
     command:
       - sh
       - -c
-      - "apk add --no-cache postgresql16-client >/dev/null && while true; do psql $$DATABASE_URL -v ON_ERROR_STOP=1 -f /sql/audit-retention.sql; sleep 86400; done"
+      - "apk add --no-cache postgresql16-client >/dev/null && while true; do psql $$DATABASE_URL -v ON_ERROR_STOP=1 -f /sql/audit-retention.sql && psql $$DATABASE_URL -v ON_ERROR_STOP=1 -f /sql/plan-downgrade.sql; sleep 86400; done"
     env_file:
       - ${EDUSUPERVISE_SECRETS_DIR:-/root/edusupervise-secrets}/.env
     environment:

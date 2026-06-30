@@ -106,6 +106,11 @@ export const notificationKindEnum = pgEnum('notification_kind', [
   'plan.downgrade.pending',
   'plan.downgrade.applied',
   'system.message',
+  // Migration 0005: coverage router writes these when a replacement
+  // teacher is auto-routed (kind='duty_assigned') or when an existing
+  // accept/decline flips the duty (kind='duty.coverage_changed').
+  'duty_assigned',
+  'duty.coverage_changed',
 ]);
 export type NotificationKind = (typeof notificationKindEnum.enumValues)[number];
 
