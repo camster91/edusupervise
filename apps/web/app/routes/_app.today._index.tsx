@@ -32,6 +32,10 @@ import {
   ListTodo,
   Clock,
   MapPin,
+  Plus,
+  Mail,
+  MessageSquare,
+  Trash2,
   type LucideIcon,
 } from 'lucide-react';
 import { and, eq, gte, lte, desc, isNull } from 'drizzle-orm';
@@ -39,6 +43,7 @@ import { duties, dutyAssignments, cycleCalendar, schools } from '@edusupervise/d
 import type { Route } from './+types/_app.today._index';
 import { getSession } from '../../server/auth.server.ts';
 import { withSchoolId } from '../../server/db.server.ts';
+import { listRemindersForDuty, type ReminderRow } from '../../server/reminders.server';
 import {
   HeroCard,
   EmptyState,
@@ -172,11 +177,20 @@ export async function loader({ request }: Route.LoaderArgs) {
     };
   });
 
-  return data;
+  // Reminders: fetched via system-role client (RLS-bypassing) because
+  // the reminders table is tenant-scoped and we want to show ALL
+  // reminders set up on each duty, regardless of who's currently
+  // assigned (admins configure, not just teachers).
+  const reminderMap: Record<string, ReminderRow[]> = {};
+  for (const d of data.allDuties) {
+    reminderMap[d.id] = await listRemindersForDuty(d.id, session.schoolId);
+  }
+
+  return { ...data, reminderMap };
 }
 
 export default function Today() {
-  const { allDuties, myAssignments, cycleDay, today, isSchoolDay, stats, role } =
+  const { allDuties, myAssignments, cycleDay, today, isSchoolDay, stats, role, reminderMap } =
     useLoaderData<typeof loader>();
   const [swapOpen, setSwapOpen] = useState(false);
   const [activeDuty, setActiveDuty] = useState<typeof allDuties[number] | null>(null);
@@ -315,6 +329,7 @@ export default function Today() {
               <DutyCard
                 key={d.id}
                 duty={d}
+                reminders={reminderMap[d.id] ?? []}
                 onSwap={() => { setActiveDuty(d); setSwapOpen(true); }}
               />
             ))}
@@ -402,6 +417,7 @@ export default function Today() {
 
 function DutyCard({
   duty,
+  reminders,
   onSwap,
 }: {
   duty: {
@@ -413,45 +429,294 @@ function DutyCard({
     requiresVest: boolean | null;
     requiresRadio: boolean | null;
   };
+  reminders: ReminderRow[];
   onSwap: () => void;
 }): React.ReactElement {
   return (
     <li
-      className="flex items-start gap-md bg-surface rounded-lg border border-border p-md hover:bg-surface-2 transition-colors duration-fast"
+      className="bg-surface rounded-lg border border-border p-md hover:bg-surface-2 transition-colors duration-fast"
     >
-      <div className="text-title-3 text-primary font-semibold tabular w-20 shrink-0">
-        {formatTime12h(duty.startTime)}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="text-body-em text-primary font-semibold">
-          {duty.name}
+      <div className="flex items-start gap-md">
+        <div className="text-title-3 text-primary font-semibold tabular w-20 shrink-0">
+          {formatTime12h(duty.startTime)}
         </div>
-        {duty.location && (
-          <div className="text-footnote text-secondary mt-xs">
-            {duty.location}
-            {duty.endTime && ` · ${formatTime12h(duty.endTime)}`}
+        <div className="flex-1 min-w-0">
+          <div className="text-body-em text-primary font-semibold">
+            {duty.name}
           </div>
-        )}
-        <div className="mt-sm">
-          <EquipmentChips
-            requiresVest={duty.requiresVest ?? false}
-            requiresRadio={duty.requiresRadio ?? false}
-            compact
-          />
+          {duty.location && (
+            <div className="text-footnote text-secondary mt-xs">
+              {duty.location}
+              {duty.endTime && ` · ${formatTime12h(duty.endTime)}`}
+            </div>
+          )}
+          <div className="mt-sm">
+            <EquipmentChips
+              requiresVest={duty.requiresVest ?? false}
+              requiresRadio={duty.requiresRadio ?? false}
+              compact
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-xs shrink-0">
+          <Button
+            variant="tertiary"
+            size="icon-sm"
+            aria-label={`Swap ${duty.name}`}
+            onClick={onSwap}
+          >
+            <ArrowRightLeft size={16} aria-hidden />
+          </Button>
+          <MarkCompleteButton dutyId={duty.id} dutyName={duty.name} variant="icon" />
         </div>
       </div>
-      <div className="flex items-center gap-xs shrink-0">
-        <Button
-          variant="tertiary"
-          size="icon-sm"
-          aria-label={`Swap ${duty.name}`}
-          onClick={onSwap}
-        >
-          <ArrowRightLeft size={16} aria-hidden />
-        </Button>
-        <MarkCompleteButton dutyId={duty.id} dutyName={duty.name} variant="icon" />
-      </div>
+      {/* Inline reminders — the big win of v2. Hidden when none set
+          (admin can click "+ Add reminder" to add the first one). */}
+      <ReminderList dutyId={duty.id} reminders={reminders} />
     </li>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ReminderList — inline row per reminder on a duty card. Renders nothing
+// when there are no reminders and no add button — keeps the card clean.
+// ---------------------------------------------------------------------------
+
+function ReminderList({
+  dutyId,
+  reminders,
+}: {
+  dutyId: string;
+  reminders: ReminderRow[];
+}): React.ReactElement | null {
+  const [sheetOpen, setSheetOpen] = useState(false);
+
+  if (reminders.length === 0) {
+    // Show a single "+ Add reminder" affordance so admins can add the
+    // first reminder without opening a separate page.
+    return (
+      <>
+        <div className="mt-sm pt-sm border-t border-divider">
+          <button
+            type="button"
+            onClick={() => setSheetOpen(true)}
+            className="inline-flex items-center gap-xs text-footnote text-secondary hover:text-accent transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 rounded"
+          >
+            <Plus size={12} aria-hidden />
+            Add reminder
+          </button>
+        </div>
+        <AddReminderSheet
+          open={sheetOpen}
+          onOpenChange={setSheetOpen}
+          dutyId={dutyId}
+        />
+      </>
+    );
+  }
+
+  return (
+    <div className="mt-sm pt-sm border-t border-divider space-y-xs">
+      <ul className="space-y-xs" role="list">
+        {reminders.map((r) => (
+          <ReminderRowItem key={r.id} reminder={r} />
+        ))}
+      </ul>
+      <button
+        type="button"
+        onClick={() => setSheetOpen(true)}
+        className="inline-flex items-center gap-xs text-footnote text-secondary hover:text-accent transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 rounded mt-xs"
+      >
+        <Plus size={12} aria-hidden />
+        Add another reminder
+      </button>
+      <AddReminderSheet
+        open={sheetOpen}
+        onOpenChange={setSheetOpen}
+        dutyId={dutyId}
+      />
+    </div>
+  );
+}
+
+function ReminderRowItem({ reminder }: { reminder: ReminderRow }): React.ReactElement {
+  const toggleFetcher = useFetcher();
+  const deleteFetcher = useFetcher();
+  const submitting = toggleFetcher.state !== 'idle' || deleteFetcher.state !== 'idle';
+
+  return (
+    <li className="flex items-center gap-sm text-footnote">
+      <Bell size={12} aria-hidden className={reminder.isEnabled ? 'text-accent' : 'text-tertiary'} />
+      <span className={`tabular font-medium ${reminder.isEnabled ? 'text-primary' : 'text-tertiary line-through'}`}>
+        {formatOffset(reminder.minutesBefore)}
+      </span>
+      <span className="flex items-center gap-xs">
+        {reminder.notifyEmail && (
+          <span aria-label="Email" title="Email" className="text-info"><Mail size={12} aria-hidden /></span>
+        )}
+        {reminder.notifySms && (
+          <span aria-label="SMS" title="SMS" className="text-success"><MessageSquare size={12} aria-hidden /></span>
+        )}
+      </span>
+      <span className="flex-1" />
+      <button
+        type="button"
+        onClick={() => toggleFetcher.submit(
+          { reminderId: reminder.id },
+          { method: 'post', action: '/app/api/reminders/toggle' },
+        )}
+        disabled={submitting}
+        aria-label={reminder.isEnabled ? 'Disable reminder' : 'Enable reminder'}
+        className="text-tertiary hover:text-primary transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
+      >
+        {reminder.isEnabled ? 'On' : 'Off'}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          if (confirm('Delete this reminder?')) {
+            deleteFetcher.submit(
+              { reminderId: reminder.id },
+              { method: 'post', action: '/app/api/reminders/delete' },
+            );
+          }
+        }}
+        disabled={submitting}
+        aria-label="Delete reminder"
+        className="text-tertiary hover:text-error transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
+      >
+        <Trash2 size={12} aria-hidden />
+      </button>
+    </li>
+  );
+}
+
+function formatOffset(minutes: number): string {
+  if (minutes === 0) return 'at start';
+  if (minutes < 60) return `${minutes}m before`;
+  if (minutes < 1440) return `${Math.round(minutes / 60)}h before`;
+  return `${Math.round(minutes / 1440)}d before`;
+}
+
+// ---------------------------------------------------------------------------
+// AddReminderSheet — sheet with form to add a reminder to a duty.
+// Uses fetcher.submit so the page doesn't reload. On success the
+// reminder row appears in the list (parent re-renders after fetcher
+// data resolves).
+// ---------------------------------------------------------------------------
+
+function AddReminderSheet({
+  open,
+  onOpenChange,
+  dutyId,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  dutyId: string;
+}): React.ReactElement {
+  const fetcher = useFetcher();
+  const submitting = fetcher.state !== 'idle';
+  const error = (fetcher.data as { error?: string } | undefined)?.error;
+
+  return (
+    <Sheet
+      open={open}
+      onOpenChange={onOpenChange}
+      title="Add reminder"
+      description="Notify the assigned teacher before this duty starts. They'll receive a message at the chosen offset via the channels you select."
+      detent="medium"
+      footer={
+        <>
+          <Button variant="secondary" size="md" onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="primary"
+            size="md"
+            type="submit"
+            form={`reminder-form-${dutyId}`}
+            disabled={submitting}
+          >
+            {submitting ? 'Saving…' : 'Add reminder'}
+          </Button>
+        </>
+      }
+    >
+      <fetcher.Form
+        method="post"
+        action="/app/api/reminders/create"
+        id={`reminder-form-${dutyId}`}
+        className="space-y-md"
+      >
+        <input type="hidden" name="dutyId" value={dutyId} />
+        <div>
+          <label className="block text-subhead text-secondary mb-xs" htmlFor="reminder-minutes">
+            When
+          </label>
+          <select
+            id="reminder-minutes"
+            name="minutesBefore"
+            defaultValue="15"
+            className="w-full h-input px-md bg-surface border border-border rounded-md text-body text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+          >
+            <option value="5">5 minutes before</option>
+            <option value="10">10 minutes before</option>
+            <option value="15">15 minutes before</option>
+            <option value="30">30 minutes before</option>
+            <option value="60">1 hour before</option>
+            <option value="120">2 hours before</option>
+            <option value="1440">1 day before</option>
+            <option value="2880">2 days before</option>
+            <option value="10080">1 week before</option>
+          </select>
+        </div>
+        <fieldset>
+          <legend className="block text-subhead text-secondary mb-xs">Channels</legend>
+          <div className="flex gap-md">
+            <label className="flex items-center gap-sm">
+              <input
+                type="checkbox"
+                name="notifyEmail"
+                value="true"
+                defaultChecked
+                className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
+              />
+              <Mail size={14} aria-hidden className="text-info" />
+              <span className="text-callout">Email</span>
+            </label>
+            <label className="flex items-center gap-sm">
+              <input
+                type="checkbox"
+                name="notifySms"
+                value="true"
+                className="w-4 h-4 rounded border-border text-accent focus:ring-accent"
+              />
+              <MessageSquare size={14} aria-hidden className="text-success" />
+              <span className="text-callout">SMS</span>
+            </label>
+          </div>
+        </fieldset>
+        <div>
+          <label className="block text-subhead text-secondary mb-xs" htmlFor="reminder-message">
+            Custom message <span className="text-tertiary font-normal">(optional)</span>
+          </label>
+          <textarea
+            id="reminder-message"
+            name="customMessage"
+            rows={3}
+            maxLength={500}
+            placeholder="Leave empty to use the default reminder."
+            className="w-full px-md py-sm bg-surface border border-border rounded-md text-body text-primary focus:outline-none focus:ring-2 focus:ring-accent"
+          />
+          <p className="text-footnote text-tertiary mt-xs">Up to 500 characters.</p>
+        </div>
+        {error && (
+          <p className="text-callout text-error rounded-md bg-error-soft px-md py-sm" role="alert">
+            {error}
+          </p>
+        )}
+      </fetcher.Form>
+    </Sheet>
   );
 }
 

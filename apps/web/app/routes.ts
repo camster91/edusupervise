@@ -73,6 +73,11 @@ export default [
   // Duty quick actions (Phase 2C — Today redesign)
   route('app/api/duty.complete', 'routes/app.api.duty.complete.ts'),
 
+  // Reminders (Phase 2D — inline CRUD on duty cards)
+  route('app/api/reminders/create', 'routes/app.api.reminders.create.ts'),
+  route('app/api/reminders/toggle', 'routes/app.api.reminders.toggle.ts'),
+  route('app/api/reminders/delete', 'routes/app.api.reminders.delete.ts'),
+
   // Parent alerts (Phase 3)
   route('api/coverage/parent-alerts', 'routes/api.coverage.parent-alerts.ts'),
   route('api/coverage/parent-alerts/send', 'routes/api.coverage.parent-alerts.send.ts'),
