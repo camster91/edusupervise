@@ -29,6 +29,7 @@ export default [
     route('app/duties/:id', 'routes/_app.duties.$id.tsx'),
     // Calendar
     route('app/calendar', 'routes/_app.calendar._index.tsx'),
+    route('app/calendar/print', 'routes/_app.calendar.print.tsx'),
     // Coverage Router (Phase 2B)
     route('app/coverage', 'routes/_app.coverage._index.tsx'),
     route('app/coverage/alerts', 'routes/_app.coverage.alerts._index.tsx'),

@@ -11,7 +11,8 @@ import { withSchoolId } from '../../server/db.server';
 import { duties, cycleCalendar } from '@edusupervise/db';
 import { and, eq, gte, lte } from 'drizzle-orm';
 import { WeekStrip, EmptyState } from '../components/ui';
-import { CalendarDays } from 'lucide-react';
+import { CalendarDays, Printer } from 'lucide-react';
+import { Link } from 'react-router';
 
 export function meta() {
   return [{ title: 'Calendar — EduSupervise' }];
@@ -62,16 +63,25 @@ export default function CalendarPage() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-xl">
-      <div>
-        <h1 className="text-title-1 text-primary font-bold">Calendar</h1>
-        <p className="text-callout text-secondary mt-xs">
-          {new Date(today + 'T00:00:00').toLocaleDateString('en-US', {
-            weekday: 'long',
-            month: 'long',
-            day: 'numeric',
-            year: 'numeric',
-          })}
-        </p>
+      <div className="flex items-baseline justify-between gap-md flex-wrap">
+        <div>
+          <h1 className="text-title-1 text-primary font-bold">Calendar</h1>
+          <p className="text-callout text-secondary mt-xs">
+            {new Date(today + 'T00:00:00').toLocaleDateString('en-US', {
+              weekday: 'long',
+              month: 'long',
+              day: 'numeric',
+              year: 'numeric',
+            })}
+          </p>
+        </div>
+        <Link
+          to="/app/calendar/print"
+          className="inline-flex items-center gap-sm h-btn-md px-lg rounded-md font-medium border border-border bg-surface text-primary hover:bg-surface-2 transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+        >
+          <Printer size={16} aria-hidden />
+          Print this week
+        </Link>
       </div>
 
       <WeekStrip days={weekDays} cycleLabel="Cycle week" />
