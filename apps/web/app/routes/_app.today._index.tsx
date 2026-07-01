@@ -35,7 +35,7 @@ import {
   type LucideIcon,
 } from 'lucide-react';
 import { and, eq, gte, lte, desc, isNull } from 'drizzle-orm';
-import { duties, dutyAssignments, cycleCalendar } from '@edusupervise/db';
+import { duties, dutyAssignments, cycleCalendar, schools } from '@edusupervise/db';
 import type { Route } from './+types/_app.today._index';
 import { getSession } from '../../server/auth.server.ts';
 import { withSchoolId } from '../../server/db.server.ts';
@@ -83,10 +83,22 @@ export async function loader({ request }: Route.LoaderArgs) {
   }
 
   const data = await withSchoolId(session.schoolId, async (tx) => {
+    // Read the school's timezone so "today" matches what the school
+    // sees on the wall clock. Without this, a server in UTC and a
+    // school in America/Toronto disagree about "today" between 8pm
+    // and midnight local — the WeekStrip would silently jump to
+    // tomorrow's date. (Bug found 2026-06-30.)
+    const [school] = await tx
+      .select({ timezone: schools.timezone })
+      .from(schools)
+      .where(eq(schools.id, session.schoolId))
+      .limit(1);
+    const tz = school?.timezone ?? 'America/Toronto';
+
     const now = new Date();
-    const today = now.toISOString().slice(0, 10);
-    const tomorrow = new Date(now.getTime() + 86_400_000).toISOString().slice(0, 10);
-    const weekFromNow = new Date(now.getTime() + 7 * 86_400_000).toISOString().slice(0, 10);
+    const today = formatDateInTz(now, tz);
+    const tomorrow = formatDateInTz(new Date(now.getTime() + 86_400_000), tz);
+    const weekFromNow = formatDateInTz(new Date(now.getTime() + 7 * 86_400_000), tz);
 
     // Active duties (school's full duty catalog). Joined with the
     // teacher's assignments to compute per-duty "mine" flag without
@@ -530,6 +542,24 @@ function formatTime12h(hhmm: string | null | undefined): string {
   const period = h >= 12 ? 'PM' : 'AM';
   const h12 = h % 12 || 12;
   return `${h12}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+/**
+ * Format a Date as YYYY-MM-DD in the given IANA timezone. Server runs
+ * in UTC, so a naive `.toISOString().slice(0, 10)` would show
+ * tomorrow's date for a Toronto school between 8pm and midnight.
+ * Uses Intl.DateTimeFormat which is the only built-in timezone API
+ * that handles DST correctly without an extra dependency.
+ */
+function formatDateInTz(d: Date, tz: string): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(d);
+  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
+  return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
 function formatHours(minutes: number): string {
