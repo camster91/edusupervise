@@ -19,8 +19,7 @@
 // dispatch.
 
 import { and, eq, desc } from 'drizzle-orm';
-import { reminders, dutyAssignments, duties, users } from '@edusupervise/db';
-import { getSystemClient } from './db.server';
+import { reminders, dutyAssignments, duties, users, getSystemClient } from '@edusupervise/db';
 import { logger } from './logger.server';
 
 export interface ReminderRow {
