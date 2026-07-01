@@ -47,6 +47,23 @@
   --color-info:          #5AC8FA;
   --color-info-soft:     #E5F6FE;
 
+  /* Cycle day palette — distinct hues for the 5-day rotation.
+   * Inspired by the reference Replit prototype (Day 1=red,
+   * Day 2=blue, Day 3=purple, Day 4=yellow, Day 5=green) but tuned
+   * to the HIG palette so they sit next to the Apple system colors
+   * without clashing. Background is soft, foreground is saturated.
+   */
+  --color-cycle-1:        #FF3B30;
+  --color-cycle-1-soft:   #FFEBE9;
+  --color-cycle-2:        #007AFF;
+  --color-cycle-2-soft:   #E5F1FF;
+  --color-cycle-3:        #AF52DE;
+  --color-cycle-3-soft:   #F4E8FB;
+  --color-cycle-4:        #FF9500;
+  --color-cycle-4-soft:   #FFF4E5;
+  --color-cycle-5:        #34C759;
+  --color-cycle-5-soft:   #E5F8EC;
+
   /* ------------------------------------------------------------------
    * TYPOGRAPHY — Inter (web/PWA), 1.2x scale, anchored on 16px body
    * ------------------------------------------------------------------ */
@@ -170,6 +187,20 @@
     --color-error-soft:    #3A1410;
     --color-info:          #64D2FF;
     --color-info-soft:     #143040;
+
+    /* Cycle day palette — dark variants (slightly desaturated for dark
+     * backgrounds; soft variants are 15% lightness to read on dark).
+     */
+    --color-cycle-1:        #FF453A;
+    --color-cycle-1-soft:   #3A1410;
+    --color-cycle-2:        #0A84FF;
+    --color-cycle-2-soft:   #0A1F3A;
+    --color-cycle-3:        #BF5AF2;
+    --color-cycle-3-soft:   #2A1A40;
+    --color-cycle-4:        #FF9F0A;
+    --color-cycle-4-soft:   #3A2810;
+    --color-cycle-5:        #30D158;
+    --color-cycle-5-soft:   #14361F;
 
     --elev-0: none;
     --elev-1: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 1px rgba(0, 0, 0, 0.5);

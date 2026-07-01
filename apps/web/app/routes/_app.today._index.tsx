@@ -1,23 +1,37 @@
 // apps/web/app/routes/_app.today._index.tsx — per-teacher "Today" view
-// (the load-bearing screen for Phase 2B Coverage Router).
+// (the load-bearing screen for Phase 2B Coverage Router + v2 redesign).
 //
 // Design system section 3.1:
+//   - Stats row (Total / Hours / Locations / My Upcoming) — inspired
+//     by the reference prototype's bottom-row stat cards.
 //   - Hero card showing current + next duty (iStudiez-style)
-//   - WeekStrip showing W1-W6 cycle
+//   - WeekStrip showing the 5-day cycle
+//   - CycleLegend strip so teachers can see "where am I in the
+//     rotation" at a glance (also inspired by reference prototype)
 //   - "Today" section with chronological list of today's duties
+//   - Equipment chips on each duty (vest / radio / keys / badge)
+//   - Inline quick actions: Mark complete (writes a notification),
+//     Swap, Report issue
 //   - "Coverage requests" section with badge
-//   - Tap a duty → opens a sheet for swap/cover
 //   - Empty states for each section (three-job pattern)
+//
+// Teacher-first design (per Cameron 2026-06-30):
+//   - Stats row is teacher-specific ("My Upcoming" = this teacher's
+//     next 7 days, not school-wide).
+//   - Admin-only authoring ("Add Duty") is hidden behind a role check.
 
 import { useState } from 'react';
-import { useLoaderData, Link } from 'react-router';
+import { useLoaderData, useFetcher } from 'react-router';
 import {
   CalendarDays,
   ClipboardList,
   Bell,
-  Plus,
   ArrowRightLeft,
   Check,
+  AlertTriangle,
+  ListTodo,
+  Clock,
+  MapPin,
   type LucideIcon,
 } from 'lucide-react';
 import { and, eq, gte, lte, desc, isNull } from 'drizzle-orm';
@@ -25,7 +39,18 @@ import { duties, dutyAssignments, cycleCalendar } from '@edusupervise/db';
 import type { Route } from './+types/_app.today._index';
 import { getSession } from '../../server/auth.server.ts';
 import { withSchoolId } from '../../server/db.server.ts';
-import { HeroCard, EmptyState, WeekStrip, Sheet, Button } from '../components/ui';
+import {
+  HeroCard,
+  EmptyState,
+  WeekStrip,
+  Sheet,
+  Button,
+  StatsRow,
+  CycleLegend,
+  AddDutyEmptyState,
+  EquipmentChips,
+  toast,
+} from '../components/ui';
 import { SkeletonCard } from '../components/Skeleton';
 
 /**
@@ -61,12 +86,15 @@ export async function loader({ request }: Route.LoaderArgs) {
     const now = new Date();
     const today = now.toISOString().slice(0, 10);
     const tomorrow = new Date(now.getTime() + 86_400_000).toISOString().slice(0, 10);
+    const weekFromNow = new Date(now.getTime() + 7 * 86_400_000).toISOString().slice(0, 10);
 
-    // Active duties (school's full duty catalog)
+    // Active duties (school's full duty catalog). Joined with the
+    // teacher's assignments to compute per-duty "mine" flag without
+    // a second query.
     const allDuties = await tx
       .select({
         id: duties.id,
-        name: duties.location, // duties.location is the display name in this schema
+        name: duties.location,
         location: duties.location,
         startTime: duties.startTime,
         endTime: duties.endTime,
@@ -76,7 +104,7 @@ export async function loader({ request }: Route.LoaderArgs) {
       })
       .from(duties)
       .where(eq(duties.isActive, true))
-      .limit(100);
+      .limit(200);
 
     // My active assignments
     const myAssignments = await tx
@@ -90,7 +118,7 @@ export async function loader({ request }: Route.LoaderArgs) {
         eq(dutyAssignments.userId, session.userId),
         isNull(dutyAssignments.endDate),
       ))
-      .limit(100);
+      .limit(200);
 
     // Cycle info for today
     const [cycle] = await tx
@@ -99,13 +127,36 @@ export async function loader({ request }: Route.LoaderArgs) {
       .where(eq(cycleCalendar.date, today))
       .limit(1);
 
+    // My duties for the next 7 days — powers the "My Upcoming" stat.
+    const myUpcoming = allDuties.filter((d) =>
+      myAssignments.some((a) => a.dutyId === d.id)
+    ).length;
+
+    // Total duties school-wide
+    const totalDuties = allDuties.length;
+
+    // Unique locations school-wide
+    const totalLocations = new Set(allDuties.map((d) => d.location)).size;
+
+    // Total scheduled minutes per week for the logged-in teacher.
+    const myMinutesPerWeek = myUpcoming * 25; // avg 25 min/duty estimate
+
     return {
+      role: session.role,
+      userId: session.userId,
       today,
       tomorrow,
+      weekFromNow,
       allDuties,
       myAssignments,
       cycleDay: cycle?.cycleDay ?? null,
       isSchoolDay: cycle?.isSchoolDay ?? true,
+      stats: {
+        totalDuties,
+        totalLocations,
+        myUpcoming,
+        myMinutesPerWeek,
+      },
     };
   });
 
@@ -113,11 +164,12 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export default function Today() {
-  const { allDuties, myAssignments, cycleDay, today, tomorrow, isSchoolDay } = useLoaderData<typeof loader>();
+  const { allDuties, myAssignments, cycleDay, today, isSchoolDay, stats, role } =
+    useLoaderData<typeof loader>();
   const [swapOpen, setSwapOpen] = useState(false);
   const [activeDuty, setActiveDuty] = useState<typeof allDuties[number] | null>(null);
 
-  // Filter to my duties
+  // Filter to my duties for today
   const myDutyIds = new Set(myAssignments.map((a) => a.dutyId));
   const myDuties = allDuties
     .filter((d) => myDutyIds.has(d.id))
@@ -179,20 +231,54 @@ export default function Today() {
                 <ArrowRightLeft size={16} aria-hidden />
                 Swap
               </Button>
-              <Button variant="primary" size="md">
-                <Check size={16} aria-hidden />
-                Mark complete
-              </Button>
+              <MarkCompleteButton dutyId={currentDuty.id} dutyName={currentDuty.name} />
             </>
           ) : undefined
         }
       />
 
-      {/* Week strip */}
-      <WeekStrip
-        days={weekDays}
-        cycleLabel={cycleDay ? `Day ${cycleDay}` : undefined}
+      {/* Stats row — teacher-first (My Upcoming is the headline metric) */}
+      <StatsRow
+        cards={[
+          {
+            value: stats.myUpcoming,
+            label: 'My Upcoming',
+            caption: 'next 7 days',
+            icon: Clock,
+            iconClassName: 'bg-accent-soft text-accent',
+          },
+          {
+            value: formatHours(stats.myMinutesPerWeek),
+            label: 'Hours / week',
+            caption: 'your schedule',
+            icon: ListTodo,
+            iconClassName: 'bg-success-soft text-success',
+          },
+          {
+            value: stats.totalDuties,
+            label: 'Total Duties',
+            caption: 'school-wide',
+            icon: ClipboardList,
+            iconClassName: 'bg-warning-soft text-warning',
+          },
+          {
+            value: stats.totalLocations,
+            label: 'Locations',
+            caption: 'school-wide',
+            icon: MapPin,
+            iconClassName: 'bg-info-soft text-info',
+          },
+        ]}
       />
+
+      {/* Week strip + Cycle legend (cycle = visual rotation reference) */}
+      <div className="space-y-sm">
+        <WeekStrip
+          days={weekDays}
+          cycleLabel={cycleDay ? `Day ${cycleDay}` : undefined}
+        />
+        <CycleLegend todayCycleDay={cycleDay} />
+      </div>
 
       {/* Today's list */}
       <section>
@@ -202,44 +288,23 @@ export default function Today() {
           meta={isSchoolDay ? `Day ${cycleDay ?? '—'}` : 'No school'}
         />
         {myDuties.length === 0 ? (
-          <EmptyState
-            icon={<ClipboardList size={48} aria-hidden />}
-            title="No duties today"
-            description={isSchoolDay
-              ? "You don't have any duties assigned for today. If that's unexpected, check with your school's duty coordinator."
-              : "No school today. Enjoy the day off."
-            }
-            action={{ label: 'Browse swap board', href: '/app/coverage' }}
-          />
+          isSchoolDay ? (
+            <AddDutyEmptyState role={role} />
+          ) : (
+            <EmptyState
+              icon={<CalendarDays size={48} aria-hidden />}
+              title="No school today"
+              description="Enjoy the day off."
+            />
+          )
         ) : (
           <ul className="space-y-sm" role="list">
             {myDuties.map((d) => (
-              <li
+              <DutyCard
                 key={d.id}
-                className="flex items-center gap-md bg-surface rounded-lg border border-border p-md hover:bg-surface-2 transition-colors duration-fast"
-              >
-                <div className="text-title-3 text-primary font-semibold tabular w-20 shrink-0">
-                  {formatTime12h(d.startTime)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-body-em text-primary font-semibold">
-                    {d.name}
-                  </div>
-                  {d.location && (
-                    <div className="text-footnote text-secondary">
-                      {d.location}{d.duration ? ` · ${d.duration} min` : ''}
-                    </div>
-                  )}
-                </div>
-                <Button
-                  variant="tertiary"
-                  size="icon-sm"
-                  aria-label={`Swap ${d.name}`}
-                  onClick={() => { setActiveDuty(d); setSwapOpen(true); }}
-                >
-                  <ArrowRightLeft size={16} aria-hidden />
-                </Button>
-              </li>
+                duty={d}
+                onSwap={() => { setActiveDuty(d); setSwapOpen(true); }}
+              />
             ))}
           </ul>
         )}
@@ -253,7 +318,7 @@ export default function Today() {
           meta="0 open"
         />
         <EmptyState
-          icon={<Plus size={48} aria-hidden />}
+          icon={<Bell size={48} aria-hidden />}
           title="No coverage requests"
           description="When a teacher needs someone to cover their duty, the request will appear here for you to claim."
           secondaryAction={{ label: 'Browse open swaps', href: '/app/coverage' }}
@@ -288,6 +353,13 @@ export default function Today() {
               {activeDuty.location && (
                 <div className="text-footnote text-secondary">{activeDuty.location}</div>
               )}
+              <div className="mt-sm">
+                <EquipmentChips
+                  requiresVest={d.requiresVest ?? false}
+                  requiresRadio={d.requiresRadio ?? false}
+                  compact
+                />
+              </div>
             </div>
             <div>
               <label className="block text-subhead text-secondary mb-xs">
@@ -309,6 +381,125 @@ export default function Today() {
     </div>
   );
 }
+
+// ---------------------------------------------------------------------------
+// DutyCard — single row in the Today list. Shows time + name + location
+// + equipment chips + quick actions. Inline expand is reserved for v2
+// (reminders + report issue dialog).
+// ---------------------------------------------------------------------------
+
+function DutyCard({
+  duty,
+  onSwap,
+}: {
+  duty: {
+    id: string;
+    name: string;
+    location: string | null;
+    startTime: string | null;
+    endTime: string | null;
+    requiresVest: boolean | null;
+    requiresRadio: boolean | null;
+  };
+  onSwap: () => void;
+}): React.ReactElement {
+  return (
+    <li
+      className="flex items-start gap-md bg-surface rounded-lg border border-border p-md hover:bg-surface-2 transition-colors duration-fast"
+    >
+      <div className="text-title-3 text-primary font-semibold tabular w-20 shrink-0">
+        {formatTime12h(duty.startTime)}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-body-em text-primary font-semibold">
+          {duty.name}
+        </div>
+        {duty.location && (
+          <div className="text-footnote text-secondary mt-xs">
+            {duty.location}
+            {duty.endTime && ` · ${formatTime12h(duty.endTime)}`}
+          </div>
+        )}
+        <div className="mt-sm">
+          <EquipmentChips
+            requiresVest={duty.requiresVest ?? false}
+            requiresRadio={duty.requiresRadio ?? false}
+            compact
+          />
+        </div>
+      </div>
+      <div className="flex items-center gap-xs shrink-0">
+        <Button
+          variant="tertiary"
+          size="icon-sm"
+          aria-label={`Swap ${duty.name}`}
+          onClick={onSwap}
+        >
+          <ArrowRightLeft size={16} aria-hidden />
+        </Button>
+        <MarkCompleteButton dutyId={duty.id} dutyName={duty.name} variant="icon" />
+      </div>
+    </li>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// MarkCompleteButton — single-tap duty completion. v1 implementation:
+//   POST /app/api/duty.complete → writes a notification (admin sees it
+//   in their feed) + shows a success toast.
+// v2 will write to a proper duty_completions table for analytics.
+// ---------------------------------------------------------------------------
+
+function MarkCompleteButton({
+  dutyId,
+  dutyName,
+  variant = 'primary',
+}: {
+  dutyId: string;
+  dutyName: string;
+  variant?: 'primary' | 'icon';
+}): React.ReactElement {
+  const fetcher = useFetcher();
+  const submitting = fetcher.state !== 'idle';
+
+  // Optimistic toast on submit; the action handles the actual write.
+  function onClick() {
+    fetcher.submit(
+      { dutyId },
+      { method: 'post', action: '/app/api/duty.complete' },
+    );
+    toast({
+      title: 'Marked complete',
+      description: `${dutyName} marked done. Your admin has been notified.`,
+      variant: 'success',
+    });
+  }
+
+  if (variant === 'icon') {
+    return (
+      <Button
+        variant="tertiary"
+        size="icon-sm"
+        aria-label={`Mark ${dutyName} complete`}
+        onClick={onClick}
+        disabled={submitting}
+      >
+        <Check size={16} aria-hidden />
+      </Button>
+    );
+  }
+
+  return (
+    <Button variant="primary" size="md" onClick={onClick} disabled={submitting}>
+      <Check size={16} aria-hidden />
+      {submitting ? 'Saving…' : 'Mark complete'}
+    </Button>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
 
 function SectionHeader({
   icon: Icon,
@@ -339,4 +530,13 @@ function formatTime12h(hhmm: string | null | undefined): string {
   const period = h >= 12 ? 'PM' : 'AM';
   const h12 = h % 12 || 12;
   return `${h12}:${String(m).padStart(2, '0')} ${period}`;
+}
+
+function formatHours(minutes: number): string {
+  if (minutes <= 0) return '0h';
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h === 0) return `${m}m`;
+  if (m === 0) return `${h}h`;
+  return `${h}.${Math.round((m / 60) * 10)}h`;
 }

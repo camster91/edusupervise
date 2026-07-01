@@ -50,6 +50,10 @@ export interface SeedSpec {
     description?: string;
     /** Teacher (by index into `teachers`) who is currently assigned. null = unassigned. */
     assignedToIdx: number | null;
+    /** Safety vest / hi-vis required for outdoor + cafeteria duties. */
+    requiresVest?: boolean;
+    /** Two-way radio required for spread-out outdoor duties. */
+    requiresRadio?: boolean;
   }>;
   absentTeacherIdx: number;
   cycleDays: number;
@@ -66,6 +70,7 @@ const ELEMENTARY: SeedSpec = {
     { name: 'Ms. Rivera', email: 'rivera@sunrise-elem.example', role: 'teacher' },
   ],
   dutySlots: [
+    // Day 1 — cafeteria + recess + bus (anchor day)
     {
       cycleDay: 1,
       startTime: '11:00',
@@ -73,6 +78,8 @@ const ELEMENTARY: SeedSpec = {
       location: 'Cafeteria Lunch A',
       description: 'Supervise K-1 lunch in cafeteria section A',
       assignedToIdx: 3, // Mr. Okafor
+      requiresVest: true,
+      requiresRadio: false,
     },
     {
       cycleDay: 1,
@@ -81,6 +88,8 @@ const ELEMENTARY: SeedSpec = {
       location: 'Cafeteria Lunch B',
       description: 'Supervise grades 2-3 lunch in cafeteria section B',
       assignedToIdx: null,
+      requiresVest: true,
+      requiresRadio: false,
     },
     {
       cycleDay: 1,
@@ -89,6 +98,8 @@ const ELEMENTARY: SeedSpec = {
       location: 'Recess (north playground)',
       description: 'Supervise grade 4-5 recess on the north playground',
       assignedToIdx: 4, // Ms. Rivera
+      requiresVest: true,
+      requiresRadio: true,
     },
     {
       cycleDay: 1,
@@ -97,6 +108,102 @@ const ELEMENTARY: SeedSpec = {
       location: 'Bus dismissal',
       description: 'Wave students onto the correct bus at the front loop',
       assignedToIdx: null,
+      requiresVest: true,
+      requiresRadio: true,
+    },
+    // Day 2 — recess + hall monitor (lighter load)
+    {
+      cycleDay: 2,
+      startTime: '10:15',
+      endTime: '10:30',
+      location: 'Hallway monitor (between classes)',
+      description: 'Watch main corridor during 3rd-period transition',
+      assignedToIdx: 0, // Ms. Chen
+      requiresVest: false,
+      requiresRadio: true,
+    },
+    {
+      cycleDay: 2,
+      startTime: '12:30',
+      endTime: '13:00',
+      location: 'Recess (south playground)',
+      description: 'Supervise K-3 recess on the south playground',
+      assignedToIdx: null,
+      requiresVest: true,
+      requiresRadio: false,
+    },
+    // Day 3 — cafeteria + dismissal
+    {
+      cycleDay: 3,
+      startTime: '11:00',
+      endTime: '11:30',
+      location: 'Cafeteria Lunch A',
+      description: 'Supervise K-1 lunch in cafeteria section A',
+      assignedToIdx: 1, // Mr. Daniels
+      requiresVest: true,
+      requiresRadio: false,
+    },
+    {
+      cycleDay: 3,
+      startTime: '14:50',
+      endTime: '15:15',
+      location: 'Bus dismissal',
+      description: 'Wave students onto the correct bus at the front loop',
+      assignedToIdx: 2, // Mrs. Patel
+      requiresVest: true,
+      requiresRadio: true,
+    },
+    // Day 4 — assembly dismissal
+    {
+      cycleDay: 4,
+      startTime: '12:45',
+      endTime: '13:15',
+      location: 'Assembly supervision',
+      description: 'Walk classes to/from the gym for grade-level assembly',
+      assignedToIdx: null,
+      requiresVest: false,
+      requiresRadio: true,
+    },
+    {
+      cycleDay: 4,
+      startTime: '14:50',
+      endTime: '15:15',
+      location: 'Bus dismissal',
+      description: 'Wave students onto the correct bus at the front loop',
+      assignedToIdx: 4, // Ms. Rivera
+      requiresVest: true,
+      requiresRadio: true,
+    },
+    // Day 5 — full cafeteria rotation
+    {
+      cycleDay: 5,
+      startTime: '11:00',
+      endTime: '11:30',
+      location: 'Cafeteria Lunch A',
+      description: 'Supervise K-1 lunch in cafeteria section A',
+      assignedToIdx: 2, // Mrs. Patel
+      requiresVest: true,
+      requiresRadio: false,
+    },
+    {
+      cycleDay: 5,
+      startTime: '11:30',
+      endTime: '12:00',
+      location: 'Cafeteria Lunch B',
+      description: 'Supervise grades 2-3 lunch in cafeteria section B',
+      assignedToIdx: 4, // Ms. Rivera
+      requiresVest: true,
+      requiresRadio: false,
+    },
+    {
+      cycleDay: 5,
+      startTime: '14:50',
+      endTime: '15:15',
+      location: 'Bus dismissal',
+      description: 'Wave students onto the correct bus at the front loop',
+      assignedToIdx: null,
+      requiresVest: true,
+      requiresRadio: true,
     },
   ],
   absentTeacherIdx: 2, // Mrs. Patel
@@ -195,11 +302,10 @@ export async function seedDemoData(
 
   const dutyIds: string[] = [];
   for (const slot of spec.dutySlots) {
-    // Only insert duties for cycleDay 1 in this seed; other days would
-    // multiply the dataset. (A real school has duties for every cycle
-    // day, but for the demo, cycle-day-1 coverage is the story.)
-    if (slot.cycleDay !== 1) continue;
-
+    // Insert duties for every cycle day the spec defines. Real schools
+    // run duties every day; the seed covers all 5 days of the rotation
+    // so the demo's Today view shows actual content regardless of
+    // which cycle day the visitor logs in on.
     const [row] = await tx
       .insert(duties)
       .values({
@@ -209,8 +315,8 @@ export async function seedDemoData(
         endTime: slot.endTime,
         location: slot.location,
         description: slot.description ?? null,
-        requiresVest: false,
-        requiresRadio: false,
+        requiresVest: slot.requiresVest ?? false,
+        requiresRadio: slot.requiresRadio ?? false,
         isActive: true,
         createdBy: adminUserId,
       })

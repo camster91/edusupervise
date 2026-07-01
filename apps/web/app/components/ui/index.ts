@@ -19,6 +19,18 @@ export type { HeroCardProps, DutyRef } from './HeroCard';
 export { WeekStrip } from './WeekStrip';
 export type { WeekStripProps, WeekStripDay } from './WeekStrip';
 
+export { StatsRow } from './StatsRow';
+export type { StatsRowProps, StatCardData } from './StatsRow';
+
+export { CycleLegend, cycleDayClasses } from './CycleLegend';
+export type { CycleLegendProps } from './CycleLegend';
+
+export { AddDutyEmptyState } from './AddDutyEmptyState';
+export type { AddDutyEmptyStateProps } from './AddDutyEmptyState';
+
+export { EquipmentChips } from './EquipmentChips';
+export type { EquipmentChipsProps } from './EquipmentChips';
+
 export { Sheet } from './Sheet';
 export type { SheetProps, SheetDetent } from './Sheet';
 

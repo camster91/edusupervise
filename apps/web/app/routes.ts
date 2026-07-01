@@ -70,6 +70,9 @@ export default [
   route('api/coverage/decline', 'routes/api.coverage.decline.ts'),
   route('api/coverage/events', 'routes/api.coverage.events.ts'),
 
+  // Duty quick actions (Phase 2C — Today redesign)
+  route('app/api/duty.complete', 'routes/app.api.duty.complete.ts'),
+
   // Parent alerts (Phase 3)
   route('api/coverage/parent-alerts', 'routes/api.coverage.parent-alerts.ts'),
   route('api/coverage/parent-alerts/send', 'routes/api.coverage.parent-alerts.send.ts'),

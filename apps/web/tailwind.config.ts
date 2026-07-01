@@ -53,6 +53,18 @@ export default {
         'error-soft': 'var(--color-error-soft)',
         info:         'var(--color-info)',
         'info-soft':  'var(--color-info-soft)',
+
+        // Cycle day palette (Day 1-5)
+        'cycle-1':     'var(--color-cycle-1)',
+        'cycle-1-soft':'var(--color-cycle-1-soft)',
+        'cycle-2':     'var(--color-cycle-2)',
+        'cycle-2-soft':'var(--color-cycle-2-soft)',
+        'cycle-3':     'var(--color-cycle-3)',
+        'cycle-3-soft':'var(--color-cycle-3-soft)',
+        'cycle-4':     'var(--color-cycle-4)',
+        'cycle-4-soft':'var(--color-cycle-4-soft)',
+        'cycle-5':     'var(--color-cycle-5)',
+        'cycle-5-soft':'var(--color-cycle-5-soft)',
       },
 
       fontFamily: {
