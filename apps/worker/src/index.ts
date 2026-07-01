@@ -35,6 +35,7 @@ import {
   type ReminderJobPayload,
 } from './jobs/reminders.js';
 import { startOutboxFlushLoop } from './jobs/outbox-flush.js';
+import { startReminderSchedulerLoop } from './jobs/reminder-scheduler.js';
 
 // ---------------------------------------------------------------------------
 // Env
@@ -57,6 +58,10 @@ const HEARTBEAT_INTERVAL_MS = Number.parseInt(
 );
 const OUTBOX_INTERVAL_MS = Number.parseInt(
   readEnv('OUTBOX_INTERVAL_MS') ?? '5000',
+  10,
+);
+const SCHEDULER_INTERVAL_MS = Number.parseInt(
+  readEnv('SCHEDULER_INTERVAL_MS') ?? '60000',
   10,
 );
 const WORKER_ID = readEnv('HOSTNAME') ?? `worker-${process.pid}`;
@@ -246,6 +251,17 @@ async function main(): Promise<void> {
     intervalMs: OUTBOX_INTERVAL_MS,
   });
 
+  // Reminder scheduler: scans `reminders` table for enabled reminders
+  // whose fire-time is in the next 60s, writes matching outbox rows.
+  // The outbox-flush loop above then picks them up + enqueues to BullMQ.
+  // Without this loop, `reminders` rows are inert — nothing bridges
+  // configuration to dispatch.
+  const reminderScheduler = startReminderSchedulerLoop({
+    db,
+    logger: logger.child({ module: 'reminder-scheduler' }),
+    intervalMs: SCHEDULER_INTERVAL_MS,
+  });
+
   // 5) Graceful shutdown.
   const shutdown = async (signal: string): Promise<void> => {
     if (shuttingDown) return;
@@ -260,6 +276,11 @@ async function main(): Promise<void> {
       await outboxFlush.stop();
     } catch (err) {
       logger.error({ err }, 'outbox flush stop failed');
+    }
+    try {
+      await reminderScheduler.stop();
+    } catch (err) {
+      logger.error({ err }, 'reminder scheduler stop failed');
     }
     try {
       await worker.close();

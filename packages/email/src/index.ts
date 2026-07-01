@@ -1,16 +1,18 @@
 /**
  * Email provider adapter.
  *
- * Routes sendEmail() to either the mock implementation (default) or the real
- * Resend SDK based on the EMAIL_PROVIDER env var. Both impls return the same
- * shape: { providerId: string, status: 'sent' | 'queued' }.
+ * Routes sendEmail() to one of three backends based on EMAIL_PROVIDER:
+ *   - mock:    logs + appends to /data/mocks/emails.log. Returns a fake ID.
+ *   - resend:  Resend HTTP API (RESEND_API_KEY + RESEND_FROM_EMAIL).
+ *   - mailgun: Mailgun HTTP API (MAILGUN_API_KEY + MAILGUN_DOMAIN +
+ *              MAILGUN_FROM_EMAIL). Basic-auth over HTTPS.
  *
- * - mock:    logs { to, subject, body } to stdout (pino structured log) AND
- *            appends a JSON line to /data/mocks/emails.log. Returns
- *            { providerId: 'mock-<uuid>', status: 'sent' }.
- * - resend:  uses the Resend Node SDK to send via the Resend HTTP API.
- *            Requires RESEND_API_KEY. Without it, fails fast with a clear error
- *            so misconfigured prod deploys surface immediately.
+ * All three return the same shape: { providerId, status }.
+ *
+ * Why Mailgun: cheaper at low-volume tier, ashbi.ca domain already
+ * verified there for the broader Ashbi stack. Reuses the same
+ * `sendEmail()` interface as Resend so the worker's reminder
+ * processor doesn't care which backend is wired.
  */
 import { randomUUID } from 'node:crypto';
 import { appendFile, mkdir } from 'node:fs/promises';
@@ -24,7 +26,7 @@ const logger = pinoLike({
   level: process.env.LOG_LEVEL ?? 'info',
 });
 
-export type EmailProvider = 'mock' | 'resend';
+export type EmailProvider = 'mock' | 'resend' | 'mailgun';
 
 export interface SendEmailInput {
   to: string;
@@ -141,23 +143,100 @@ async function sendResend(input: SendEmailInput): Promise<SendEmailResult> {
 }
 
 // ---------------------------------------------------------------------------
+// Mailgun implementation
+// ---------------------------------------------------------------------------
+
+interface MailgunSendResponse {
+  id?: string;
+  message?: string;
+}
+
+interface MailgunErrorResponse {
+  message?: string;
+}
+
+/**
+ * Mailgun's REST API uses HTTP Basic auth. Per their docs the username
+ * is always `api` and the password is the private API key. The domain
+ * is part of the URL path. We POST form-encoded data to
+ * https://api.mailgun.net/v3/{domain}/messages and the response
+ * includes `{ id: "<message-id>", message: "Queued. ..." }`.
+ *
+ * Uses the global `fetch` (Node 24 has it built-in) so we don't pull
+ * in a HTTP client library.
+ */
+async function sendMailgun(input: SendEmailInput): Promise<SendEmailResult> {
+  const apiKey = process.env.MAILGUN_API_KEY;
+  const domain = process.env.MAILGUN_DOMAIN;
+  const from = process.env.MAILGUN_FROM_EMAIL;
+  if (!apiKey) throw new Error('MAILGUN_API_KEY required when EMAIL_PROVIDER=mailgun');
+  if (!domain) throw new Error('MAILGUN_DOMAIN required when EMAIL_PROVIDER=mailgun');
+  if (!from) throw new Error('MAILGUN_FROM_EMAIL required when EMAIL_PROVIDER=mailgun');
+
+  // Region: Mailgun US is api.mailgun.net; EU is api.eu.mailgun.net.
+  // Pick based on MAILGUN_REGION env (default 'us').
+  const region = (process.env.MAILGUN_REGION ?? 'us').toLowerCase();
+  const base = region === 'eu'
+    ? `https://api.eu.mailgun.net/v3/${domain}`
+    : `https://api.mailgun.net/v3/${domain}`;
+
+  const params = new URLSearchParams();
+  params.set('from', from);
+  params.set('to', input.to);
+  params.set('subject', input.subject);
+  if (input.body) params.set('text', input.body);
+  if (input.html) params.set('html', input.html);
+  if (input.replyTo) params.set('h:Reply-To', input.replyTo);
+
+  const auth = Buffer.from(`api:${apiKey}`).toString('base64');
+
+  let res: Response;
+  try {
+    res = await fetch(`${base}/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: params.toString(),
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Mailgun transport failed: ${msg}`);
+  }
+
+  const responseText = await res.text();
+  let json: MailgunSendResponse | MailgunErrorResponse | null = null;
+  try { json = JSON.parse(responseText); } catch { /* not JSON */ }
+
+  if (!res.ok) {
+    const errMsg = (json as MailgunErrorResponse | null)?.message ?? responseText.slice(0, 200);
+    throw new Error(`Mailgun send failed (${res.status}): ${errMsg}`);
+  }
+
+  const providerId = (json as MailgunSendResponse | null)?.id ?? `mailgun-${randomUUID()}`;
+  logger.info({ providerId, to: input.to, subject: input.subject, domain }, 'mailgun email sent');
+  return { providerId, status: 'sent' };
+}
+
+// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 function resolveProvider(): EmailProvider {
   const raw = (process.env.EMAIL_PROVIDER ?? 'mock').toLowerCase();
-  if (raw === 'mock' || raw === 'resend') return raw;
-  // Unknown provider is a hard error — better than silently sending via mock in prod.
+  if (raw === 'mock' || raw === 'resend' || raw === 'mailgun') return raw;
   throw new Error(
-    `Unknown EMAIL_PROVIDER: ${process.env.EMAIL_PROVIDER} (expected 'mock' or 'resend')`,
+    `Unknown EMAIL_PROVIDER: ${process.env.EMAIL_PROVIDER} (expected 'mock', 'resend', or 'mailgun')`,
   );
 }
 
 /**
- * Send an email via the configured provider (mock or resend).
+ * Send an email via the configured provider.
  *
  * - Mock: returns immediately with a mock providerId; logs + appends to file.
- * - Resend: hits the Resend API; throws on transport failure.
+ * - Resend: hits the Resend HTTP API.
+ * - Mailgun: hits the Mailgun HTTP API.
  */
 export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult> {
   if (!input.to) throw new Error('sendEmail: `to` is required');
@@ -167,7 +246,9 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
   }
 
   const provider = resolveProvider();
-  return provider === 'mock' ? sendMock(input) : sendResend(input);
+  if (provider === 'mock') return sendMock(input);
+  if (provider === 'resend') return sendResend(input);
+  return sendMailgun(input);
 }
 
 /**
