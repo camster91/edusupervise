@@ -19,7 +19,7 @@ import { and, eq, gte, lte, asc } from 'drizzle-orm';
 import { duties, dutyAssignments, cycleCalendar, schools, users } from '@edusupervise/db';
 import { getSession } from '../../server/auth.server';
 import { withSchoolId } from '../../server/db.server';
-import { cycleDayClasses } from '../components/ui/CycleLegend';
+import { cycleDayClasses, cycleDaySoftClasses } from '../components/ui/CycleLegend';
 
 export function meta() {
   return [{ title: 'Print — EduSupervise' }];
@@ -185,7 +185,7 @@ export default function PrintView({ loaderData }: Route.ComponentProps) {
           const dayDuties = dutiesByDay.get(day) ?? [];
           return (
             <div key={day} className="border border-gray-400 rounded-sm p-xs">
-              <div className={`text-xs font-bold uppercase tracking-wide mb-xs px-xs py-xs rounded ${cycleDayClasses(day)} bg-opacity-20`}>
+              <div className={`text-xs font-bold uppercase tracking-wide mb-xs px-xs py-xs rounded ${cycleDaySoftClasses(day)}`}>
                 Day {day} · {dayLabels[idx]}
               </div>
               <div className="text-xs text-gray-600 mb-xs">

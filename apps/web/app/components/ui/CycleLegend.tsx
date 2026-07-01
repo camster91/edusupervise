@@ -18,13 +18,13 @@ export interface CycleLegendProps {
   className?: string;
 }
 
-const CYCLE_CLASSES: Record<number, { dot: string; text: string; label: string }> = {
-  1: { dot: 'bg-cycle-1',       text: 'text-cycle-1',       label: 'Day 1' },
-  2: { dot: 'bg-cycle-2',       text: 'text-cycle-2',       label: 'Day 2' },
-  3: { dot: 'bg-cycle-3',       text: 'text-cycle-3',       label: 'Day 3' },
-  4: { dot: 'bg-cycle-4',       text: 'text-cycle-4',       label: 'Day 4' },
-  5: { dot: 'bg-cycle-5',       text: 'text-cycle-5',       label: 'Day 5' },
-  6: { dot: 'bg-secondary',     text: 'text-secondary',     label: 'Day 6' },
+const CYCLE_CLASSES: Record<number, { dot: string; soft: string; text: string; label: string }> = {
+  1: { dot: 'bg-cycle-1',       soft: 'bg-cycle-1-soft', text: 'text-cycle-1', label: 'Day 1' },
+  2: { dot: 'bg-cycle-2',       soft: 'bg-cycle-2-soft', text: 'text-cycle-2', label: 'Day 2' },
+  3: { dot: 'bg-cycle-3',       soft: 'bg-cycle-3-soft', text: 'text-cycle-3', label: 'Day 3' },
+  4: { dot: 'bg-cycle-4',       soft: 'bg-cycle-4-soft', text: 'text-cycle-4', label: 'Day 4' },
+  5: { dot: 'bg-cycle-5',       soft: 'bg-cycle-5-soft', text: 'text-cycle-5', label: 'Day 5' },
+  6: { dot: 'bg-secondary',     soft: 'bg-surface-2',     text: 'text-secondary', label: 'Day 6' },
 };
 
 export function CycleLegend({
@@ -87,4 +87,15 @@ export function cycleDayClasses(day: number | null | undefined): string {
   if (!day) return 'bg-surface-2 text-secondary';
   const c = CYCLE_CLASSES[day] ?? CYCLE_CLASSES[1]!;
   return `${c.dot.replace('bg-', 'bg-')} ${c.text}`;
+}
+
+/**
+ * Soft variant — light pastel background + saturated text. Best for
+ * headers, chips, and anywhere the saturated background would make the
+ * text hard to read. Used by the print view's column headers.
+ */
+export function cycleDaySoftClasses(day: number | null | undefined): string {
+  if (!day) return 'bg-surface-2 text-secondary';
+  const c = CYCLE_CLASSES[day] ?? CYCLE_CLASSES[1]!;
+  return `${c.soft} ${c.text}`;
 }
