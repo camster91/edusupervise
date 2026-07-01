@@ -134,7 +134,7 @@ export async function runSchedulerTick(opts: SchedulerOpts): Promise<{
       // the first one whose cycle_day === duty.cycleDay. Then
       // combine that date with duty.startTime to get the next duty
       // timestamp.
-      const startDate = assignment.startDate as Date | null;
+      const startDate = assignment.startDate as unknown as Date | null;
       const candidateDates = await opts.db
         .select({
           date: cycleCalendar.date,
