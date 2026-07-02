@@ -22,7 +22,7 @@ import {
   requireRole,
   requireSession,
 } from '../../server/auth.server';
-import { getDb } from '../../server/db.server';
+import { getDb, withSchoolId } from '../../server/db.server';
 import { readCsrfCookie, validateCsrfWithFormToken } from '../../server/csrf.server';
 import {
   listInvoicesForSchool,
@@ -44,18 +44,23 @@ export async function loader({ request }: Route.LoaderArgs) {
   requireRole(session, ['school_admin']);
   const csrfToken = readCsrfCookie(request);
 
-  const db = getDb();
-  const [school] = await db
-    .select({
-      id: schools.id,
-      plan: schools.plan,
-      planDowngradePendingTo: schools.planDowngradePendingTo,
-      planDowngradeEffectiveAt: schools.planDowngradeEffectiveAt,
-      trialEndsAt: schools.trialEndsAt,
-    })
-    .from(schools)
-    .where(eq(schools.id, session.schoolId))
-    .limit(1);
+  // Schools row lookup MUST go through the runtime role context
+  // with `app.school_id` set — otherwise RLS filters it out and
+  // the loader 404s. schools are tenant-owned; setting
+  // app.school_id = session.schoolId before reading is safe.
+  const [school] = await withSchoolId(session.schoolId, async (tx) =>
+    tx
+      .select({
+        id: schools.id,
+        plan: schools.plan,
+        planDowngradePendingTo: schools.planDowngradePendingTo,
+        planDowngradeEffectiveAt: schools.planDowngradeEffectiveAt,
+        trialEndsAt: schools.trialEndsAt,
+      })
+      .from(schools)
+      .where(eq(schools.id, session.schoolId))
+      .limit(1)
+  );
   if (!school) {
     throw new Response('School not found', { status: 404 });
   }
@@ -66,8 +71,6 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export default function BillingSettingsPage() {
-  const appData = useRouteLoaderData('routes/_app') as { csrfToken?: string } | undefined;
-  const csrfToken = appData?.csrfToken ?? '';
   const { school, invoices, downgrade, csrfToken } = useLoaderData<typeof loader>();
   return (
     <div className="space-y-6">
@@ -98,9 +101,9 @@ export default function BillingSettingsPage() {
 
       <PlanCard school={school} />
 
-      <PlanUpgradeForm />
+      <PlanUpgradeForm csrfToken={csrfToken} />
 
-      <PortalButton />
+      <PortalButton csrfToken={csrfToken} />
 
       <InvoicesList invoices={invoices} />
 
@@ -155,7 +158,7 @@ function PlanCard({
   );
 }
 
-function PlanUpgradeForm() {
+function PlanUpgradeForm({ csrfToken }: { csrfToken: string }) {
   return (
     <section className="bg-white border border-slate-200 rounded-xl p-6">
       <h3 className="text-sm font-semibold text-slate-900">Upgrade plan</h3>
@@ -189,7 +192,7 @@ function PlanUpgradeForm() {
   );
 }
 
-function PortalButton() {
+function PortalButton({ csrfToken }: { csrfToken: string }) {
   return (
     <section className="bg-white border border-slate-200 rounded-xl p-6">
       <h3 className="text-sm font-semibold text-slate-900">Manage subscription</h3>
