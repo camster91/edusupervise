@@ -42,7 +42,7 @@ export async function loader({ request }: Route.LoaderArgs) {
   const session = requireSession(await getSession(request));
   requireRole(session, ['school_admin']);
 
-  const data = await withSchoolId(session.schoolId, async (tx) => {
+  const payload = await withSchoolId(session.schoolId, async (tx) => {
     const [school] = await tx
       .select({
         id: schools.id,
@@ -71,7 +71,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     ? { 'Set-Cookie': setCookie }
     : undefined;
   return data(
-    { ...data, csrfToken: token },
+    { ...payload, csrfToken: token },
     csrfHeaders ? { headers: csrfHeaders } : undefined,
   );
 }
