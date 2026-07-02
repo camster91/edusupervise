@@ -144,7 +144,7 @@ export default function CoveragePage() {
                 <ul className="divide-y divide-divider" role="list">
                   {e.assignments.map((a) => (
                     <li key={a.id}>
-                      <AssignmentRow assignment={a} />
+                      <AssignmentRow assignment={a} csrfToken={csrfToken} />
                     </li>
                   ))}
                 </ul>
@@ -216,6 +216,7 @@ function StatusBadge({ status }: { status: string }): React.ReactElement {
 
 function AssignmentRow({
   assignment,
+  csrfToken,
 }: {
   assignment: {
     id: string;
@@ -227,6 +228,7 @@ function AssignmentRow({
     newTeacherName: string | null;
     status: string;
   };
+  csrfToken: string;
 }): React.ReactElement {
   const fetcher = useFetcher();
   const isPending = assignment.status === 'pending';
@@ -257,7 +259,7 @@ function AssignmentRow({
             onClick={() => {
               fetcher.submit(
                 { assignmentId: assignment.id, csrf: csrfToken },
-                { method: 'POST', action: '/api/coverage/accept' },
+                { method: 'POST', action: '/api/coverage/accept', encType: 'application/json' },
               );
             }}
           >
@@ -270,7 +272,7 @@ function AssignmentRow({
             onClick={() => {
               fetcher.submit(
                 { assignmentId: assignment.id, csrf: csrfToken },
-                { method: 'POST', action: '/api/coverage/decline' },
+                { method: 'POST', action: '/api/coverage/decline', encType: 'application/json' },
               );
             }}
           >
