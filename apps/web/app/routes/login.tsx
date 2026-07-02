@@ -15,7 +15,13 @@
 // The user lookup needs the system role (BYPASSRLS) because at sign-in
 // time we don't yet know the user's school — the runtime role's
 // RLS-bound `users` query would return zero rows.
-import { Form, redirect, useActionData, useLoaderData } from 'react-router';
+import {
+  data,
+  Form,
+  redirect,
+  useActionData,
+  useLoaderData,
+} from 'react-router';
 import type { Route } from './+types/login';
 import { eq, and } from 'drizzle-orm';
 import { getSystemClient, users } from '@edusupervise/db';
@@ -25,8 +31,7 @@ import {
   sessionCookieAttributes,
 } from '../../server/auth.server';
 import {
-  mintCsrfCookie,
-  readCsrfCookie,
+  ensureCsrfCookie,
   validateCsrfWithFormToken,
 } from '../../server/csrf.server';
 import { checkLoginByIp } from '../../server/rate-limit.server';
@@ -42,13 +47,16 @@ export function meta() {
  * first paint. See signup.tsx for the full pattern.
  */
 export function loader({ request }: { request: Request }) {
-  const existing = readCsrfCookie(request);
-  if (existing) return { csrfToken: existing };
-  const { token, setCookie } = mintCsrfCookie();
-  return new Response(JSON.stringify({ csrfToken: token }), {
-    status: 200,
-    headers: { 'content-type': 'application/json', 'set-cookie': setCookie },
-  });
+  // ensureCsrfCookie reads the existing cookie or mints a fresh one
+  // and returns the token + Set-Cookie header value. Using RR7's
+  // data() wrapper keeps the loader-data shape consistent across
+  // visits (previously returned plain object when cookie present,
+  // Response-with-Set-Cookie when missing — triggered #418/#425).
+  const { token, setCookie } = ensureCsrfCookie(request);
+  const headers: HeadersInit | undefined = setCookie
+    ? { 'Set-Cookie': setCookie }
+    : undefined;
+  return data({ csrfToken: token }, headers ? { headers } : undefined);
 }
 
 export async function action({ request }: Route.ActionArgs) {

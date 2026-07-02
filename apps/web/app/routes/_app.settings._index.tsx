@@ -10,7 +10,13 @@
 // Admin only (school_admin role required at the loader + action).
 
 import { eq, sql } from 'drizzle-orm';
-import { Form, useActionData, useLoaderData, useNavigation } from 'react-router';
+import {
+  data,
+  Form,
+  useActionData,
+  useLoaderData,
+  useNavigation,
+} from 'react-router';
 import { Save } from 'lucide-react';
 import { schools } from '@edusupervise/db';
 import type { Route } from './+types/_app.settings._index';
@@ -22,8 +28,7 @@ import {
 import { withSchoolId } from '../../server/db.server';
 import { CopyableJoinCode } from '../components/CopyableJoinCode';
 import {
-  mintCsrfCookie,
-  readCsrfCookie,
+  ensureCsrfCookie,
   validateCsrfWithFormToken,
 } from '../../server/csrf.server';
 import { recordAudit, AUDIT } from '../../server/audit.server';
@@ -53,18 +58,21 @@ export async function loader({ request }: Route.LoaderArgs) {
   });
 
   // Read CSRF token from the request cookie so the rename form's
-  // hidden field gets a real value via loader data. Mints + sets
-  // Set-Cookie when missing (first visit), matching the pattern
-  // in /signup, /login, /_app loaders.
-  const existing = readCsrfCookie(request);
-  if (existing) return { ...data, csrfToken: existing };
-  const { token, setCookie } = mintCsrfCookie();
-  return new Response(
-    JSON.stringify({ ...data, csrfToken: token }),
-    {
-      status: 200,
-      headers: { 'content-type': 'application/json', 'set-cookie': setCookie },
-    },
+  // hidden field gets a real value via loader data. ensureCsrfCookie
+  // reads the existing cookie or mints a fresh one and returns both
+  // the token (for loader data) and Set-Cookie (for the response).
+  // Using RR7's data() wrapper keeps the loader-data shape
+  // consistent across visits — the previous pattern returned a
+  // plain object when the cookie was present and a
+  // Response-with-Set-Cookie when it wasn't, which triggered React
+  // #418/#425 hydration warnings on subsequent visits.
+  const { token, setCookie } = ensureCsrfCookie(request);
+  const csrfHeaders: HeadersInit | undefined = setCookie
+    ? { 'Set-Cookie': setCookie }
+    : undefined;
+  return data(
+    { ...data, csrfToken: token },
+    csrfHeaders ? { headers: csrfHeaders } : undefined,
   );
 }
 

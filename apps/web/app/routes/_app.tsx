@@ -12,13 +12,13 @@
 //   - When `schools.plan='demo_expired'`, render <ExpiredDemo />
 //     instead of the Outlet — the school is read-only until reset.
 
-import { Outlet, useLoaderData } from 'react-router';
+import { Outlet, data, useLoaderData } from 'react-router';
 import { eq } from 'drizzle-orm';
 import { schools, notifications } from '@edusupervise/db';
 import type { Route } from './+types/_app';
 import { getSession } from '../../server/auth.server';
 import { withSchoolId } from '../../server/db.server';
-import { mintCsrfCookie, readCsrfCookie } from '../../server/csrf.server';
+import { ensureCsrfCookie } from '../../server/csrf.server';
 import { Sidebar, Topbar, TabBar } from '../components/shell';
 import { ThemeStyle } from '../components/ThemeStyle';
 import { DemoBanner } from '../components/DemoBanner';
@@ -74,20 +74,21 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   // Also expose the CSRF token from the request cookie so child
   // components (DemoBanner, settings forms) can include it in
-  // hidden form fields. If the request doesn't carry the cookie
-  // yet (first visit), mint one + attach Set-Cookie to the
-  // response so the form's hidden field is populated.
-  const existing = readCsrfCookie(request);
-  if (existing) {
-    return { ...loaderData, csrfToken: existing };
-  }
-  const { token, setCookie } = mintCsrfCookie();
-  return new Response(
-    JSON.stringify({ ...loaderData, csrfToken: token }),
-    {
-      status: 200,
-      headers: { 'content-type': 'application/json', 'set-cookie': setCookie },
-    },
+  // hidden form fields. ensureCsrfCookie reads the existing cookie
+  // or mints a fresh one and returns both the token and the
+  // Set-Cookie header value. Using RR7's data() wrapper keeps the
+  // loader-data shape consistent across visits — the previous
+  // pattern returned a plain object when the cookie was present
+  // and a Response-with-Set-Cookie when it wasn't, which broke
+  // RR7's loader shape inference on every child route and triggered
+  // React #418/#425 hydration warnings.
+  const { token, setCookie } = ensureCsrfCookie(request);
+  const csrfHeaders: HeadersInit | undefined = setCookie
+    ? { 'Set-Cookie': setCookie }
+    : undefined;
+  return data(
+    { ...loaderData, csrfToken: token },
+    csrfHeaders ? { headers: csrfHeaders } : undefined,
   );
 }
 
