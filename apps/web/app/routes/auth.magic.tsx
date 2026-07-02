@@ -19,7 +19,7 @@
 // `intent` field on the form body disambiguates.
 
 import { useEffect, useState } from 'react';
-import { Form, useActionData, redirect } from 'react-router';
+import { Form, useActionData, redirect, useLoaderData } from 'react-router';
 import type { Route } from './+types/auth.magic';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';

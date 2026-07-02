@@ -17,7 +17,7 @@
 // page reads it on mount and POSTs it in the body.
 
 import { useEffect, useState } from 'react';
-import { Form, useActionData, useSearchParams } from 'react-router';
+import { Form, useActionData, useLoaderData, useSearchParams } from 'react-router';
 import type { Route } from './+types/verify-email';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
