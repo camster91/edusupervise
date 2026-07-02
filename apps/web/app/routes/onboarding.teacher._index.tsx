@@ -4,7 +4,7 @@
 // "Welcome. Your duties this week: 3. Tomorrow at 11:30: Cafeteria. [Get started →]"
 // That's it. No wizard. Drop them into Today.
 
-import { Link, redirect } from 'react-router';
+import { Link, redirect, useLoaderData } from 'react-router';
 import { ArrowRight, Calendar } from 'lucide-react';
 import type { Route } from './+types/onboarding.teacher._index';
 import { getSession } from '../../server/auth.server';
@@ -19,12 +19,13 @@ export async function loader({ request }: Route.LoaderArgs) {
     throw redirect('/login');
   }
   return {
-    name: session.name,
+    name: session.name ?? '',
   };
 }
 
 export default function TeacherOnboarding() {
   const { name } = useLoaderData<typeof loader>();
+  const firstName = (name || '').split(' ')[0] || 'teacher';
   return (
     <div className="min-h-screen bg-bg flex items-center justify-center p-md">
       <div className="max-w-md w-full bg-surface rounded-xl border border-border shadow-elev-1 p-2xl text-center">
@@ -35,7 +36,7 @@ export default function TeacherOnboarding() {
           <Calendar size={32} className="text-accent" aria-hidden />
         </div>
         <h1 className="text-title-1 text-primary font-bold">
-          Welcome, {name.split(' ')[0]}.
+          Welcome, {firstName}.
         </h1>
         <p className="text-callout text-secondary mt-md">
           Your duties this week: 3

@@ -189,6 +189,31 @@ export function withCsrfCookie<T extends Response>(response: T): T {
   return response;
 }
 
+/**
+ * Read the existing CSRF cookie, or mint a fresh one. Returns both the
+ * token (for embedding into rendered HTML / loader data) and a
+ * `setCookie` value that the caller attaches to the response. When the
+ * cookie already exists, `setCookie` is null so callers can no-op the
+ * header append.
+ *
+ * Use from entry.server.tsx so the cookie is minted exactly once per
+ * session (on the first non-asset request) rather than per-loader. This
+ * eliminates the previous loader pattern that returned either a plain
+ * `{ csrfToken }` object or a Response with Set-Cookie depending on
+ * cookie presence — the inconsistency caused React #418/#425 hydration
+ * warnings because the loader data shape changed between visits.
+ */
+export function ensureCsrfCookie(request: Request): {
+  token: string;
+  setCookie: string | null;
+} {
+  const existing = readCsrfCookie(request);
+  if (existing) return { token: existing, setCookie: null };
+  const { token, setCookie } = mintCsrfCookie();
+  return { token, setCookie };
+}
+
+
 // ---------------------------------------------------------------------------
 // Internals
 // ---------------------------------------------------------------------------

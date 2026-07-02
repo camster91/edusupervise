@@ -333,6 +333,7 @@ export default function Today() {
                 duty={d}
                 reminders={reminderMap[d.id] ?? []}
                 onSwap={() => { setActiveDuty(d); setSwapOpen(true); }}
+                csrfToken={csrfToken}
               />
             ))}
           </ul>
@@ -421,6 +422,7 @@ function DutyCard({
   duty,
   reminders,
   onSwap,
+  csrfToken,
 }: {
   duty: {
     id: string;
@@ -433,6 +435,7 @@ function DutyCard({
   };
   reminders: ReminderRow[];
   onSwap: () => void;
+  csrfToken: string;
 }): React.ReactElement {
   return (
     <li
@@ -474,7 +477,7 @@ function DutyCard({
       </div>
       {/* Inline reminders — the big win of v2. Hidden when none set
           (admin can click "+ Add reminder" to add the first one). */}
-      <ReminderList dutyId={duty.id} reminders={reminders} />
+      <ReminderList dutyId={duty.id} reminders={reminders} csrfToken={csrfToken} />
     </li>
   );
 }
@@ -487,9 +490,11 @@ function DutyCard({
 function ReminderList({
   dutyId,
   reminders,
+  csrfToken,
 }: {
   dutyId: string;
   reminders: ReminderRow[];
+  csrfToken: string;
 }): React.ReactElement | null {
   const [sheetOpen, setSheetOpen] = useState(false);
 
@@ -537,12 +542,19 @@ function ReminderList({
         open={sheetOpen}
         onOpenChange={setSheetOpen}
         dutyId={dutyId}
+        csrfToken={csrfToken}
       />
     </div>
   );
 }
 
-function ReminderRowItem({ reminder }: { reminder: ReminderRow }): React.ReactElement {
+function ReminderRowItem({
+  reminder,
+  csrfToken,
+}: {
+  reminder: ReminderRow;
+  csrfToken: string;
+}): React.ReactElement {
   const toggleFetcher = useFetcher();
   const deleteFetcher = useFetcher();
   const submitting = toggleFetcher.state !== 'idle' || deleteFetcher.state !== 'idle';

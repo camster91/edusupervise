@@ -29,10 +29,10 @@
 // On URL: ?school=CODE (lowercase) the Join card opens by default with
 // the code pre-filled — useful when admins paste the URL into chat.
 
-import { useLoaderData, useSearchParams } from 'react-router';
+import { data, useLoaderData, useSearchParams } from 'react-router';
 import { Users, User, Sparkles } from 'lucide-react';
 import { SignupCard } from '../components/SignupCard';
-import { mintCsrfCookie, readCsrfCookie } from '../../server/csrf.server';
+import { ensureCsrfCookie } from '../../server/csrf.server';
 
 export function meta() {
   return [{ title: 'Sign up — EduSupervise' }];
@@ -44,21 +44,20 @@ export function meta() {
  * the cookie. This is the source of truth for the CSRF token —
  * entry.server.tsx no longer mints it (avoids duplicate Set-Cookie).
  */
-export function loader({ request }: { request: Request }) {
-  const existing = readCsrfCookie(request);
-  if (existing) {
-    return { csrfToken: existing };
-  }
-  // No cookie yet — mint and set on the response so the browser
-  // gets the cookie AND we return the token to populate the form.
-  const { token, setCookie } = mintCsrfCookie();
-  return new Response(JSON.stringify({ csrfToken: token }), {
-    status: 200,
-    headers: {
-      'content-type': 'application/json',
-      'set-cookie': setCookie,
-    },
-  });
+export async function loader({ request }: { request: Request }) {
+  // ensureCsrfCookie reads the existing cookie or mints a fresh one,
+  // returning the token (to embed in the HTML form) and the Set-Cookie
+  // header value (to attach to the response when we minted). Using
+  // RR7's `data()` wrapper keeps the loader-data shape consistent
+  // across visits — the previous pattern returned a plain object
+  // when the cookie was present and a Response-with-Set-Cookie when
+  // it wasn't, which triggered React #418/#425 hydration warnings on
+  // subsequent visits.
+  const { token, setCookie } = ensureCsrfCookie(request);
+  const headers: HeadersInit | undefined = setCookie
+    ? { 'Set-Cookie': setCookie }
+    : undefined;
+  return data({ csrfToken: token }, headers ? { headers } : undefined);
 }
 
 export default function SignupPage() {

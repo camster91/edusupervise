@@ -137,20 +137,20 @@ export default async function handleRequest(
   // uses inline styles.
   applySecurityHeaders(responseHeaders, process.env.NODE_ENV === 'production');
 
-  // CSRF cookie minting lives in the per-route loaders that need
-  // the token (signup.tsx, login.tsx, _app.tsx, settings). They
-  // attach Set-Cookie to their response AND return the token in
-  // loader data. Doing it here would duplicate Set-Cookie headers
-  // and produce races between two mints with different tokens.
+  // The CSRF cookie is minted by the auth route loaders themselves
+  // (using ensureCsrfCookie + RR7's data() helper to attach Set-Cookie
+  // without breaking the loader data shape). We do NOT mint here:
+  // loaders run BEFORE entry.server.tsx in the RR7 SSR pipeline, so
+  // a token minted here would not be visible to the loader that needs
+  // to embed it in the HTML form. Mints here would also race with the
+  // loader's own mint and produce two cookies with different tokens.
   //
-  // For routes WITHOUT a csrf-aware loader (e.g. /, /signup direct
-  // nav with a fresh user), we still want a cookie on the browser
-  // so the .data request that fires after the user clicks a card
-  // has something to read. The signup loader's mint covers the
-  // primary use case; for other routes we let the action-level
-  // CSRF check fail-and-redirect if the cookie is missing.
-  //
-  // The single-source-of-truth mint is in csrf.server.ts#mintCsrfCookie.
+  // The previous version of this file did mint here, but it caused
+  // React #418/#425 hydration warnings because the loader returned a
+  // plain `{ csrfToken }` object the first time (no cookie in request)
+  // and a Response-with-Set-Cookie the second time (cookie present).
+  // Centralizing the mint in ensureCsrfCookie + always returning a
+  // plain object (via data()) eliminates that inconsistency.
 
   // Bots get the full HTML at once — they don't execute the hydration
   // JS so partial streams just slow down indexing. Humans get a

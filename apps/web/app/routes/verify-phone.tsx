@@ -18,14 +18,18 @@
 // TWILIO_VERIFY_SERVICE_SID in env).
 
 import { useState } from 'react';
-import { Form, useActionData, useLoaderData } from 'react-router';
+import {
+  data,
+  Form,
+  useActionData,
+  useLoaderData,
+} from 'react-router';
 import type { Route } from './+types/verify-phone';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { getSystemClient, users } from '@edusupervise/db';
 import {
-  mintCsrfCookie,
-  readCsrfCookie,
+  ensureCsrfCookie,
   validateCsrfWithFormToken,
 } from '../../server/csrf.server';
 import { checkPhoneVerify } from '../../server/rate-limit.server';
@@ -60,13 +64,19 @@ export function meta() {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
-  const existing = readCsrfCookie(request);
-  if (existing) return { csrfToken: existing };
-  const { token, setCookie } = mintCsrfCookie();
-  return new Response(JSON.stringify({ csrfToken: token }), {
-    status: 200,
-    headers: { 'content-type': 'application/json', 'set-cookie': setCookie },
-  });
+  // ensureCsrfCookie reads the existing cookie or mints a fresh one,
+  // returning the token (to embed in the HTML form) and the Set-Cookie
+  // header value (to attach to the response when we minted). Using
+  // RR7's `data()` wrapper keeps the loader-data shape consistent
+  // across visits — the previous pattern returned a plain object
+  // when the cookie was present and a Response-with-Set-Cookie when
+  // it wasn't, which triggered React #418/#425 hydration warnings on
+  // subsequent visits.
+  const { token, setCookie } = ensureCsrfCookie(request);
+  const headers: HeadersInit | undefined = setCookie
+    ? { 'Set-Cookie': setCookie }
+    : undefined;
+  return data({ csrfToken: token }, headers ? { headers } : undefined);
 }
 
 export async function action({ request }: Route.ActionArgs) {
