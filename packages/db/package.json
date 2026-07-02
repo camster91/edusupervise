@@ -3,16 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Database layer for EduSupervise — Drizzle schema, RLS helpers, migrations, seed.",
-  "main": "./src/index.ts",
+  "description": "Database layer for EduSupervise \u2014 Drizzle schema, RLS helpers, migrations, seed.",
+  "main": "./dist/src/index.js",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./schema": "./src/schema.ts",
-    "./client": "./src/client.ts",
-    "./rls": "./src/rls.ts",
-    "./cycle-math": "./src/cycle-math.ts",
-    "./seed": "./src/seed.ts"
+    ".": "./dist/src/index.js",
+    "./schema": "./dist/src/schema.js",
+    "./client": "./dist/src/client.js",
+    "./rls": "./dist/src/rls.js",
+    "./cycle-math": "./dist/src/cycle-math.js",
+    "./seed": "./dist/src/seed.js"
   },
   "scripts": {
     "test": "vitest run",

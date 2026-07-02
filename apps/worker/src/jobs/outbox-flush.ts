@@ -85,7 +85,7 @@ export async function flushOutboxOnce(
       const parseResult = reminderJobSchema.safeParse(row.payload);
       if (!parseResult.success) {
         const issues = parseResult.error.issues
-          .map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`)
+          .map((i: { path: (string | number)[]; message: string }) => `${i.path.join('.') || '<root>'}: ${i.message}`)
           .join('; ');
         await markPoisonRow(opts, row.id, `invalid payload: ${issues}`);
         continue;

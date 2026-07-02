@@ -156,7 +156,21 @@ async function main(): Promise<void> {
   const queueRedis = buildRedis(0);
   const workerRedis = buildRedis(0);
 
-  await queueRedis.ping();
+  // ioredis can throw "Stream isn't writeable" if .ping() races the
+  // TCP handshake. Retry up to 3x with 500ms backoff so the worker
+  // doesn't crash-loop on a slow Redis container start.
+  let pingOk = false;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      await queueRedis.ping();
+      pingOk = true;
+      break;
+    } catch (err) {
+      logger.warn({ attempt, err: err instanceof Error ? err.message : String(err) }, 'redis ping failed, retrying');
+      await new Promise((r) => setTimeout(r, 500 * attempt));
+    }
+  }
+  if (!pingOk) throw new Error('redis unreachable after 3 attempts');
   logger.info({ workerId: WORKER_ID }, 'redis ping ok');
 
   // 1) Initial heartbeat so /api/health sees us within seconds.

@@ -3,13 +3,13 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Shared Zod schemas — used by both client (form validation) and server (action validation). Same schema validates both sides so the contract is enforced once.",
-  "main": "./src/index.ts",
+  "description": "Shared Zod schemas \u2014 used by both client (form validation) and server (action validation). Same schema validates both sides so the contract is enforced once.",
+  "main": "./dist/index.js",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts",
-    "./auth": "./src/auth.ts",
-    "./reminder-job": "./src/reminder-job.ts"
+    ".": "./dist/index.js",
+    "./auth": "./dist/auth.js",
+    "./reminder-job": "./dist/reminder-job.js"
   },
   "scripts": {
     "typecheck": "tsc -p tsconfig.json --noEmit",

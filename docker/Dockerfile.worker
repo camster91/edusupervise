@@ -10,12 +10,22 @@ COPY apps/worker/package.json apps/worker/package.json
 COPY packages/db/package.json packages/db/package.json
 COPY packages/email/package.json packages/email/package.json
 COPY packages/sms/package.json packages/sms/package.json
-RUN pnpm install --no-frozen-lockfile --filter './apps/worker' --filter './packages/*'
+COPY packages/schemas/package.json packages/schemas/package.json
+# Install the whole workspace so @edusupervise/schemas' node_modules/
+# zod is available to the worker's tsc (transitive deps otherwise
+# don't resolve in filtered installs).
+RUN pnpm install --no-frozen-lockfile
 
 # --- build stage ---
 FROM deps AS build
 COPY apps/worker ./apps/worker
 COPY packages ./packages
+# Build the workspace's TS-source packages (their package.json main=
+# ./src/index.ts which Node can't load at runtime). The runtime stage
+# COPYs the resulting dist/ dirs. The .dockerignore excludes
+# `**/dist` from the build context, so they MUST be created here.
+RUN pnpm --filter @edusupervise/db --filter @edusupervise/schemas \
+      --filter @edusupervise/email --filter @edusupervise/sms build
 RUN pnpm --filter @edusupervise/worker build
 
 # --- runtime stage ---
@@ -25,6 +35,19 @@ WORKDIR /app
 COPY --from=build /app/apps/worker/dist ./apps/worker/dist
 COPY --from=build /app/apps/worker/package.json ./apps/worker/package.json
 COPY --from=build /app/packages ./packages
+# Pre-build the db + schemas + email + sms packages so the worker
+# can import their compiled JS at runtime. Their package.json
+# main=./src/index.ts which Node can't resolve without a TS loader.
+COPY --from=build /app/packages/db/dist /app/packages/db/dist
+COPY --from=build /app/packages/schemas/dist /app/packages/schemas/dist
+COPY --from=build /app/packages/email/dist /app/packages/email/dist
+COPY --from=build /app/packages/sms/dist /app/packages/sms/dist
 COPY --from=build /app/node_modules ./node_modules
+# Also COPY the worker package's own node_modules — pnpm hoists
+# most deps to /app/node_modules but bullmq, ioredis, postgres
+# stay under apps/worker/node_modules. Without this the runtime
+# throws ERR_MODULE_NOT_FOUND for bullmq.
+COPY --from=build /app/apps/worker/node_modules ./apps/worker/node_modules
+ENV NODE_PATH=/app/node_modules:/app/apps/worker/node_modules
 USER node
 CMD ["node", "apps/worker/dist/index.js"]

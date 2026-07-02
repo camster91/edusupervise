@@ -84,7 +84,7 @@ export function makeReminderProcessor(deps: ProcessorDeps) {
     const parsed = reminderJobSchema.safeParse(raw);
     if (!parsed.success) {
       const issues = parsed.error.issues
-        .map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`)
+        .map((i: { path: (string | number)[]; message: string }) => `${i.path.join('.') || '<root>'}: ${i.message}`)
         .join('; ');
       logger.warn(
         { jobId: job.id, issues, payload: raw },
@@ -296,7 +296,7 @@ export function parseReminderJob(value: unknown): ReminderJobPayload {
   if (!r.success) {
     throw new InvalidPayloadError(
       r.error.issues
-        .map((i) => `${i.path.join('.') || '<root>'}: ${i.message}`)
+        .map((i: { path: (string | number)[]; message: string }) => `${i.path.join('.') || '<root>'}: ${i.message}`)
         .join('; '),
     );
   }

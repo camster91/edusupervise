@@ -3,11 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Email provider adapter — mock + Resend implementations for EduSupervise.",
-  "main": "./src/index.ts",
+  "description": "Email provider adapter \u2014 mock + Resend implementations for EduSupervise.",
+  "main": "./dist/index.js",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts",
+    ".": "./dist/index.js",
     "./templates/*": "./src/templates/*"
   },
   "scripts": {
