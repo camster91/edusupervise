@@ -7,7 +7,7 @@
 
 import { redirect } from 'react-router';
 import type { Route } from './+types/api.signup.join';
-import { validateCsrf } from '../../server/csrf.server';
+import { validateCsrfWithFormToken } from '../../server/csrf.server';
 import {
   signupJoin,
   type JoinSignupInput,
@@ -39,10 +39,9 @@ export async function action({ request }: Route.ActionArgs) {
     return new Response('Method Not Allowed', { status: 405 });
   }
 
-  const csrf = validateCsrf(request);
-  if (!csrf.ok) return csrf.response;
-
   const form = await request.formData();
+  const csrf = validateCsrfWithFormToken(request, form);
+  if (!csrf.ok) return csrf.response;
   const name = String(form.get('name') ?? '').trim();
   const email = String(form.get('email') ?? '').trim();
   const password = String(form.get('password') ?? '');

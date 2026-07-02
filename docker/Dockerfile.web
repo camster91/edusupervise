@@ -18,7 +18,15 @@ RUN pnpm install --no-frozen-lockfile --filter './apps/*' --filter './packages/*
 # --- build stage ---
 FROM deps AS build
 COPY . .
-RUN pnpm --filter @edusupervise/db generate
+# Build the TS-source packages BEFORE the web build. Their package.json
+# main points at dist/src/index.js (so the runtime image doesn't need a
+# TS loader) but .dockerignore excludes `**/dist`, so the build context
+# has no dist files unless we run tsc here. Without this the web build's
+# `Failed to resolve entry for package "@edusupervise/db"` error fires.
+RUN pnpm --filter @edusupervise/db generate \
+      && pnpm --filter @edusupervise/db --filter @edusupervise/schemas \
+             --filter @edusupervise/email --filter @edusupervise/sms \
+             --filter @edusupervise/billing-adapter build
 RUN pnpm --filter @edusupervise/web build
 
 # --- runtime stage ---
