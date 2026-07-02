@@ -26,7 +26,7 @@ import {
 } from '@edusupervise/db';
 import { getSession } from '../../server/auth.server';
 import { withSchoolId } from '../../server/db.server';
-import { validateCsrf } from '../../server/csrf.server';
+import { validateCsrfFromJson } from '../../server/csrf.server';
 import { logger } from '../../server/logger.server';
 
 export async function loader() {
@@ -34,7 +34,10 @@ export async function loader() {
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  const csrf = validateCsrf(request);
+  const form = await request.formData();
+  const formObj: Record<string, unknown> = {};
+  for (const [k, v] of form.entries()) formObj[k] = v;
+  const csrf = validateCsrfFromJson(request, formObj);
   if (!csrf.ok) return csrf.response;
 
   const session = await getSession(request);
@@ -42,8 +45,7 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const form = await request.formData();
-  const dutyId = String(form.get('dutyId') ?? '').trim();
+  const dutyId = String(formObj['dutyId'] ?? '').trim();
   if (!dutyId) {
     return Response.json({ error: 'missing_duty_id' }, { status: 400 });
   }

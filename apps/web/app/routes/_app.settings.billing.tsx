@@ -66,6 +66,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export default function BillingSettingsPage() {
+  const appData = useRouteLoaderData('routes/_app') as { csrfToken?: string } | undefined;
+  const csrfToken = appData?.csrfToken ?? '';
   const { school, invoices, downgrade, csrfToken } = useLoaderData<typeof loader>();
   return (
     <div className="space-y-6">
@@ -163,6 +165,7 @@ function PlanUpgradeForm() {
       </p>
       <div className="mt-4 flex flex-wrap gap-3">
         <Form method="post" action="/api/billing/checkout">
+          <input type="hidden" name="csrf" value={csrfToken} />
           <input type="hidden" name="plan" value="pro" />
           <button
             type="submit"
@@ -172,6 +175,7 @@ function PlanUpgradeForm() {
           </button>
         </Form>
         <Form method="post" action="/api/billing/checkout">
+          <input type="hidden" name="csrf" value={csrfToken} />
           <input type="hidden" name="plan" value="school" />
           <button
             type="submit"
@@ -194,6 +198,7 @@ function PortalButton() {
         Stripe Customer Portal.
       </p>
       <Form method="post" action="/api/billing/portal" className="mt-4">
+        <input type="hidden" name="csrf" value={csrfToken} />
         <button
           type="submit"
           className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-900 text-sm font-medium px-4 py-2 rounded-lg transition-colors"

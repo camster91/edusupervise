@@ -19,9 +19,10 @@ export interface TopbarProps {
   school: { id: string; name: string; plan: string; accentColor: string | null };
   user: { name: string; role: UserRole; email: string };
   unreadCount: number;
+  csrfToken: string;
 }
 
-export function Topbar({ school, user, unreadCount }: TopbarProps): React.ReactElement {
+export function Topbar({ school, user, unreadCount, csrfToken }: TopbarProps): React.ReactElement {
   return (
     <header
       className={cn(
@@ -54,7 +55,7 @@ export function Topbar({ school, user, unreadCount }: TopbarProps): React.ReactE
       <div className="flex items-center gap-sm md:gap-md flex-shrink-0">
         <NotificationBell unreadCount={unreadCount} />
         <UserBadge user={user} />
-        <LogoutForm />
+        <LogoutForm csrfToken={csrfToken} />
       </div>
     </header>
   );
@@ -100,9 +101,10 @@ function UserBadge({ user }: { user: TopbarProps['user'] }): React.ReactElement 
   );
 }
 
-function LogoutForm(): React.ReactElement {
+function LogoutForm({ csrfToken }: { csrfToken: string }): React.ReactElement {
   return (
     <Form method="post" action="/logout" className="flex items-center">
+      <input type="hidden" name="csrf" value={csrfToken} />
       <Button
         type="submit"
         variant="tertiary"

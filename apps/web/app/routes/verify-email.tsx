@@ -23,7 +23,7 @@ import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { getSystemClient, users } from '@edusupervise/db';
 import { newSessionTokenFor, sessionCookieAttributes } from '../../server/auth.server';
-import { validateCsrf } from '../../server/csrf.server';
+import { validateCsrfWithFormToken } from '../../server/csrf.server';
 import {
   TOKEN_KIND,
   consumeToken,
@@ -46,10 +46,9 @@ export async function loader() {
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  const csrf = validateCsrf(request);
-  if (!csrf.ok) return csrf.response;
-
   const form = await request.formData();
+  const csrf = validateCsrfWithFormToken(request, form);
+  if (!csrf.ok) return csrf.response;
   const parsed = consumeSchema.safeParse({
     token: form.get('token'),
     email: form.get('email'),

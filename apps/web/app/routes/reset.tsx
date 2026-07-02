@@ -11,7 +11,7 @@ import { Form, useActionData } from 'react-router';
 import type { Route } from './+types/reset';
 import { eq } from 'drizzle-orm';
 import { hashPassword, newSessionTokenFor, sessionCookieAttributes } from '../../server/auth.server';
-import { validateCsrf } from '../../server/csrf.server';
+import { validateCsrfWithFormToken } from '../../server/csrf.server';
 import {
   TOKEN_KIND,
   consumeToken,
@@ -33,10 +33,9 @@ export async function loader() {
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  const csrf = validateCsrf(request);
-  if (!csrf.ok) return csrf.response;
-
   const form = await request.formData();
+  const csrf = validateCsrfWithFormToken(request, form);
+  if (!csrf.ok) return csrf.response;
   const parsed = resetSchema.safeParse({
     token: form.get('token'),
     newPassword: form.get('newPassword'),

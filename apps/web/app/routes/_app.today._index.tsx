@@ -21,7 +21,7 @@
 //   - Admin-only authoring ("Add Duty") is hidden behind a role check.
 
 import { useState } from 'react';
-import { useLoaderData, useFetcher } from 'react-router';
+import { useLoaderData, useFetcher, useRouteLoaderData } from 'react-router';
 import {
   CalendarDays,
   ClipboardList,
@@ -190,7 +190,9 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export default function Today() {
-  const { allDuties, myAssignments, cycleDay, today, isSchoolDay, stats, role, reminderMap } =
+  const appData = useRouteLoaderData('routes/_app') as { csrfToken?: string } | undefined;
+  const csrfToken = appData?.csrfToken ?? '';
+    const { allDuties, myAssignments, cycleDay, today, isSchoolDay, stats, role, reminderMap } =
     useLoaderData<typeof loader>();
   const [swapOpen, setSwapOpen] = useState(false);
   const [activeDuty, setActiveDuty] = useState<typeof allDuties[number] | null>(null);
@@ -467,7 +469,7 @@ function DutyCard({
           >
             <ArrowRightLeft size={16} aria-hidden />
           </Button>
-          <MarkCompleteButton dutyId={duty.id} dutyName={duty.name} variant="icon" />
+          <MarkCompleteButton dutyId={duty.id} dutyName={duty.name} variant="icon" csrfToken={csrfToken} />
         </div>
       </div>
       {/* Inline reminders — the big win of v2. Hidden when none set
@@ -510,6 +512,7 @@ function ReminderList({
           open={sheetOpen}
           onOpenChange={setSheetOpen}
           dutyId={dutyId}
+          csrfToken={csrfToken}
         />
       </>
     );
@@ -519,7 +522,7 @@ function ReminderList({
     <div className="mt-sm pt-sm border-t border-divider space-y-xs">
       <ul className="space-y-xs" role="list">
         {reminders.map((r) => (
-          <ReminderRowItem key={r.id} reminder={r} />
+          <ReminderRowItem key={r.id} reminder={r} csrfToken={csrfToken} />
         ))}
       </ul>
       <button
@@ -562,7 +565,7 @@ function ReminderRowItem({ reminder }: { reminder: ReminderRow }): React.ReactEl
       <button
         type="button"
         onClick={() => toggleFetcher.submit(
-          { reminderId: reminder.id },
+          { reminderId: reminder.id, csrf: csrfToken },
           { method: 'post', action: '/app/api/reminders/toggle' },
         )}
         disabled={submitting}
@@ -576,7 +579,7 @@ function ReminderRowItem({ reminder }: { reminder: ReminderRow }): React.ReactEl
         onClick={() => {
           if (confirm('Delete this reminder?')) {
             deleteFetcher.submit(
-              { reminderId: reminder.id },
+              { reminderId: reminder.id, csrf: csrfToken },
               { method: 'post', action: '/app/api/reminders/delete' },
             );
           }
@@ -609,10 +612,12 @@ function AddReminderSheet({
   open,
   onOpenChange,
   dutyId,
+  csrfToken,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   dutyId: string;
+  csrfToken: string;
 }): React.ReactElement {
   const fetcher = useFetcher();
   const submitting = fetcher.state !== 'idle';
@@ -649,6 +654,7 @@ function AddReminderSheet({
         className="space-y-md"
       >
         <input type="hidden" name="dutyId" value={dutyId} />
+        <input type="hidden" name="csrf" value={csrfToken} />
         <div>
           <label className="block text-subhead text-secondary mb-xs" htmlFor="reminder-minutes">
             When
@@ -731,10 +737,12 @@ function MarkCompleteButton({
   dutyId,
   dutyName,
   variant = 'primary',
+  csrfToken,
 }: {
   dutyId: string;
   dutyName: string;
   variant?: 'primary' | 'icon';
+  csrfToken: string;
 }): React.ReactElement {
   const fetcher = useFetcher();
   const submitting = fetcher.state !== 'idle';
@@ -742,7 +750,7 @@ function MarkCompleteButton({
   // Optimistic toast on submit; the action handles the actual write.
   function onClick() {
     fetcher.submit(
-      { dutyId },
+      { dutyId, csrf: csrfToken },
       { method: 'post', action: '/app/api/duty.complete' },
     );
     toast({

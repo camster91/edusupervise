@@ -6,7 +6,7 @@
 
 import type { Route } from './+types/api.billing.portal';
 import { getSession, requireRole } from '../../server/auth.server';
-import { validateCsrf } from '../../server/csrf.server';
+import { validateCsrfWithFormToken } from '../../server/csrf.server';
 import {
   createPortalSession,
   getSchoolStripeCustomerId,
@@ -18,7 +18,8 @@ export async function loader() {
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  const csrf = validateCsrf(request);
+  const form = await request.formData();
+  const csrf = validateCsrfWithFormToken(request, form);
   if (!csrf.ok) return csrf.response;
 
   const session = await getSession(request);

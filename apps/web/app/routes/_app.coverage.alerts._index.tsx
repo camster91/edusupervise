@@ -6,7 +6,12 @@
 // v2 (slice 3 §6, route through Twilio / Resend / ParentSquare).
 
 import { useState } from 'react';
-import { useLoaderData, useFetcher, Link } from 'react-router';
+import {
+  useLoaderData,
+  useFetcher,
+  Link,
+  useRouteLoaderData,
+} from 'react-router';
 import {
   Bell,
   Check,
@@ -43,6 +48,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 export default function ParentAlertsPage() {
   const { drafts, sent, parents } = useLoaderData<typeof loader>();
+  const appData = useRouteLoaderData('routes/_app') as { csrfToken?: string } | undefined;
+  const csrfToken = appData?.csrfToken ?? '';
   const [activeTab, setActiveTab] = useState<'drafts' | 'sent' | 'parents'>('drafts');
   const visible = activeTab === 'drafts' ? drafts : activeTab === 'sent' ? sent : [];
 
@@ -263,7 +270,7 @@ function AlertRow({
             size="md"
             onClick={() => {
               fetcher.submit(
-                { alertId: alert.id },
+                { alertId: alert.id, csrf: csrfToken },
                 { method: 'POST', action: '/api/coverage/parent-alerts/send' },
               );
             }}
@@ -277,7 +284,7 @@ function AlertRow({
             size="md"
             onClick={() => {
               fetcher.submit(
-                { alertId: alert.id },
+                { alertId: alert.id, csrf: csrfToken },
                 { method: 'POST', action: '/api/coverage/parent-alerts/cancel' },
               );
             }}

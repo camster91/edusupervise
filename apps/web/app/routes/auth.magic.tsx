@@ -25,7 +25,7 @@ import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { getSystemClient, users } from '@edusupervise/db';
 import { newSessionTokenFor, sessionCookieAttributes } from '../../server/auth.server';
-import { validateCsrf } from '../../server/csrf.server';
+import { validateCsrfWithFormToken } from '../../server/csrf.server';
 import { checkMagicLinkByEmail } from '../../server/rate-limit.server';
 import {
   TOKEN_KIND,
@@ -56,10 +56,9 @@ export async function loader() {
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  const csrf = validateCsrf(request);
-  if (!csrf.ok) return csrf.response;
-
   const form = await request.formData();
+  const csrf = validateCsrfWithFormToken(request, form);
+  if (!csrf.ok) return csrf.response;
   const intent = form.get('intent');
 
   const systemUrl =

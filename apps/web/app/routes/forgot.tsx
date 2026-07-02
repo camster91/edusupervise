@@ -22,7 +22,7 @@ import type { Route } from './+types/forgot';
 import { getSystemClient } from '@edusupervise/db';
 import { z } from 'zod';
 
-import { validateCsrf } from '../../server/csrf.server';
+import { validateCsrfWithFormToken } from '../../server/csrf.server';
 import { checkForgotByEmail } from '../../server/rate-limit.server';
 import {
   TOKEN_KIND,
@@ -47,10 +47,9 @@ export async function loader() {
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  const csrf = validateCsrf(request);
-  if (!csrf.ok) return csrf.response;
-
   const form = await request.formData();
+  const csrf = validateCsrfWithFormToken(request, form);
+  if (!csrf.ok) return csrf.response;
   const parsed = forgotSchema.safeParse({ email: form.get('email') });
   if (!parsed.success) {
     return Response.json(

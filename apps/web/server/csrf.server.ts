@@ -344,6 +344,69 @@ export function validateCsrfWithFormToken(
   return { ok: true };
 }
 
+
+
+/**
+ * JSON-body variant of `validateCsrf`. Use this in API action routes
+ * whose callers post a JSON-encoded body (e.g. fetcher.submit with
+ * encType: 'application/json'). The csrf token is read from the body
+ * field `csrf` and compared to the cookie, mirroring
+ * `validateCsrfWithFormToken`'s behavior but for JSON.
+ *
+ * Layer 1 (Origin/Referer) is preserved. Layer 2 (double-submit
+ * cookie) is enforced via the JSON body, not the header.
+ *
+ * Usage:
+ * ```ts
+ * export async function action({ request }: Route.ActionArgs) {
+ *   if (request.method !== 'POST') return Response.json({error:'method_not_allowed'},{status:405});
+ *   const body = await request.json().catch(() => null);
+ *   if (!body || typeof body !== 'object') return Response.json({error:'invalid_json'},{status:400});
+ *   const csrf = validateCsrfFromJson(request, body);
+ *   if (!csrf.ok) return csrf.response;
+ *   // ... use body fields ...
+ * }
+ * ```
+ */
+export function validateCsrfFromJson(
+  request: Request,
+  body: Record<string, unknown>,
+  options: CsrfOptions = {},
+):
+  | { ok: true }
+  | { ok: false; response: Response } {
+  const method = request.method.toUpperCase();
+  if (SAFE_METHODS.has(method)) return { ok: true };
+
+  // Layer 1: origin / referer.
+  const origin = request.headers.get('origin');
+  const referer = request.headers.get('referer');
+  const host = request.headers.get('host') ?? '';
+  if (origin) {
+    if (!originMatches(origin, host, options.allowedHosts)) return forbidden('origin_mismatch');
+  } else if (referer) {
+    if (!refererMatches(referer, host, options.allowedHosts)) return forbidden('referer_mismatch');
+  }
+
+  // Layer 2: double-submit cookie + JSON-body csrf field.
+  const cookieToken = readCookie(request, CSRF_COOKIE_NAME);
+  const headerToken =
+    typeof body[CSRF_FORM_FIELD] === 'string' ? (body[CSRF_FORM_FIELD] as string) : null;
+  if (!cookieToken || !headerToken) return forbidden('missing_token');
+
+  const a = Buffer.from(cookieToken);
+  let b: Buffer;
+  if (headerToken.length === a.length) {
+    b = Buffer.from(headerToken);
+  } else {
+    b = Buffer.alloc(a.length);
+    Buffer.from(headerToken).copy(b, 0, 0, Math.min(a.length, headerToken.length));
+  }
+  if (!timingSafeEqual(a, b)) return forbidden('token_mismatch');
+  return { ok: true };
+}
+
+
 function originMatches(
   origin: string,
   host: string,

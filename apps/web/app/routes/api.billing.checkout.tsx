@@ -18,7 +18,7 @@ import { redirect } from 'react-router';
 import { eq } from 'drizzle-orm';
 import { getDb } from '../../server/db.server';
 import { createCheckoutSession } from '../../server/billing.server';
-import { validateCsrf } from '../../server/csrf.server';
+import { validateCsrfWithFormToken } from '../../server/csrf.server';
 import {
   getSession,
   requireRole,
@@ -32,13 +32,13 @@ export async function loader() {
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  const csrf = validateCsrf(request);
+  const form = await request.formData();
+  const csrf = validateCsrfWithFormToken(request, form);
   if (!csrf.ok) return csrf.response;
 
   const session = requireSession(await getSession(request));
   requireRole(session, ['school_admin']);
 
-  const form = await request.formData();
   const planRaw = String(form.get('plan') ?? '').trim();
   if (planRaw !== 'pro' && planRaw !== 'school') {
     return Response.json({ error: 'invalid_plan' }, { status: 400 });

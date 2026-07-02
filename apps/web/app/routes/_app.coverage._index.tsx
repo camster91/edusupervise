@@ -5,7 +5,13 @@
 // their assignments, and lets admins create new absences.
 
 import { useState } from 'react';
-import { useLoaderData, useFetcher, Form, redirect } from 'react-router';
+import {
+  useLoaderData,
+  useFetcher,
+  Form,
+  redirect,
+  useRouteLoaderData,
+} from 'react-router';
 import {
   Bell,
   Plus,
@@ -50,6 +56,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 export default function CoveragePage() {
   const { events, role, teachers } = useLoaderData<typeof loader>();
+  const appData = useRouteLoaderData('routes/_app') as { csrfToken?: string } | undefined;
+  const csrfToken = appData?.csrfToken ?? '';
   const [createOpen, setCreateOpen] = useState(false);
   const fetcher = useFetcher();
 
@@ -150,7 +158,7 @@ export default function CoveragePage() {
         open={createOpen}
         onOpenChange={setCreateOpen}
         teachers={teachers}
-        onCreated={() => setCreateOpen(false)}
+        onCreated={() = csrfToken={csrfToken}> setCreateOpen(false)}
       />
     </div>
   );
@@ -247,7 +255,7 @@ function AssignmentRow({
             aria-label="Accept coverage"
             onClick={() => {
               fetcher.submit(
-                { assignmentId: assignment.id },
+                { assignmentId: assignment.id, csrf: csrfToken },
                 { method: 'POST', action: '/api/coverage/accept' },
               );
             }}
@@ -260,7 +268,7 @@ function AssignmentRow({
             aria-label="Decline coverage"
             onClick={() => {
               fetcher.submit(
-                { assignmentId: assignment.id },
+                { assignmentId: assignment.id, csrf: csrfToken },
                 { method: 'POST', action: '/api/coverage/decline' },
               );
             }}
@@ -277,11 +285,13 @@ function CreateAbsenceSheet({
   open,
   onOpenChange,
   teachers,
+  csrfToken,
   onCreated,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   teachers: Array<{ id: string; name: string }>;
+  csrfToken: string;
   onCreated: () => void;
 }): React.ReactElement {
   const fetcher = useFetcher();
@@ -318,6 +328,7 @@ function CreateAbsenceSheet({
                   reason: reason || undefined,
                   source: 'manual' as CoverageSource,
                   autoRoute: true,
+                  csrf: csrfToken,
                 },
                 { method: 'POST', action: '/api/coverage/absences', encType: 'application/json' },
               );

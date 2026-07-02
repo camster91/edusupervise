@@ -10,7 +10,7 @@
 
 import { redirect } from 'react-router';
 import type { Route } from './+types/app.api.reminders.create';
-import { validateCsrf } from '../../server/csrf.server';
+import { validateCsrfWithFormToken } from '../../server/csrf.server';
 import { getSession } from '../../server/auth.server';
 import {
   createReminder,
@@ -24,7 +24,8 @@ export async function loader() {
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  const csrf = validateCsrf(request);
+  const form = await request.formData();
+  const csrf = validateCsrfWithFormToken(request, form);
   if (!csrf.ok) return csrf.response;
 
   const session = await getSession(request);
@@ -32,7 +33,6 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
 
-  const form = await request.formData();
   const dutyId = String(form.get('dutyId') ?? '').trim();
   const minutesBeforeRaw = String(form.get('minutesBefore') ?? '').trim();
   const notifyEmail = form.get('notifyEmail') === 'true' || form.get('notifyEmail') === 'on';

@@ -23,7 +23,7 @@ import type { Route } from './+types/verify-phone';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { getSystemClient, users } from '@edusupervise/db';
-import { validateCsrf } from '../../server/csrf.server';
+import { validateCsrfWithFormToken } from '../../server/csrf.server';
 import { checkPhoneVerify } from '../../server/rate-limit.server';
 import { sendVerificationCode, verifyCode } from '../../server/verify-phone.server';
 
@@ -60,10 +60,9 @@ export async function loader() {
 }
 
 export async function action({ request }: Route.ActionArgs) {
-  const csrf = validateCsrf(request);
-  if (!csrf.ok) return csrf.response;
-
   const form = await request.formData();
+  const csrf = validateCsrfWithFormToken(request, form);
+  if (!csrf.ok) return csrf.response;
   const intent = form.get('intent');
 
   if (intent === 'request') {
