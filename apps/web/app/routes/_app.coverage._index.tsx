@@ -158,7 +158,8 @@ export default function CoveragePage() {
         open={createOpen}
         onOpenChange={setCreateOpen}
         teachers={teachers}
-        onCreated={() = csrfToken={csrfToken}> setCreateOpen(false)}
+        csrfToken={csrfToken}
+        onCreated={() => setCreateOpen(false)}
       />
     </div>
   );
