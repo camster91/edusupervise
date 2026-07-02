@@ -23,7 +23,11 @@ import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { getSystemClient, users } from '@edusupervise/db';
 import { newSessionTokenFor, sessionCookieAttributes } from '../../server/auth.server';
-import { validateCsrfWithFormToken } from '../../server/csrf.server';
+import {
+  mintCsrfCookie,
+  readCsrfCookie,
+  validateCsrfWithFormToken,
+} from '../../server/csrf.server';
 import {
   TOKEN_KIND,
   consumeToken,
@@ -41,8 +45,14 @@ export function meta() {
   return [{ title: 'Verify your email — EduSupervise' }];
 }
 
-export async function loader() {
-  return null;
+export async function loader({ request }: Route.LoaderArgs) {
+  const existing = readCsrfCookie(request);
+  if (existing) return { csrfToken: existing };
+  const { token, setCookie } = mintCsrfCookie();
+  return new Response(JSON.stringify({ csrfToken: token }), {
+    status: 200,
+    headers: { 'content-type': 'application/json', 'set-cookie': setCookie },
+  });
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -118,6 +128,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function VerifyEmailPage() {
+  const { csrfToken } = useLoaderData<typeof loader>();
   const data = useActionData() as
     | { ok?: boolean; redirectTo?: string; error?: string; detail?: string }
     | undefined;
@@ -179,6 +190,7 @@ export default function VerifyEmailPage() {
           Click the button below to confirm your email.
         </p>
         <Form method="post" className="space-y-4">
+          <input type="hidden" name="csrf" value={csrfToken} />
           <input type="hidden" name="token" value={token} />
           <input type="hidden" name="email" value={email} />
           {data?.error && (

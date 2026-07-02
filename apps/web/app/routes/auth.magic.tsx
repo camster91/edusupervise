@@ -25,7 +25,11 @@ import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { getSystemClient, users } from '@edusupervise/db';
 import { newSessionTokenFor, sessionCookieAttributes } from '../../server/auth.server';
-import { validateCsrfWithFormToken } from '../../server/csrf.server';
+import {
+  mintCsrfCookie,
+  readCsrfCookie,
+  validateCsrfWithFormToken,
+} from '../../server/csrf.server';
 import { checkMagicLinkByEmail } from '../../server/rate-limit.server';
 import {
   TOKEN_KIND,
@@ -51,8 +55,14 @@ export function meta() {
   return [{ title: 'Sign in — EduSupervise' }];
 }
 
-export async function loader() {
-  return null;
+export async function loader({ request }: Route.LoaderArgs) {
+  const existing = readCsrfCookie(request);
+  if (existing) return { csrfToken: existing };
+  const { token, setCookie } = mintCsrfCookie();
+  return new Response(JSON.stringify({ csrfToken: token }), {
+    status: 200,
+    headers: { 'content-type': 'application/json', 'set-cookie': setCookie },
+  });
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -182,6 +192,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function MagicLinkPage() {
+  const { csrfToken } = useLoaderData<typeof loader>();
   const data = useActionData() as
     | { ok?: boolean; error?: string; detail?: string }
     | undefined;
@@ -256,6 +267,7 @@ export default function MagicLinkPage() {
               Enter your email and we'll send you a one-time sign-in link.
             </p>
             <Form method="post" className="space-y-4">
+          <input type="hidden" name="csrf" value={csrfToken} />
               <input type="hidden" name="intent" value="request" />
               <label className="block">
                 <span className="text-sm font-medium text-slate-700">Email</span>

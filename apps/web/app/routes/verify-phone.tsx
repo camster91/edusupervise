@@ -18,12 +18,16 @@
 // TWILIO_VERIFY_SERVICE_SID in env).
 
 import { useState } from 'react';
-import { Form, useActionData } from 'react-router';
+import { Form, useActionData, useLoaderData } from 'react-router';
 import type { Route } from './+types/verify-phone';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { getSystemClient, users } from '@edusupervise/db';
-import { validateCsrfWithFormToken } from '../../server/csrf.server';
+import {
+  mintCsrfCookie,
+  readCsrfCookie,
+  validateCsrfWithFormToken,
+} from '../../server/csrf.server';
 import { checkPhoneVerify } from '../../server/rate-limit.server';
 import { sendVerificationCode, verifyCode } from '../../server/verify-phone.server';
 
@@ -55,8 +59,14 @@ export function meta() {
   return [{ title: 'Verify your phone — EduSupervise' }];
 }
 
-export async function loader() {
-  return null;
+export async function loader({ request }: Route.LoaderArgs) {
+  const existing = readCsrfCookie(request);
+  if (existing) return { csrfToken: existing };
+  const { token, setCookie } = mintCsrfCookie();
+  return new Response(JSON.stringify({ csrfToken: token }), {
+    status: 200,
+    headers: { 'content-type': 'application/json', 'set-cookie': setCookie },
+  });
 }
 
 export async function action({ request }: Route.ActionArgs) {
@@ -150,6 +160,7 @@ export async function action({ request }: Route.ActionArgs) {
 }
 
 export default function VerifyPhonePage() {
+  const { csrfToken } = useLoaderData<typeof loader>();
   const data = useActionData() as
     | { ok?: boolean; phone?: string; error?: string; detail?: string }
     | undefined;
@@ -175,6 +186,7 @@ export default function VerifyPhonePage() {
         <h1 className="text-2xl font-bold text-slate-900 mb-1">Verify your phone</h1>
         {!data?.ok ? (
           <Form method="post" className="space-y-4">
+          <input type="hidden" name="csrf" value={csrfToken} />
             <input type="hidden" name="intent" value="request" />
             <label className="block">
               <span className="text-sm font-medium text-slate-700">Phone (international format)</span>
