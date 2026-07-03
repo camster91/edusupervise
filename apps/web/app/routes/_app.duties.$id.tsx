@@ -35,6 +35,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     return { duty, assignments };
   });
   if (!data) throw new Response('Not found', { status: 404 });
+  const { token: csrfToken } = mintCsrfCookie(request);
   return { ...data, role: session.role, csrfToken };
 }
 

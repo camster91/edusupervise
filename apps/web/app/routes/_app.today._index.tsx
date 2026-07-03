@@ -21,6 +21,7 @@
 //   - Admin-only authoring ("Add Duty") is hidden behind a role check.
 
 import { useState } from 'react';
+import { useClientNow } from '../../lib/useClientNow';
 import { useLoaderData, useFetcher, useRouteLoaderData } from 'react-router';
 import {
   CalendarDays,
@@ -204,8 +205,8 @@ export default function Today() {
     .sort((a, b) => (a.startTime || '').localeCompare(b.startTime || ''));
 
   // Build HeroCard inputs
-  const now = new Date();
-  const currentTime = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const now = useClientNow();  // SSR: null, client: Date after mount
+  const currentTime = `${String((now?.getHours() ?? 0)).padStart(2, '0')}:${String((now?.getMinutes() ?? 0)).padStart(2, '0')}`;
   const currentDuty = myDuties.find((d) => {
     if (!d.startTime || !d.endTime) return false;
     return d.startTime <= currentTime && currentTime < d.endTime;
@@ -259,7 +260,7 @@ export default function Today() {
                 <ArrowRightLeft size={16} aria-hidden />
                 Swap
               </Button>
-              <MarkCompleteButton dutyId={currentDuty.id} dutyName={currentDuty.name} />
+              <MarkCompleteButton dutyId={currentDuty.id} dutyName={currentDuty.name} csrfToken={csrfToken} />
             </>
           ) : undefined
         }
@@ -385,8 +386,8 @@ export default function Today() {
               )}
               <div className="mt-sm">
                 <EquipmentChips
-                  requiresVest={d.requiresVest ?? false}
-                  requiresRadio={d.requiresRadio ?? false}
+                  requiresVest={activeDuty?.requiresVest ?? false}
+                  requiresRadio={activeDuty?.requiresRadio ?? false}
                   compact
                 />
               </div>
