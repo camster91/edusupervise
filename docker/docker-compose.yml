@@ -122,7 +122,7 @@ services:
       # (no need to bundle postgresql-client just for pg_isready).
       test:
         - CMD-SHELL
-        - node -e "const p=require('postgres');const c=p(process.env.DATABASE_URL);c`SELECT 1`.then(()=>process.exit(0)).catch(()=>process.exit(1))"
+        - node -e "const p=require('postgres');const c=p(process.env.DATABASE_URL);c.unsafe('SELECT 1').then(()=>process.exit(0)).catch(()=>process.exit(1))"
         - node -e "const R=require('ioredis');const c=new R(process.env.REDIS_URL);c.ping().then(r=>process.exit(r==='PONG'?0:1)).catch(()=>process.exit(1))"
       interval: 30s
       timeout: 10s
