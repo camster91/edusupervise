@@ -14,7 +14,7 @@
 // URL (the "Print this week" button on the calendar tab adds it).
 
 import type { Route } from './+types/_app.calendar.print';
-import { useEffect } from 'react';
+import { useEffect , useState } from 'react';
 import { and, eq, gte, lte, asc } from 'drizzle-orm';
 import { duties, dutyAssignments, cycleCalendar, schools, users } from '@edusupervise/db';
 import { getSession } from '../../server/auth.server';
@@ -55,7 +55,8 @@ export async function loader({ request }: Route.LoaderArgs) {
     await sysClose();
   }
 
-  const now = new Date();
+  const clientNow = useClientNow();
+  const now = clientNow ?? new Date();
   const todayStr = formatDateInTz(now, tz);
   const todayDate = new Date(todayStr + 'T00:00:00');
 
@@ -225,7 +226,7 @@ export default function PrintView({ loaderData }: Route.ComponentProps) {
       <footer className="mt-xl pt-md border-t border-gray-300 text-xs text-gray-700">
         <p>
           Printed from EduSupervise —{' '}
-          <span className="font-mono">{new Date().toLocaleString()}</span>
+          <span className="font-mono" suppressHydrationWarning>{printTime || '—'}</span>
         </p>
         <p className="mt-xs">
           Sub coverage: visit <span className="font-mono">edusupervise.ashbi.ca/app/coverage</span> or

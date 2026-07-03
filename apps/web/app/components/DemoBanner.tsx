@@ -11,6 +11,7 @@
 // clicks don't nuke hours of teacher data.
 
 import { useState } from 'react';
+import { useClientNow } from '../../lib/useClientNow';
 import { Form } from 'react-router';
 import { Sparkles, RefreshCw, ExternalLink, AlertTriangle } from 'lucide-react';
 
@@ -26,8 +27,8 @@ export interface DemoBannerProps {
 
 export function DemoBanner({ demoExpiresAt, csrfToken }: DemoBannerProps): React.ReactElement | null {
   const expires = new Date(demoExpiresAt);
-  const now = new Date();
-  const msLeft = expires.getTime() - now.getTime();
+  const now = useClientNow();
+  const msLeft = expires.getTime() - (now?.getTime() ?? 0);
   if (Number.isNaN(msLeft)) return null;
   const daysLeft = Math.max(0, Math.ceil(msLeft / (24 * 3600 * 1000)));
   const hoursLeft = Math.max(0, Math.ceil((msLeft % (24 * 3600 * 1000)) / (3600 * 1000)));

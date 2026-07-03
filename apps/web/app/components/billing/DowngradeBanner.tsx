@@ -30,7 +30,7 @@ export function DowngradeBanner({
 }: DowngradeBannerProps) {
   const when = new Date(pendingDowngradeAt);
   const isoDate = when.toISOString().slice(0, 10);
-  const daysLeft = daysUntil(when);
+  const daysLeft = useDaysUntil(when);
   return (
     <div
       role="alert"
@@ -63,8 +63,10 @@ export function DowngradeBanner({
   );
 }
 
-function daysUntil(when: Date): number {
-  const ms = when.getTime() - Date.now();
+function useDaysUntil(when: Date): number {
+  const clientNow = useClientNow();
+  const ms =
+    clientNow !== null ? when.getTime() - clientNow.getTime() : Number.POSITIVE_INFINITY;
   if (ms <= 0) return 0;
   return Math.max(0, Math.ceil(ms / (24 * 60 * 60 * 1000)));
 }
