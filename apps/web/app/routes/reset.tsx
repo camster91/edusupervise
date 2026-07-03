@@ -107,7 +107,7 @@ export async function action({ request }: Route.ActionArgs) {
 
     const result = await consumeToken(
       db,
-      TOKEN_KIND.RESET_PASSWORD,
+      TOKEN_KIND.PASSWORD_RESET,
       user.email,
       parsed.data.token,
     );

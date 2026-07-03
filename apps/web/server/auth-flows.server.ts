@@ -242,13 +242,23 @@ export async function requestEmailVerification(email: string): Promise<ForgotRes
  * Real implementation: switch on kind → route to @edusupervise/email
  * or @edusupervise/sms (Resend or Twilio). Today: log + return ok.
  */
+export interface DispatchEmailOptions {
+  kind: TokenKind;
+  to: string;
+  url: string;
+  appUrl?: string;
+}
+
+/**
+ * Stub send of an auth-flow email (password reset / magic link /
+ * verify). Real implementation will route through @edusupervise/email
+ * (Resend or Twilio). Today: log + return ok.
+ */
 export async function dispatchAuthEmail(
-  _kind: TokenKind,
-  email: string,
-  _token: string,
+  options: DispatchEmailOptions,
 ): Promise<ForgotResult> {
   logger.info(
-    { kind: _kind, email, stub: true },
+    { kind: options.kind, to: options.to, stub: true, hasUrl: !!options.url },
     'auth-flows.dispatchAuthEmail: stubbed — would send via Resend/Twilio',
   );
   return { ok: true, status: 'sent' };

@@ -108,15 +108,15 @@ export async function action({ request }: Route.ActionArgs) {
     const user = await findUserByEmail(db, parsed.data.email);
     if (user) {
       // Mint + persist a reset token.
-      const { token, expiresAt } = mintToken(TOKEN_KIND.RESET_PASSWORD, user.email);
-      await persistToken(db, TOKEN_KIND.RESET_PASSWORD, user.email, token, expiresAt);
+      const { token, expiresAt } = mintToken(TOKEN_KIND.PASSWORD_RESET, user.email);
+      await persistToken(db, TOKEN_KIND.PASSWORD_RESET, user.email, token, expiresAt);
 
       // Build the reset URL. The token is in the fragment so it
       // never appears in HTTP access logs or Referer headers.
       const appUrl = process.env.APP_URL ?? 'http://localhost:3000';
       const url = `${appUrl}/reset#token=${encodeURIComponent(token)}`;
       await dispatchAuthEmail({
-        kind: TOKEN_KIND.RESET_PASSWORD,
+        kind: TOKEN_KIND.PASSWORD_RESET,
         to: user.email,
         url,
         appUrl,
