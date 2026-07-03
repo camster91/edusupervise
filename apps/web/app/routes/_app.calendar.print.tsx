@@ -55,8 +55,10 @@ export async function loader({ request }: Route.LoaderArgs) {
     await sysClose();
   }
 
-  const clientNow = useClientNow();
-  const now = clientNow ?? new Date();
+  // Server-side loader: new Date() is safe here. Hydration mismatch
+  // was from the JSX render in the default export (new Date().toLocaleString()),
+  // not the loader — the loader runs in the SSR phase only.
+  const now = new Date();
   const todayStr = formatDateInTz(now, tz);
   const todayDate = new Date(todayStr + 'T00:00:00');
 
@@ -133,6 +135,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export default function PrintView({ loaderData }: Route.ComponentProps) {
+  const [printTime, setPrintTime] = useState('');
+  useEffect(() => { setPrintTime(new Date().toLocaleString()); }, []);
   const { schoolName, weekStart, weekEnd, calendar, duties } = loaderData;
 
   // Group calendar rows by cycle day for the column headers.
