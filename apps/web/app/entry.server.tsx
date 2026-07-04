@@ -96,6 +96,27 @@ function applySecurityHeaders(headers: Headers, isProduction: boolean): void {
   // microphone, payment, USB, etc.). Reduces XSS blast radius.
   headers.set('Permissions-Policy',
     'geolocation=(), microphone=(), camera=(), payment=(), usb=()');
+  // Content-Security-Policy — defense against XSS. RR7's renderToPipeableStream
+  // emits an inline <script> for hydration bootstrap which we'd otherwise need
+  // to nonce per request. Until we plumb nonce generation through the RR7
+  // entry.server, we use 'unsafe-inline' for script-src (mitigated by
+  // the strict X-Frame-Options + nosniff above). Style-src allows unsafe-inline
+  // because the app ships inline <style> for SSR-emitted CSS.
+  // TODO: replace with nonce-based CSP once nonce pipeline lands.
+  headers.set(
+    'Content-Security-Policy',
+    [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline'",
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: https:",
+      "font-src 'self' data:",
+      "connect-src 'self'",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join('; '),
+  );
   if (isProduction) {
     // 1-year HSTS — once a browser sees this on edusupervise.ashbi.ca
     // it will refuse to load the site over HTTP for the next 12 months.
