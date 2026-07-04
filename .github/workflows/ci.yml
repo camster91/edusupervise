@@ -61,7 +61,6 @@ jobs:
 
       - name: Unit tests
         run: pnpm test
-        continue-on-error: true
 
       - name: Build
         run: pnpm run build

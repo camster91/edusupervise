@@ -10,7 +10,7 @@
   },
   "scripts": {
     "build": "pnpm -r --filter './packages/*' build",
-    "test": "pnpm -r --filter './packages/*' test",
+    "test": "pnpm -r --filter './packages/*' --filter './apps/*' test",
     "test:email": "EMAIL_PROVIDER=mock pnpm --filter @edusupervise/email test",
     "test:sms": "SMS_PROVIDER=mock pnpm --filter @edusupervise/sms test",
     "test:billing": "BILLING_PROVIDER=mock pnpm --filter @edusupervise/billing-adapter test",
