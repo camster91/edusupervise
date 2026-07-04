@@ -51,6 +51,7 @@ import {
   type Db,
 } from '@edusupervise/db';
 import { getDb, withSchoolId } from './db.server';
+import { logger } from './logger.server';
 import { recordAudit, AUDIT } from './audit.server';
 
 export type CoverageSource = 'direct' | 'frontline' | 'red_rover' | 'swing' | 'manual' | 'broadcast';
@@ -389,10 +390,10 @@ export async function routeAbsence(args: {
                 linkUrl: `/app/coverage/${inserted[i]!.id}`,
               });
             } catch (err) {
-              console.warn('coverage.broadcast_notification_failed', {
-                assignmentId: inserted[i]!.id,
-                err,
-              });
+              logger.warn(
+                { assignmentId: inserted[i]!.id, err },
+                'coverage.broadcast_notification_failed',
+              );
             }
           }
           continue;
@@ -438,7 +439,10 @@ export async function routeAbsence(args: {
               linkUrl: `/app/coverage/${row!.id}`,
             });
           } catch (err) {
-            console.warn('coverage.notification_failed', { assignmentId: row!.id, err });
+            logger.warn(
+              { assignmentId: row!.id, err },
+              'coverage.notification_failed',
+            );
           }
         }
       }
@@ -491,7 +495,10 @@ export async function acceptCoverage(args: {
       const { generateAlertsForAssignment } = await import('./parent-alerts.server');
       await generateAlertsForAssignment({ coverageAssignmentId: assignmentId });
     } catch (err) {
-      console.warn('coverage.parent_alert_generation_failed', { assignmentId, err });
+      logger.warn(
+        { assignmentId, err },
+        'coverage.parent_alert_generation_failed',
+      );
     }
 
     await recordAudit({
