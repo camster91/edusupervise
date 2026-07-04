@@ -590,6 +590,12 @@ function OnboardingSoloBanner(): React.ReactElement {
             Set up my first duty
             <ArrowRight size={14} aria-hidden />
           </a>
+          <a
+            href="/onboarding/upload-pdf"
+            className="inline-flex items-center gap-xs text-callout font-semibold bg-surface text-primary border border-border hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 transition-colors duration-fast px-md h-btn-sm rounded-md"
+          >
+            Upload a PDF instead
+          </a>
           <button
             type="button"
             onClick={() => setDismissed(true)}

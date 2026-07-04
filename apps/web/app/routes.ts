@@ -18,6 +18,10 @@ export default [
   route('onboarding/admin', 'routes/onboarding.admin._index.tsx'),
   // Phase 2 (2026-07-04) — PDF schedule ingestion review UI.
   route('onboarding/pdf-review', 'routes/onboarding.pdf-review._index.tsx'),
+  // Phase 2 — PDF upload entry (audit B9, 2026-07-04). Without this
+  // route the upload API was orphaned: no client UI called it. Now
+  // /onboarding/upload-pdf is the missing front door.
+  route('onboarding/upload-pdf', 'routes/onboarding.upload-pdf._index.tsx'),
   // Phase 1 — solo teacher / EA wizard.
   route('onboarding/solo', 'routes/onboarding.solo._index.tsx'),
 
