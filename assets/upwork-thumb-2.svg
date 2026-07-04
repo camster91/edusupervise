@@ -1,0 +1,205 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 769" width="1280" height="769" role="img" aria-label="Upwork portfolio thumbnail — EduSupervise: school duty scheduling SaaS, 12 hours to 90 minutes per week">
+  <title>EduSupervise — School Duty Scheduling SaaS</title>
+  <desc>Upwork portfolio thumbnail. Off-white surface with deep navy type and amber accent. Project name, hero stat showing weekly scheduling time reduction, calendar grid data viz.</desc>
+
+  <defs>
+    <linearGradient id="bgLight2" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F8FAFC"/>
+    </linearGradient>
+
+    <linearGradient id="beforeFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#CBD5E1" stop-opacity="0.6"/>
+      <stop offset="100%" stop-color="#CBD5E1" stop-opacity="0"/>
+    </linearGradient>
+
+    <linearGradient id="afterFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F59E0B" stop-opacity="0.45"/>
+      <stop offset="100%" stop-color="#F59E0B" stop-opacity="0"/>
+    </linearGradient>
+
+    <pattern id="grid2" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E2E8F0" stroke-width="0.5"/>
+    </pattern>
+
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif; }
+      .mono { font-family: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace; }
+    </style>
+  </defs>
+
+  <!-- Surface -->
+  <rect width="1280" height="769" fill="url(#bgLight2)"/>
+  <rect width="1280" height="769" fill="url(#grid2)"/>
+
+  <!-- Top brand bar -->
+  <g class="sans" transform="translate(64, 56)">
+    <rect x="0" y="0" width="40" height="40" rx="8" fill="#0F172A"/>
+    <text x="20" y="27" font-size="20" font-weight="800" fill="#F59E0B" text-anchor="middle">C</text>
+    <text x="56" y="18" font-size="12" font-weight="700" letter-spacing="2.4" fill="#64748B">CAMERON ASHLEY</text>
+    <text x="56" y="36" font-size="13" font-weight="500" fill="#94A3B8">WordPress · ACF · Custom plugins · Multi-role SaaS</text>
+  </g>
+
+  <!-- Right-side project tag -->
+  <g class="sans" transform="translate(1216, 64)">
+    <rect x="-200" y="0" width="200" height="36" rx="18" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+    <circle cx="-176" cy="18" r="4" fill="#10B981"/>
+    <text x="-162" y="23" font-size="13" font-weight="600" fill="#0F172A">Live · edusupervise.ashbi.ca</text>
+  </g>
+
+  <line x1="64" y1="128" x2="1216" y2="128" stroke="#E2E8F0" stroke-width="1"/>
+
+  <!-- ============ LEFT BLOCK ============ -->
+  <g class="sans" transform="translate(64, 184)">
+    <rect x="0" y="0" width="14" height="14" rx="3" fill="#F59E0B"/>
+    <text x="26" y="12" font-size="14" font-weight="700" letter-spacing="2.4" fill="#0F172A">SCHOOL DUTY SCHEDULING · SAAS</text>
+  </g>
+
+  <!-- Project name (huge) -->
+  <text x="64" y="280" class="sans" font-size="92" font-weight="800" fill="#0F172A" letter-spacing="-2.5">EduSupervise</text>
+
+  <!-- 1-line outcome -->
+  <text x="64" y="332" class="sans" font-size="22" font-weight="500" fill="#475569">Multi-role duty scheduler with SMS reminders</text>
+  <text x="64" y="362" class="sans" font-size="22" font-weight="500" fill="#475569">and audit trails. Custom plugin, ACF-driven.</text>
+
+  <!-- Hero stat: before → after (bars) -->
+  <g transform="translate(64, 412)">
+    <!-- BEFORE bar -->
+    <g transform="translate(0, 0)">
+      <text x="0" y="14" class="sans" font-size="12" font-weight="700" letter-spacing="2" fill="#64748B">BEFORE · MANUAL SPREADSHEET</text>
+      <rect x="0" y="24" width="580" height="48" rx="6" fill="#CBD5E1"/>
+      <text x="0" y="100" class="sans" font-size="44" font-weight="800" fill="#475569" letter-spacing="-1">12h</text>
+      <text x="86" y="100" class="sans" font-size="16" font-weight="500" fill="#64748B">/ week, admin team</text>
+    </g>
+
+    <!-- AFTER bar -->
+    <g transform="translate(0, 144)">
+      <text x="0" y="14" class="sans" font-size="12" font-weight="700" letter-spacing="2" fill="#0F172A">AFTER · EDUSUPERVISE</text>
+      <rect x="0" y="24" width="108" height="48" rx="6" fill="#F59E0B"/>
+      <text x="0" y="100" class="sans" font-size="44" font-weight="800" fill="#0F172A" letter-spacing="-1">90min</text>
+      <text x="180" y="100" class="sans" font-size="16" font-weight="500" fill="#64748B">/ week, same team · same schools</text>
+    </g>
+  </g>
+
+  <!-- Bottom chips -->
+  <g class="sans" transform="translate(64, 712)">
+    <g>
+      <rect x="0" y="0" width="120" height="32" rx="16" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+      <text x="60" y="21" font-size="13" font-weight="600" fill="#0F172A" text-anchor="middle">Custom plugin</text>
+    </g>
+    <g transform="translate(132, 0)">
+      <rect x="0" y="0" width="100" height="32" rx="16" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+      <text x="50" y="21" font-size="13" font-weight="600" fill="#0F172A" text-anchor="middle">ACF Pro</text>
+    </g>
+    <g transform="translate(244, 0)">
+      <rect x="0" y="0" width="100" height="32" rx="16" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+      <text x="50" y="21" font-size="13" font-weight="600" fill="#0F172A" text-anchor="middle">Twilio</text>
+    </g>
+    <g transform="translate(356, 0)">
+      <rect x="0" y="0" width="106" height="32" rx="16" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+      <text x="53" y="21" font-size="13" font-weight="600" fill="#0F172A" text-anchor="middle">Postgres</text>
+    </g>
+    <g transform="translate(474, 0)">
+      <rect x="0" y="0" width="100" height="32" rx="16" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+      <text x="50" y="21" font-size="13" font-weight="600" fill="#0F172A" text-anchor="middle">Stripe</text>
+    </g>
+  </g>
+
+  <!-- ============ RIGHT BLOCK: scheduler calendar mock ============ -->
+  <g transform="translate(720, 184)">
+    <text x="0" y="0" class="sans" font-size="12" font-weight="700" letter-spacing="2.4" fill="#64748B">WEEKLY ROSTER · GENERATED IN ONE CLICK</text>
+
+    <!-- Calendar card -->
+    <g transform="translate(0, 24)">
+      <rect x="0" y="0" width="488" height="392" rx="14" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.5"/>
+
+      <!-- Card header -->
+      <rect x="0" y="0" width="488" height="48" rx="14" fill="#0F172A"/>
+      <rect x="0" y="34" width="488" height="14" fill="#0F172A"/>
+      <text x="20" y="30" class="sans" font-size="13" font-weight="700" fill="#FFFFFF">Week 27 · Duty Schedule</text>
+      <text x="468" y="30" class="sans" font-size="13" font-weight="600" fill="#94A3B8" text-anchor="end">Auto · 12 staff</text>
+
+      <!-- Day columns header -->
+      <g class="sans" transform="translate(20, 70)">
+        <text x="0" y="0" font-size="11" font-weight="700" letter-spacing="1.5" fill="#94A3B8">MON</text>
+        <text x="76" y="0" font-size="11" font-weight="700" letter-spacing="1.5" fill="#94A3B8">TUE</text>
+        <text x="152" y="0" font-size="11" font-weight="700" letter-spacing="1.5" fill="#94A3B8">WED</text>
+        <text x="228" y="0" font-size="11" font-weight="700" letter-spacing="1.5" fill="#94A3B8">THU</text>
+        <text x="304" y="0" font-size="11" font-weight="700" letter-spacing="1.5" fill="#94A3B8">FRI</text>
+      </g>
+
+      <!-- Rows of duty blocks — 5 rows x 5 days -->
+      <g transform="translate(20, 84)">
+        <!-- Row 1 -->
+        <rect x="0" y="0" width="64" height="40" rx="6" fill="#FEF3C7"/>
+        <text x="32" y="25" class="sans" font-size="11" font-weight="600" fill="#92400E" text-anchor="middle">Yard · A</text>
+        <rect x="76" y="0" width="64" height="40" rx="6" fill="#FEF3C7"/>
+        <text x="108" y="25" class="sans" font-size="11" font-weight="600" fill="#92400E" text-anchor="middle">Hall · B</text>
+        <rect x="152" y="0" width="64" height="40" rx="6" fill="#FEF3C7"/>
+        <text x="184" y="25" class="sans" font-size="11" font-weight="600" fill="#92400E" text-anchor="middle">Caf · C</text>
+        <rect x="228" y="0" width="64" height="40" rx="6" fill="#FEF3C7"/>
+        <text x="260" y="25" class="sans" font-size="11" font-weight="600" fill="#92400E" text-anchor="middle">Bus · D</text>
+        <rect x="304" y="0" width="64" height="40" rx="6" fill="#FEF3C7"/>
+        <text x="336" y="25" class="sans" font-size="11" font-weight="600" fill="#92400E" text-anchor="middle">Yard · A</text>
+
+        <!-- Row 2 -->
+        <rect x="0" y="48" width="64" height="40" rx="6" fill="#FED7AA"/>
+        <text x="32" y="73" class="sans" font-size="11" font-weight="600" fill="#9A3412" text-anchor="middle">Caf · C</text>
+        <rect x="76" y="48" width="64" height="40" rx="6" fill="#FED7AA"/>
+        <text x="108" y="73" class="sans" font-size="11" font-weight="600" fill="#9A3412" text-anchor="middle">Bus · D</text>
+        <rect x="152" y="48" width="64" height="40" rx="6" fill="#FED7AA"/>
+        <text x="184" y="73" class="sans" font-size="11" font-weight="600" fill="#9A3412" text-anchor="middle">Yard · A</text>
+        <rect x="228" y="48" width="64" height="40" rx="6" fill="#FED7AA"/>
+        <text x="260" y="73" class="sans" font-size="11" font-weight="600" fill="#9A3412" text-anchor="middle">Hall · B</text>
+        <rect x="304" y="48" width="64" height="40" rx="6" fill="#FED7AA"/>
+        <text x="336" y="73" class="sans" font-size="11" font-weight="600" fill="#9A3412" text-anchor="middle">Caf · C</text>
+
+        <!-- Row 3 -->
+        <rect x="0" y="96" width="64" height="40" rx="6" fill="#FBBF24"/>
+        <text x="32" y="121" class="sans" font-size="11" font-weight="700" fill="#78350F" text-anchor="middle">Hall · B</text>
+        <rect x="76" y="96" width="64" height="40" rx="6" fill="#FBBF24"/>
+        <text x="108" y="121" class="sans" font-size="11" font-weight="700" fill="#78350F" text-anchor="middle">Yard · A</text>
+        <rect x="152" y="96" width="64" height="40" rx="6" fill="#FBBF24"/>
+        <text x="184" y="121" class="sans" font-size="11" font-weight="700" fill="#78350F" text-anchor="middle">Bus · D</text>
+        <rect x="228" y="96" width="64" height="40" rx="6" fill="#FBBF24"/>
+        <text x="260" y="121" class="sans" font-size="11" font-weight="700" fill="#78350F" text-anchor="middle">Caf · C</text>
+        <rect x="304" y="96" width="64" height="40" rx="6" fill="#FBBF24"/>
+        <text x="336" y="121" class="sans" font-size="11" font-weight="700" fill="#78350F" text-anchor="middle">Hall · B</text>
+
+        <!-- Row 4 -->
+        <rect x="0" y="144" width="64" height="40" rx="6" fill="#F59E0B"/>
+        <text x="32" y="169" class="sans" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle">Bus · D</text>
+        <rect x="76" y="144" width="64" height="40" rx="6" fill="#F59E0B"/>
+        <text x="108" y="169" class="sans" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle">Caf · C</text>
+        <rect x="152" y="144" width="64" height="40" rx="6" fill="#F59E0B"/>
+        <text x="184" y="169" class="sans" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle">Hall · B</text>
+        <rect x="228" y="144" width="64" height="40" rx="6" fill="#F59E0B"/>
+        <text x="260" y="169" class="sans" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle">Yard · A</text>
+        <rect x="304" y="144" width="64" height="40" rx="6" fill="#F59E0B"/>
+        <text x="336" y="169" class="sans" font-size="11" font-weight="700" fill="#FFFFFF" text-anchor="middle">Bus · D</text>
+
+        <!-- Row 5 -->
+        <rect x="0" y="192" width="64" height="40" rx="6" fill="#FCD34D"/>
+        <text x="32" y="217" class="sans" font-size="11" font-weight="700" fill="#78350F" text-anchor="middle">Hall · B</text>
+        <rect x="76" y="192" width="64" height="40" rx="6" fill="#FCD34D"/>
+        <text x="108" y="217" class="sans" font-size="11" font-weight="700" fill="#78350F" text-anchor="middle">Yard · A</text>
+        <rect x="152" y="192" width="64" height="40" rx="6" fill="#FCD34D"/>
+        <text x="184" y="217" class="sans" font-size="11" font-weight="700" fill="#78350F" text-anchor="middle">Bus · D</text>
+        <rect x="228" y="192" width="64" height="40" rx="6" fill="#FCD34D"/>
+        <text x="260" y="217" class="sans" font-size="11" font-weight="700" fill="#78350F" text-anchor="middle">Hall · B</text>
+        <rect x="304" y="192" width="64" height="40" rx="6" fill="#FCD34D"/>
+        <text x="336" y="217" class="sans" font-size="11" font-weight="700" fill="#78350F" text-anchor="middle">Caf · C</text>
+      </g>
+
+      <!-- Footer status -->
+      <g transform="translate(20, 348)">
+        <circle cx="6" cy="6" r="5" fill="#10B981"/>
+        <text x="22" y="11" class="sans" font-size="12" font-weight="600" fill="#0F172A">Generated · 90 seconds · SMS reminders queued</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Right-side accent strip -->
+  <rect x="1252" y="0" width="28" height="769" fill="#0F172A"/>
+  <rect x="1252" y="384" width="28" height="120" fill="#F59E0B"/>
+</svg>
