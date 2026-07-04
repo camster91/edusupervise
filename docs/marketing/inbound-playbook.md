@@ -52,6 +52,12 @@ maton google-mail whoami
 maton hubspot contact search \
   --filter hs_lead_status:EQ:NEW --limit 50 \
   --properties email,firstname,lastname,lead_score,last_reply_date
+
+# 7. Stamp the original_thread_id on any contacts created today so future
+#    replies stay linked to the same HubSpot record (one contact per thread,
+#    not one per message). Do this BEFORE replying to avoid orphaned threads.
+maton hubspot contact update <contact-id> \
+  --properties original_thread_id=<gmail-thread-id>,last_reply_date=$(date +%Y-%m-%d)
 ```
 
 Time budget: **15 minutes** if zero new replies, **30-45 minutes** if 5+. Bump
@@ -345,13 +351,13 @@ back to stuffing it into `lead_notes` until it does.
 ```bash
 # Pull every Solo Launch contact created or updated this week
 maton hubspot contact search \
-  --filter lead_source:CONTAINS:Solo Launch \
+  --filter lead_source:CONTAINS_TOKEN:Solo Launch \
   --limit 100 \
   --properties email,firstname,lastname,lead_score,last_reply_date,next_action,re_engage_date
 
 # Surface any lead with overdue next_action (filter on JSON client-side)
 maton hubspot contact search \
-  --filter lead_source:CONTAINS:Solo Launch \
+  --filter lead_source:CONTAINS_TOKEN:Solo Launch \
   --limit 200 \
   --properties email,lead_score,next_action,last_reply_date \
   --jq '.results[] | select(.properties.next_action != null)'
@@ -438,7 +444,7 @@ maton google-mail message send --to <addr> --subject "..." --body "..."
 # CRM
 maton hubspot contact create --set email=... --set firstname=...
 maton hubspot contact update <id> --set lead_score=HOT --set next_action=...
-maton hubspot contact search --filter lead_source:CONTAINS:Solo Launch --limit 100
+maton hubspot contact search --filter lead_source:CONTAINS_TOKEN:Solo Launch --limit 100
 
 # Health check
 maton google-mail whoami
@@ -450,7 +456,7 @@ maton connection list --jq '.connections[] | select(.app == "hubspot") | .id'
 ## Appendix B — Per-campaign source tracking
 
 When creating the lead, set `lead_source` to one of these exact strings so the
-Friday bulk view (`--filter lead_source:CONTAINS:Solo Launch`) catches them
+Friday bulk view (`--filter lead_source:CONTAINS_TOKEN:Solo Launch`) catches them
 all:
 
 | Source string | When to use |
