@@ -13,6 +13,18 @@
 //       "upgrade_url": "/app/settings/billing"
 //     }
 //
+// Phase 3 §3.3 — admin billing wall:
+//   - Existing numeric limits (teachers / duties / reminders / SMS)
+//     still work via `enforcePlanLimits`.
+//   - New GATED-FEATURE checks (`canBroadcast`, `canCreateRecurring`)
+//     supplement the numeric limits by reading `schools.plan` directly.
+//     A free-tier school cannot broadcast or create recurring duties
+//     even if it has only 1 teacher assigned.
+//   - `requireSchoolPlan(...)` is the throw-on-block helper for routes.
+//   - `getUpgradeGateReason` builds the typed 403 body — the route hands
+//     the JSON body to <UpgradePrompt /> so the modal can show the
+//     exact reason (broadcast vs recurring vs max-teachers).
+//
 // Caller flow:
 //
 //   await withSchool(request, async (tx, session) => {
@@ -30,20 +42,12 @@
 // Implementation notes:
 //   - We accept an optional `tx` so the count query and the upcoming
 //     insert run in the same transaction (defense-in-depth against a
-//     concurrent insert sneaking past the limit). When no tx is
-//     provided we open a fresh `withSchoolContext`.
+//     concurrent insert sneaking past the limit).
 //   - Limits are keyed by the CURRENT `plan` — including a pending
 //     downgrade. If `plan_downgrade_pending_to = 'free'` is set, we
-//     enforce against the lower of (current, pending) so users can't
-//     outrun the 7-day grace. (Spec section 6: "Mutations on Free are
-//     still blocked when over Free limits (return 403)".)
-//   - The `sms_included` flag is NOT a limit — it gates the SMS dispatch
-//     path in the worker, not a mutation route. We expose it via
-//     `smsAllowed(schoolId)` for callers that need to skip the SMS path.
-//
-// The plan_limits table is on the system-role side (BYPASSRLS) so we can
-// read it without setting app.school_id. The actual counts run inside
-// withSchoolContext (RLS) so each school only counts its own rows.
+//     enforce against the lower of (current, pending).
+//   - The `sms_included` flag is NOT a limit; it gates the SMS dispatch
+//     path in the worker, not a mutation route.
 
 import { eq, sql } from 'drizzle-orm';
 import {
@@ -56,6 +60,7 @@ import {
   withSchoolContext,
   type Db,
   type SchoolContextTx,
+  type SchoolPlan,
 } from '@edusupervise/db';
 
 import { logger } from './logger.server';
@@ -71,6 +76,9 @@ import { logger } from './logger.server';
  *
  * Keep this exhaustive. Adding a new mutation type = adding a case here
  * AND wiring the limit into `plan_limits` (see db/init/03-seed.sql).
+ *
+ * Phase 3 §3.3 — gated features (not numeric caps) use a separate
+ * `GatedFeature` type below. Two surfaces, one module.
  */
 export type EnforcementAction =
   | { type: 'user.create'; role: 'school_admin' | 'teacher' | 'substitute' }
@@ -79,15 +87,15 @@ export type EnforcementAction =
   | { type: 'assignment.create' }
   | { type: 'sms.send' };
 
+/** Phase 3 §3.3 — gated features that depend on plan tier, not count. */
+export type GatedFeature = 'coverage.broadcast' | 'recurring.duties' | 'parent.alerts' | 'pdf.ingestion' | 'bulk.csv' | 'custom_branding';
+
 type LimitKey = 'maxTeachers' | 'maxDuties' | 'maxRemindersPerAssignment';
 
 interface ActionLimitSpec {
   limitKey: LimitKey;
-  /** Pretty label for the API body — e.g. "teachers". */
   label: string;
-  /** Table to count from. */
   table: 'users' | 'duties' | 'reminders' | 'duty_assignments';
-  /** Optional WHERE-filter applied to the count (e.g. role-conditional for teachers). */
   filter?: (tx: SchoolContextTx) => ReturnType<typeof sql>;
 }
 
@@ -96,39 +104,27 @@ const ACTION_TABLE: Record<EnforcementAction['type'], ActionLimitSpec> = {
     limitKey: 'maxTeachers',
     label: 'teachers',
     table: 'users',
-    // Teachers + substitutes count toward the cap. Admins do too in
-    // practice, but the spec uses "max_teachers" as the column name.
-    // We count all active users.
     filter: () => sql`is_active = true`,
   },
   'duty.create': {
     limitKey: 'maxDuties',
     label: 'duties',
     table: 'duties',
-    // Count active duties — soft-deleted (`is_active = false`) don't
-    // contribute to the limit.
     filter: () => sql`is_active = true`,
   },
   'reminder.create': {
     limitKey: 'maxRemindersPerAssignment',
     label: 'reminders_per_assignment',
     table: 'reminders',
-    // Reminder count is per assignment, not global — we COUNT(*) WHERE
-    // assignment_id = $1.
-    filter: () => sql`assignment_id = $1`, // overridden in countCurrent
+    filter: () => sql`assignment_id = $1`,
   },
   'assignment.create': {
-    // Spec doesn't define an assignment-specific cap; we use
-    // max_duties as the proxy. Each assignment references one duty, so
-    // a school over max_duties is also over their assignment allowance.
     limitKey: 'maxDuties',
     label: 'assignments',
     table: 'duty_assignments',
     filter: () => sql`true`,
   },
   'sms.send': {
-    // SMS is gated by `sms_included`, not a numeric cap. Handled in
-    // `checkSmsAllowed`.
     limitKey: 'maxTeachers',
     label: 'sms',
     table: 'users',
@@ -136,16 +132,37 @@ const ACTION_TABLE: Record<EnforcementAction['type'], ActionLimitSpec> = {
   },
 };
 
+/**
+ * Phase 3 §3.3 — feature tier map. Each entry lists the plan tiers
+ * that ALLOW the feature. Anything not listed is denied.
+ *
+ * The free tier ($0, solo) is excluded from every gated feature by
+ * design — solo teachers don't need school-wide broadcast / recurring
+ * duty CRUD.
+ */
+const FEATURE_TIER_ALLOWLIST: Record<GatedFeature, ReadonlyArray<SchoolPlan>> = {
+  'coverage.broadcast': ['school'],
+  'recurring.duties': ['school'],
+  'parent.alerts': ['pro', 'school'],
+  'pdf.ingestion': ['pro', 'school'],
+  'bulk.csv': ['school'],
+  'custom_branding': ['school'],
+};
+
+const FEATURE_LABEL: Record<GatedFeature, string> = {
+  'coverage.broadcast': 'Broadcast coverage requests',
+  'recurring.duties': 'Recurring time-bound duties',
+  'parent.alerts': 'Parent alerts',
+  'pdf.ingestion': 'School-wide PDF ingestion',
+  'bulk.csv': 'Bulk CSV import',
+  'custom_branding': 'Custom school branding',
+};
+
 // ---------------------------------------------------------------------------
 // Core: enforcePlanLimits
 // ---------------------------------------------------------------------------
 
 export interface EnforcePlanLimitsOptions {
-  /**
-   * Optional pre-opened transaction (SchoolContextTx). When supplied,
-   * the count query runs inside it so a racing insert cannot push the
-   * count past `max` between the check and the caller's INSERT.
-   */
   tx?: SchoolContextTx;
 }
 
@@ -157,24 +174,8 @@ export interface PlanLimitErrorBody {
   upgrade_url: string;
 }
 
-/**
- * The shape of the 403 response used when a mutation would exceed a
- * plan limit. We don't extend `Response` (which would conflict with
- * the read-only properties of the platform type); callers that want
- * the parsed body can pass the response through `await resp.json()`.
- */
 export type PlanLimitErrorResponse = Response;
 
-/**
- * Throws (or returns) a `403` Response when the action would exceed the
- * school's plan limit. Caller decides whether to throw + return, or
- * inspect + return — see the two helpers below.
- *
- * Returns:
- *   - `{ ok: true }` when the action may proceed.
- *   - `{ ok: false, response }` when blocked (the response is a
- *     pre-built 403 with the typed body).
- */
 export async function checkPlanLimits(
   schoolId: string,
   action: EnforcementAction,
@@ -189,7 +190,6 @@ export async function checkPlanLimits(
   if (options.tx) {
     return runWithin(options.tx, schoolId, action, spec, limitKey);
   }
-  // Open a fresh transaction.
   const { getDb } = await import('./db.server');
   const db = getDb();
   return withSchoolContext(db, schoolId, async (tx) =>
@@ -207,7 +207,6 @@ async function runWithin(
   | { ok: true; current: number; max: number; plan: string }
   | { ok: false; response: Response; current: number; max: number; plan: string }
 > {
-  // 1. Read the school's CURRENT plan + any pending downgrade
   const schoolRows = await tx
     .select({
       plan: schools.plan,
@@ -223,13 +222,9 @@ async function runWithin(
     );
   }
 
-  // 2. Determine the effective plan. If a downgrade is pending and the
-  //    user is over the FREE limits, enforce against the lower max so
-  //    they can't outrun the grace window.
   const pendingPlan = school.planDowngradePendingTo;
   const effectivePlan = pendingPlan ?? school.plan;
 
-  // 3. Read the limit row for the effective plan.
   const planRows = await tx
     .select({
       maxTeachers: planLimits.maxTeachers,
@@ -246,9 +241,6 @@ async function runWithin(
       `enforcePlanLimits: plan '${effectivePlan}' not found in plan_limits`,
     );
   }
-  // Drizzle maps plan_limits columns to camelCase. The LimitKey type is
-  // already in camelCase (maxTeachers / maxDuties / maxRemindersPerAssignment)
-  // so the lookup is direct.
   const max = planRow[limitKey];
   if (max === null || max === undefined) {
     throw new Error(
@@ -256,7 +248,6 @@ async function runWithin(
     );
   }
 
-  // 4. SMS-gate path: no count, just check the boolean.
   if (action.type === 'sms.send') {
     if (planRow.smsIncluded) {
       return { ok: true, current: 0, max: 0, plan: effectivePlan };
@@ -275,10 +266,8 @@ async function runWithin(
     };
   }
 
-  // 5. Count rows in the relevant table.
   const current = await countCurrent(tx, action, spec);
 
-  // 6. Decide.
   if (current + 1 > max) {
     return {
       ok: false,
@@ -301,16 +290,10 @@ async function countCurrent(
   action: EnforcementAction,
   spec: ActionLimitSpec,
 ): Promise<number> {
-  // Build the COUNT(*) query directly via `sql` rather than Drizzle's
-  // DSL — keeps the per-type filter logic in one place and avoids
-  // having to type five different `.from(...)` chains for five table
-  // types.
   const filter = spec.filter?.(tx);
   let filterSql = filter ?? sql`true`;
-  let param: unknown = null;
   if (action.type === 'reminder.create') {
-    param = action.assignmentId;
-    filterSql = sql`assignment_id = ${param}`;
+    filterSql = sql`assignment_id = ${action.assignmentId}`;
   }
   let tableName: string;
   switch (spec.table) {
@@ -338,29 +321,6 @@ async function countCurrent(
   return rows[0]?.c ?? 0;
 }
 
-// ---------------------------------------------------------------------------
-// `enforcePlanLimits` — the throw-on-block variant most callers want
-// ---------------------------------------------------------------------------
-
-/**
- * Drop-in guard for RR7 actions and route loaders. Throws (via `return`
- * inside the route, or via `throw` outside one) a typed Response when
- * the limit would be exceeded; resolves when the action may proceed.
- *
- * Usage inside a route action:
- *
- *   export async function action({ request }: Route.ActionArgs) {
- *     const csrf = validateCsrf(request);
- *     if (!csrf.ok) return csrf.response;
- *     return withUser(request, async (tx, session) => {
- *       const limit = await enforcePlanLimits(tx, session.schoolId, {
- *         type: 'user.create',
- *       });
- *       if (!limit.ok) return limit.response;
- *       // ... do the insert ...
- *     });
- *   }
- */
 export async function enforcePlanLimits(
   tx: SchoolContextTx,
   schoolId: string,
@@ -372,14 +332,6 @@ export async function enforcePlanLimits(
   return checkPlanLimits(schoolId, action, { tx });
 }
 
-// ---------------------------------------------------------------------------
-// Helpers used by routes that don't go through withSchoolContext
-// ---------------------------------------------------------------------------
-
-/**
- * Open a fresh transaction + enforce. Convenience for routes that
- * haven't yet wrapped the call in `withSchool`.
- */
 export async function enforcePlanLimitsFresh(
   schoolId: string,
   action: EnforcementAction,
@@ -391,18 +343,134 @@ export async function enforcePlanLimitsFresh(
 }
 
 // ---------------------------------------------------------------------------
+// Phase 3 §3.3 — Gated feature checks (broadcast, recurring, etc.)
+//
+// Two surface APIs:
+//   - requireSchoolPlan(tx, schoolId, feature) — throws a 403 Response
+//     when the plan doesn't include the feature. Routes `throw` it.
+//   - canUseFeature(tx, schoolId, feature) — bool, for soft UI hints
+//     (e.g. "Upgrade to broadcast").
+//   - explainUpgradeGate(schoolId, feature) — typed reason object for
+//     UpgradePrompt.tsx (so the modal can show why the upgrade matters).
+// ---------------------------------------------------------------------------
+
+export interface UpgradeGateReason {
+  /** The feature the user was trying to use. */
+  feature: GatedFeature;
+  /** Human-readable feature label. */
+  featureLabel: string;
+  /** The plan the user's school is on. */
+  currentPlan: SchoolPlan;
+  /** The minimum plan tier that unlocks the feature. */
+  minimumPlan: SchoolPlan;
+  /** Call-to-action copy for the modal. */
+  cta: string;
+}
+
+/** Soft check — does NOT throw. Used by UI components for hints. */
+export async function canUseFeature(
+  tx: SchoolContextTx,
+  schoolId: string,
+  feature: GatedFeature,
+): Promise<boolean> {
+  const { plan } = await readSchoolPlan(tx, schoolId);
+  return FEATURE_TIER_ALLOWLIST[feature].includes(plan);
+}
+
+/** Throwing variant for routes. */
+export async function requireSchoolPlan(
+  tx: SchoolContextTx,
+  schoolId: string,
+  feature: GatedFeature,
+): Promise<{ ok: true; plan: SchoolPlan } | { ok: false; response: Response; reason: UpgradeGateReason }> {
+  const { plan } = await readSchoolPlan(tx, schoolId);
+  if (FEATURE_TIER_ALLOWLIST[feature].includes(plan)) {
+    return { ok: true, plan };
+  }
+  const allowlist = FEATURE_TIER_ALLOWLIST[feature];
+  const minimumPlan = (allowlist[0] ?? 'school') as SchoolPlan;
+  const reason: UpgradeGateReason = {
+    feature,
+    featureLabel: FEATURE_LABEL[feature],
+    currentPlan: plan,
+    minimumPlan,
+    cta: `Upgrade to ${capitalize(minimumPlan)} to unlock ${FEATURE_LABEL[feature]}.`,
+  };
+  return { ok: false, reason, response: buildFeatureGateResponse(reason) };
+}
+
+/** Read-only upgrade explanation — used by UI to render UpgradePrompt. */
+export async function explainUpgradeGate(
+  tx: SchoolContextTx,
+  schoolId: string,
+  feature: GatedFeature,
+): Promise<UpgradeGateReason> {
+  const { plan } = await readSchoolPlan(tx, schoolId);
+  const allowlist = FEATURE_TIER_ALLOWLIST[feature];
+  const minimumPlan = (allowlist[0] ?? 'school') as SchoolPlan;
+  return {
+    feature,
+    featureLabel: FEATURE_LABEL[feature],
+    currentPlan: plan,
+    minimumPlan,
+    cta: `Upgrade to ${capitalize(minimumPlan)} to unlock ${FEATURE_LABEL[feature]}.`,
+  };
+}
+
+async function readSchoolPlan(
+  tx: SchoolContextTx,
+  schoolId: string,
+): Promise<{ plan: SchoolPlan; pending: SchoolPlan | null }> {
+  const [row] = await tx
+    .select({
+      plan: schools.plan,
+      planDowngradePendingTo: schools.planDowngradePendingTo,
+    })
+    .from(schools)
+    .where(eq(schools.id, schoolId))
+    .limit(1);
+  if (!row) throw new Error(`school ${schoolId} not visible in current context`);
+  return {
+    plan: row.plan as SchoolPlan,
+    pending: (row.planDowngradePendingTo as SchoolPlan | null) ?? null,
+  };
+}
+
+function capitalize(s: string): string {
+  return s.length === 0 ? s : s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function buildFeatureGateResponse(reason: UpgradeGateReason): Response {
+  const body = JSON.stringify({
+    error: 'plan_feature_locked',
+    feature: reason.feature,
+    featureLabel: reason.featureLabel,
+    currentPlan: reason.currentPlan,
+    minimumPlan: reason.minimumPlan,
+    upgrade_url: '/app/settings/billing',
+    cta: reason.cta,
+  });
+  logger.info(
+    {
+      feature: reason.feature,
+      currentPlan: reason.currentPlan,
+      minimumPlan: reason.minimumPlan,
+    },
+    'plan_feature_locked',
+  );
+  return new Response(body, {
+    status: 403,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+// ---------------------------------------------------------------------------
 // SMS included check (for the worker / dispatch path)
 // ---------------------------------------------------------------------------
 
-/**
- * Whether the school's effective plan includes SMS. Returns `false`
- * for the free tier + during a downgrade to free. Read via the system
- * role since we look up the school without an app.school_id context.
- */
 export async function smsAllowedForSchool(schoolId: string): Promise<boolean> {
   const { getSystemClient } = await import('@edusupervise/db');
-  const url =
-    process.env.SYSTEM_DATABASE_URL ?? process.env.DATABASE_URL ?? '';
+  const url = process.env.SYSTEM_DATABASE_URL ?? process.env.DATABASE_URL ?? '';
   if (!url) return false;
   const { db, close } = getSystemClient(url);
   try {
@@ -455,6 +523,4 @@ function buildLimitResponse(input: {
   });
 }
 
-// Re-export dutyAssignments so the file's table literal types are valid
-// even when not used by the count query directly.
 void dutyAssignments;

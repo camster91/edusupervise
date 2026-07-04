@@ -57,6 +57,20 @@
       "when": 1782920000000,
       "tag": "0007_user_role_educational_assistant",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783000000000,
+      "tag": "0009_group_duties",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1783010000000,
+      "tag": "0010_recurring_duties",
+      "breakpoints": true
     }
   ]
 }
