@@ -50,7 +50,7 @@ export function HeroCard({
     <div
       className={cn(
         'bg-surface rounded-xl border border-border shadow-elev-1',
-        'p-2xl',
+        'p-xl',
         className,
       )}
     >
@@ -158,7 +158,7 @@ function DutyBlock({
 
 function EmptyState(): React.ReactElement {
   return (
-    <div className="flex items-center gap-md py-md">
+    <div className="flex items-center gap-md py-sm">
       <Clock size={24} aria-hidden className="text-tertiary" />
       <div>
         <div className="text-subhead text-secondary uppercase tracking-wider">Now</div>
