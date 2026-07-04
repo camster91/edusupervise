@@ -27,6 +27,7 @@ import {
   CalendarDays,
   ClipboardList,
   Bell,
+  ArrowRight,
   ArrowRightLeft,
   Check,
   AlertTriangle,
@@ -37,6 +38,7 @@ import {
   Mail,
   MessageSquare,
   Trash2,
+  Sparkles,
   type LucideIcon,
 } from 'lucide-react';
 import { and, eq, gte, lte, desc, isNull } from 'drizzle-orm';
@@ -58,6 +60,8 @@ import {
   toast,
 } from '../components/ui';
 import { SkeletonCard } from '../components/Skeleton';
+import { RecurringDutyCard } from '../components/RecurringDutyCard';
+import { getGroupDutyRoster } from '../../server/duty-assignments.server';
 
 /**
  * Hydrate fallback: shown while the loader is fetching initial data
