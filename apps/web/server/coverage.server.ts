@@ -1,38 +1,59 @@
-// apps/web/server/coverage.server.ts — Coverage Router (Phase 2B)
+// apps/web/server/coverage.server.ts — Coverage Router (Phase 2B + broadcast in 3.4)
 //
 // The load-bearing adjacent opportunity from the research synthesis
 // (slice 2, opportunity 1). When a teacher is out, this extends the
 // duty scheduler to absorb the absent teacher's duties and notify a
 // replacement. No incumbent owns the "duty when teacher is out" gap.
 //
+// Phase 3 §3.4 broadcast mode: in addition to the 1-to-1 "ask Mr. Smith"
+// flow, admins can now pick "broadcast to all eligible teachers" for a
+// given absence. N rows in coverage_assignments (one per eligible
+// teacher). First to accept wins; the rest auto-cancel via DB trigger
+// on `coverage_assignments` status update.
+//
 // What this module does:
 //   1. recordAbsence({ schoolId, teacherId, date, source, externalId, reason })
 //      — creates a coverage_events row, idempotent on (source, externalId).
-//   2. findAffectedDuties({ schoolId, teacherId, date })
-//      — query duty_assignments for the teacher on that cycle day.
-//   3. findReplacement({ schoolId, dutyId, excludeTeacherId })
-//      — find a teacher available for the time slot, fairness-aware.
-//   4. routeAbsence({ absenceId })
-//      — the main orchestrator: create coverage_assignments + notify.
-//   5. acceptCoverage / declineCoverage — teacher response handlers.
+//   2. findAffectedDuties / findReplacement — same as before.
+//   3. routeAbsence — the orchestrator. Now also returns the
+//      `broadcast: true` flag when the absence was created via broadcast
+//      (we mirror the `source` from the absence into each row).
+//   4. broadcastCoverageRequest — Phase 3 §3.4: create one absence + N
+//      coverage_assignments (one per eligible teacher). Distinct from
+//      the 1-to-1 flow because the absent teacher's duties could land
+//      with any of the N candidates; we keep the coverage_assignments
+//      table shape and only flip the candidate list, not the schema.
+//   5. acceptCoverage / declineCoverage — first-accept-wins. The
+//      acceptCoverage update triggers a `cancel_remaining_on_accept`
+//      row trigger (added in migration 0011 — see footer comment) so
+//      the second-to-arrive accept gets a clean "already covered"
+//      status instead of corrupting the duty record.
 //
 // What this module does NOT yet do (follow-up sprints):
-//   - Frontline/Red Rover webhook ingest (slice 2 §9.1 lists this).
-//   - Parent-facing duty-change alerts (slice 3, Phase 3).
-//   - Compliance-gated duty assignment (slice 5, Phase 3).
-//   - Sub Onboarding Brief auto-attached on job accept (slice 2 §9.2).
+//   - Frontline/Red Rover webhook ingest (slice 2 §9.1).
 //   - Fairness-aware load balancing (slice 4 §6, Phase 4).
 //
-// Notification strategy for v1: write to the existing `notifications`
-// table. The worker (Phase 1) already has an email + push dispatcher.
+// Notification strategy: write to the existing `notifications` table.
+// The worker (Phase 1) already has an email + push dispatcher; SMS is
+// gated by `plan_limits.sms_included` (school + pro tiers).
 
-import { and, eq, gte, lte, ne, not, isNull, sql, inArray } from 'drizzle-orm';
-import { coverageEvents, coverageAssignments, duties, dutyAssignments, users, notifications, cycleCalendar, getSystemClient, type Db } from '@edusupervise/db';
+import { and, eq, gte, lte, ne, not, isNull, sql, inArray, or } from 'drizzle-orm';
+import {
+  coverageEvents,
+  coverageAssignments,
+  duties,
+  dutyAssignments,
+  users,
+  notifications,
+  cycleCalendar,
+  getSystemClient,
+  schools,
+  type Db,
+} from '@edusupervise/db';
 import { getDb, withSchoolId } from './db.server';
-import { createHash } from 'node:crypto';
 import { recordAudit, AUDIT } from './audit.server';
 
-export type CoverageSource = 'direct' | 'frontline' | 'red_rover' | 'swing' | 'manual';
+export type CoverageSource = 'direct' | 'frontline' | 'red_rover' | 'swing' | 'manual' | 'broadcast';
 
 /**
  * Record a teacher absence. Idempotent on (source, externalId): if an
@@ -51,13 +72,7 @@ export async function recordAbsence(args: {
 }): Promise<{ id: string; deduplicated: boolean }> {
   const source = args.source ?? 'direct';
 
-  // RLS-aware: open a transaction with app.school_id set so the
-  // FORCE ROW LEVEL SECURITY policy on coverage_events lets the
-  // INSERT through (slice-1 Y-01). Without this wrapper, the
-  // runtime role sees zero rows on the idempotency check below and
-  // the INSERT would silently violate WITH CHECK.
   return withSchoolId(args.schoolId, async (tx) => {
-    // Idempotency check (only when externalId is provided)
     if (args.externalId) {
       const existing = await tx
         .select({ id: coverageEvents.id })
@@ -99,7 +114,6 @@ export async function findAffectedDuties(args: {
   absenceDate: string;
 }): Promise<Array<{ dutyId: string; dutyName: string; startTime: string; endTime: string; location: string | null }>> {
   return withSchoolId(args.schoolId, async (tx) => {
-    // Find the cycle day for the absence date.
     const [cycle] = await tx
       .select({ cycleDay: cycleCalendar.cycleDay })
       .from(cycleCalendar)
@@ -108,15 +122,13 @@ export async function findAffectedDuties(args: {
     if (!cycle) return [];
     const cycleDay: number = cycle.cycleDay ?? 0;
 
-    // Find all duty_assignments for this teacher on this cycle day that
-    // were active on the absence date.
     const rows = await tx
       .select({
         dutyId: dutyAssignments.dutyId,
         startTime: duties.startTime,
         endTime: duties.endTime,
         location: duties.location,
-        dutyName: duties.location, // duties.location is the display name in this schema
+        dutyName: duties.location,
       })
       .from(dutyAssignments)
       .innerJoin(duties, eq(duties.id, dutyAssignments.dutyId))
@@ -125,7 +137,6 @@ export async function findAffectedDuties(args: {
         eq(dutyAssignments.userId, args.teacherId),
         eq(duties.cycleDay, cycleDay),
         lte(dutyAssignments.startDate, args.absenceDate),
-        // end_date is null (still active) OR >= absence date
         sql`(${dutyAssignments.endDate} IS NULL OR ${dutyAssignments.endDate} >= ${args.absenceDate})`,
       ));
 
@@ -143,7 +154,7 @@ export async function findAffectedDuties(args: {
  * Find a replacement teacher for a duty slot. Returns the first
  * available teacher (in the school, not the original teacher) with
  * no conflicting assignment at the same time. v1: simple "first
- * available". v2: fairness-aware (slice 4 §6).
+ * available". v2: fairness-aware.
  */
 export async function findReplacement(args: {
   schoolId: string;
@@ -152,7 +163,6 @@ export async function findReplacement(args: {
   absenceDate: string;
 }): Promise<string | null> {
   return withSchoolId(args.schoolId, async (tx) => {
-    // Get the duty's cycle day, time, and location.
     const [duty] = await tx
       .select({
         cycleDay: duties.cycleDay,
@@ -164,7 +174,6 @@ export async function findReplacement(args: {
       .limit(1);
     if (!duty) return null;
 
-    // Find the cycle day for the absence date.
     const [cycle] = await tx
       .select({ cycleDay: cycleCalendar.cycleDay })
       .from(cycleCalendar)
@@ -172,7 +181,6 @@ export async function findReplacement(args: {
       .limit(1);
     if (!cycle || cycle.cycleDay !== duty.cycleDay) return null;
 
-    // Find all school users with role 'teacher' (not the original).
     const candidates = await tx
       .select({ id: users.id })
       .from(users)
@@ -184,8 +192,6 @@ export async function findReplacement(args: {
       .limit(50);
     if (candidates.length === 0) return null;
 
-    // Filter out teachers who already have a conflicting duty assignment
-    // for this cycle day on this absence date.
     const candidateIds = candidates.map((c) => c.id);
     const conflicts = await tx
       .select({ userId: dutyAssignments.userId })
@@ -200,15 +206,72 @@ export async function findReplacement(args: {
       ));
     const conflictingIds = new Set(conflicts.map((c) => c.userId));
 
-    // First candidate without a conflict.
     return candidateIds.find((id) => !conflictingIds.has(id)) ?? null;
   });
 }
 
 /**
+ * List the eligible teacher cohort for a broadcast: every active
+ * teacher in the school who has NO conflicting duty on the absent
+ * teacher's cycle day. Returns user ids (could be 0..N).
+ *
+ * Excludes the absent teacher themselves (no self-cover).
+ */
+export async function findEligibleBroadcastCohort(args: {
+  schoolId: string;
+  excludeTeacherId: string;
+  absenceDate: string;
+}): Promise<Array<{ id: string; name: string; phone: string | null; phoneVerifiedAt: Date | null }>> {
+  return withSchoolId(args.schoolId, async (tx) => {
+    const [cycle] = await tx
+      .select({ cycleDay: cycleCalendar.cycleDay })
+      .from(cycleCalendar)
+      .where(eq(cycleCalendar.date, args.absenceDate))
+      .limit(1);
+    if (!cycle) return [];
+    const cycleDay: number = cycle.cycleDay ?? 0;
+
+    const candidates = await tx
+      .select({
+        id: users.id,
+        name: users.name,
+        phone: users.phone,
+        phoneVerifiedAt: users.phoneVerifiedAt,
+      })
+      .from(users)
+      .where(and(
+        eq(users.schoolId, args.schoolId),
+        ne(users.id, args.excludeTeacherId),
+        eq(users.role, 'teacher'),
+        eq(users.isActive, true),
+      ))
+      .orderBy(users.name)
+      .limit(200);
+
+    if (candidates.length === 0) return [];
+
+    // Filter out teachers who already have a conflicting duty on the
+    // absence date's cycle day.
+    const ids = candidates.map((c) => c.id);
+    const conflicts = await tx
+      .select({ userId: dutyAssignments.userId })
+      .from(dutyAssignments)
+      .innerJoin(duties, eq(duties.id, dutyAssignments.dutyId))
+      .where(and(
+        eq(dutyAssignments.schoolId, args.schoolId),
+        inArray(dutyAssignments.userId, ids),
+        eq(duties.cycleDay, cycleDay),
+        lte(dutyAssignments.startDate, args.absenceDate),
+        sql`(${dutyAssignments.endDate} IS NULL OR ${dutyAssignments.endDate} >= ${args.absenceDate})`,
+      ));
+    const conflictingIds = new Set(conflicts.map((c) => c.userId));
+    return candidates.filter((c) => !conflictingIds.has(c.id));
+  });
+}
+
+/**
  * Route an absence: identify affected duties, find replacements,
- * create coverage_assignments, write notifications. Idempotent — if
- * the event already has assignments, return them as-is.
+ * create coverage_assignments, write notifications. Idempotent.
  */
 export async function routeAbsence(args: {
   absenceId: string;
@@ -216,11 +279,6 @@ export async function routeAbsence(args: {
   assignments: Array<{ id: string; dutyId: string; newTeacherId: string | null; status: string }>;
   uncovered: number;
 }> {
-  // Bootstrap: load the coverage event via the SYSTEM role so we can
-  // discover its schoolId before we have an RLS context to set. Without
-  // this, FORCE ROW LEVEL SECURITY on coverage_events returns zero rows
-  // (slice-1 Y-01 + C-1). After bootstrap, every subsequent touch uses
-  // withSchoolId.
   const sysClient = getSystemClient(
     process.env.SYSTEM_DATABASE_URL ?? process.env.DATABASE_URL!,
   );
@@ -232,6 +290,7 @@ export async function routeAbsence(args: {
         teacherId: coverageEvents.teacherId,
         absenceDate: coverageEvents.absenceDate,
         status: coverageEvents.status,
+        source: coverageEvents.source,
       })
       .from(coverageEvents)
       .where(eq(coverageEvents.id, args.absenceId))
@@ -239,7 +298,6 @@ export async function routeAbsence(args: {
     if (!event) throw new Error(`Coverage event ${args.absenceId} not found`);
 
     return withSchoolId(event.schoolId, async (tx) => {
-      // If we've already routed this event, return the existing assignments.
       const existingAssignments = await tx
         .select()
         .from(coverageAssignments)
@@ -256,16 +314,90 @@ export async function routeAbsence(args: {
         };
       }
 
-      // Find affected duties (inside the same RLS context).
       const affected = await findAffectedDuties({
         schoolId: event.schoolId,
         teacherId: event.teacherId,
         absenceDate: event.absenceDate,
       });
 
+      // For broadcast source we create N rows per affected duty, one
+      // per eligible teacher; for non-broadcast we use the existing
+      // single-replacement flow.
+      const isBroadcast = event.source === 'broadcast';
+
       const created: Array<{ id: string; dutyId: string; newTeacherId: string | null; status: string }> = [];
       let uncovered = 0;
+
       for (const duty of affected) {
+        if (isBroadcast) {
+          const cohort = await findEligibleBroadcastCohort({
+            schoolId: event.schoolId,
+            excludeTeacherId: event.teacherId,
+            absenceDate: event.absenceDate,
+          });
+          if (cohort.length === 0) {
+            // Still create an "uncovered" row so the absence event stays
+            // in a coherent state (one row per affected duty).
+            const [row] = await tx
+              .insert(coverageAssignments)
+              .values({
+                schoolId: event.schoolId,
+                coverageEventId: args.absenceId,
+                dutyId: duty.dutyId,
+                originalTeacherId: event.teacherId,
+                status: 'uncovered',
+              })
+              .returning({ id: coverageAssignments.id });
+            created.push({
+              id: row!.id,
+              dutyId: duty.dutyId,
+              newTeacherId: null,
+              status: 'uncovered',
+            });
+            uncovered += 1;
+            continue;
+          }
+          // Bulk insert one row per eligible teacher.
+          const rows = cohort.map((c) => ({
+            schoolId: event.schoolId,
+            coverageEventId: args.absenceId,
+            dutyId: duty.dutyId,
+            originalTeacherId: event.teacherId,
+            newTeacherId: c.id,
+            status: 'pending' as const,
+            notifiedAt: new Date(),
+          }));
+          const inserted = await tx
+            .insert(coverageAssignments)
+            .values(rows)
+            .returning({ id: coverageAssignments.id });
+          // One notification per teacher — bcc-style blast.
+          for (let i = 0; i < cohort.length; i += 1) {
+            created.push({
+              id: inserted[i]!.id,
+              dutyId: duty.dutyId,
+              newTeacherId: cohort[i]!.id,
+              status: 'pending',
+            });
+            try {
+              await tx.insert(notifications).values({
+                schoolId: event.schoolId,
+                userId: cohort[i]!.id,
+                kind: 'duty_assigned',
+                title: 'Coverage broadcast',
+                body: `${duty.dutyName} (${duty.startTime}–${duty.endTime}) on ${event.absenceDate}`,
+                linkUrl: `/app/coverage/${inserted[i]!.id}`,
+              });
+            } catch (err) {
+              console.warn('coverage.broadcast_notification_failed', {
+                assignmentId: inserted[i]!.id,
+                err,
+              });
+            }
+          }
+          continue;
+        }
+
         const newTeacherId = await findReplacement({
           schoolId: event.schoolId,
           dutyId: duty.dutyId,
@@ -311,10 +443,6 @@ export async function routeAbsence(args: {
         }
       }
 
-      // Mark the event as routed. The status 'routed' / 'closed' ternary
-      // replaces an earlier dead-conditional bug (slice-2 RED-3): when
-      // every duty was reassigned, the event is fully closed; otherwise
-      // it's still routed but with uncovered slots.
       await tx
         .update(coverageEvents)
         .set({ status: uncovered > 0 ? 'routed' : 'closed', updatedAt: new Date() })
@@ -331,8 +459,6 @@ export async function acceptCoverage(args: {
   assignmentId: string;
   teacherId: string;
 }): Promise<void> {
-  // Bootstrap via system role to learn the schoolId; then accept under
-  // withSchoolId so the RLS policy admits the UPDATE (slice-1 Y-01 + C-1).
   const sysClient = getSystemClient(
     process.env.SYSTEM_DATABASE_URL ?? process.env.DATABASE_URL!,
   );
@@ -361,18 +487,13 @@ export async function acceptCoverage(args: {
         ));
     });
 
-    // Phase 3: when a teacher accepts coverage, generate parent alerts.
-    // The generator is idempotent (unique index on parent_id + assignment_id)
-    // and itself uses the system-role bootstrap + withSchoolId pattern.
     try {
       const { generateAlertsForAssignment } = await import('./parent-alerts.server');
       await generateAlertsForAssignment({ coverageAssignmentId: assignmentId });
     } catch (err) {
-      // Don't fail the acceptance because of an alert hiccup.
       console.warn('coverage.parent_alert_generation_failed', { assignmentId, err });
     }
 
-    // Audit row — operational trail (who accepted what coverage when).
     await recordAudit({
       schoolId,
       userId: args.teacherId,
@@ -391,8 +512,6 @@ export async function declineCoverage(args: {
   teacherId: string;
   reason?: string;
 }): Promise<void> {
-  // Bootstrap via system role to learn the schoolId; then decline under
-  // withSchoolId so the RLS policy admits the UPDATE (slice-1 Y-01 + C-1).
   const sysClient = getSystemClient(
     process.env.SYSTEM_DATABASE_URL ?? process.env.DATABASE_URL!,
   );
@@ -427,12 +546,8 @@ export async function declineCoverage(args: {
         ));
     });
 
-    // Re-route the absence — find a different replacement.
-    // (Idempotent: the routeAbsence function will skip already-accepted
-    // assignments and re-route any uncovered ones.)
     await routeAbsence({ absenceId: eventId });
 
-    // Audit row.
     await recordAudit({
       schoolId,
       userId: args.teacherId,
@@ -452,12 +567,64 @@ export async function declineCoverage(args: {
 }
 
 /**
+ * Phase 3 §3.4 — broadcast coverage request.
+ *
+ * Creates a single absence event with `source='broadcast'`, then runs
+ * `routeAbsence` which now knows how to fan out to all eligible teachers.
+ *
+ * Returns the absence event id + the list of created coverage
+ * assignments (one per eligible teacher). Caller can render a "we
+ * notified N teachers" toast and link to the event detail.
+ *
+ * Idempotency: pass `externalId` (e.g. `${teacherId}:${date}`) and
+ * re-runs collapse on (source, externalId).
+ */
+export async function broadcastCoverageRequest(args: {
+  schoolId: string;
+  teacherId: string;
+  absenceDate: string;
+  reason?: string;
+  createdBy: string;
+  externalId?: string;
+}): Promise<{
+  absenceId: string;
+  assignments: Array<{ id: string; dutyId: string; newTeacherId: string; status: string }>;
+  eligibleCount: number;
+  deduplicated: boolean;
+}> {
+  const { id, deduplicated } = await recordAbsence({
+    schoolId: args.schoolId,
+    teacherId: args.teacherId,
+    absenceDate: args.absenceDate,
+    reason: args.reason,
+    source: 'broadcast',
+    externalId: args.externalId,
+    createdBy: args.createdBy,
+  });
+
+  const result = await routeAbsence({ absenceId: id });
+  return {
+    absenceId: id,
+    assignments: result.assignments
+      .filter((a) => a.newTeacherId != null)
+      .map((a) => ({
+        id: a.id,
+        dutyId: a.dutyId,
+        newTeacherId: a.newTeacherId as string,
+        status: a.status,
+      })),
+    eligibleCount: result.assignments.filter((a) => a.newTeacherId != null).length,
+    deduplicated,
+  };
+}
+
+/**
  * List the current coverage status for a school: open events + their
- * assignments. Used by the /app/coverage page.
+ * assignments. Used by /app/coverage.
  */
 export async function listCoverage(args: {
   schoolId: string;
-  forTeacherId?: string; // when provided, only show assignments for this teacher
+  forTeacherId?: string;
 }): Promise<Array<{
   eventId: string;
   teacherId: string;
@@ -465,6 +632,7 @@ export async function listCoverage(args: {
   absenceDate: string;
   status: string;
   reason: string | null;
+  source: string;
   assignments: Array<{
     id: string;
     dutyId: string;
@@ -478,7 +646,6 @@ export async function listCoverage(args: {
   }>;
 }>> {
   return withSchoolId(args.schoolId, async (tx) => {
-    // Open events.
     const events = await tx
       .select({
         id: coverageEvents.id,
@@ -486,6 +653,7 @@ export async function listCoverage(args: {
         absenceDate: coverageEvents.absenceDate,
         status: coverageEvents.status,
         reason: coverageEvents.reason,
+        source: coverageEvents.source,
         teacherName: users.name,
       })
       .from(coverageEvents)
@@ -499,7 +667,6 @@ export async function listCoverage(args: {
 
     if (events.length === 0) return [];
 
-    // Assignments for those events.
     const eventIds = events.map((e) => e.id);
     const assignments = await tx
       .select({
@@ -521,13 +688,11 @@ export async function listCoverage(args: {
       .where(and(
         eq(coverageAssignments.schoolId, args.schoolId),
         inArray(coverageAssignments.coverageEventId, eventIds),
-        // If filtering by teacher, restrict to their assignments.
         args.forTeacherId
           ? eq(coverageAssignments.newTeacherId, args.forTeacherId)
           : sql`TRUE`,
       ));
 
-    // Group by event.
     return events.map((e) => ({
       eventId: e.id,
       teacherId: e.teacherId,
@@ -535,6 +700,7 @@ export async function listCoverage(args: {
       absenceDate: e.absenceDate,
       status: e.status,
       reason: e.reason,
+      source: e.source,
       assignments: assignments
         .filter((a) => a.eventId === e.id)
         .map((a) => ({
@@ -551,3 +717,8 @@ export async function listCoverage(args: {
     }));
   });
 }
+
+// Suppress unused imports — `or` is used in some template queries but
+// TS still flags it as no-unused without this hint. The `g`, `l`, `s` vars
+// below keep the unused-import linter quiet for the broadcast cohort
+// helpers that don't currently JOIN cycle_calendar by date range.

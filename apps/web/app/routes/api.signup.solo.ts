@@ -11,6 +11,7 @@ import type { Route } from './+types/api.signup.solo';
 import { validateCsrfWithFormToken } from '../../server/csrf.server';
 import {
   signupSolo,
+  parseSoloRole,
   type SoloSignupInput,
 } from '../../server/signup.server';
 import {
@@ -46,6 +47,9 @@ export async function action({ request }: Route.ActionArgs) {
   const email = String(form.get('email') ?? '').trim();
   const password = String(form.get('password') ?? '');
   const schoolName = String(form.get('schoolName') ?? '').trim();
+  // Phase 1.1: solo signups now pick a role at /signup (default Teacher).
+  // Invalid strings silently fall back to school_admin (see signupSolo).
+  const role = parseSoloRole(form.get('role'));
 
   if (!name || !email || !password || !schoolName) {
     return Response.json(
@@ -55,7 +59,7 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const result = await signupSolo(
-    { mode: 'solo', name, email, password, schoolName } satisfies SoloSignupInput,
+    { mode: 'solo', name, email, password, schoolName, role: role ?? undefined } satisfies SoloSignupInput,
     { ipAddress: clientIp(request), userAgent: clientUa(request) },
   );
 
@@ -68,9 +72,20 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const { token } = newSessionTokenFor(result.userId);
-  logger.info({ userId: result.userId, mode: 'solo' }, 'signup.solo: success');
+  logger.info(
+    { userId: result.userId, mode: 'solo', role: result.role },
+    'signup.solo: success',
+  );
 
-  return redirect('/onboarding/admin', {
+  // Phase 1.1: route to the right onboarding wizard based on the user's
+  // chosen role. Teacher + EA share /onboarding/solo (the same wizard);
+  // school_admin keeps /onboarding/admin.
+  const onboardingPath =
+    result.role === 'school_admin'
+      ? '/onboarding/admin'
+      : '/onboarding/solo';
+
+  return redirect(onboardingPath, {
     headers: {
       'Set-Cookie': `edusupervise.session=${token}; ${sessionCookieAttributes()}`,
     },

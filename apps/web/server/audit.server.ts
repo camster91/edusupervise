@@ -4,20 +4,6 @@
 // need to be attributed to the user across tenants, so they live
 // outside the tenant RLS scope). The cron flips old rows to
 // `archive` after `plan_limits.audit_retention_days`.
-//
-// What gets logged:
-//   - user signup (any mode)
-//   - school settings changes (rename, plan change)
-//   - demo reset (destructive — important forensics)
-//   - coverage accept/decline (operational audit trail)
-//
-// NOT logged (no audit row written):
-//   - read operations (loaders, queries)
-//   - high-frequency mutations like notification inserts (would
-//     dwarf the audit table)
-//
-// audit slice-3 yellow: "audit_log not wired from privileged
-// mutations" — fixed 2026-06-30.
 
 import { randomUUID } from 'node:crypto';
 import { auditLog, getSystemClient, type Db } from '@edusupervise/db';
@@ -41,9 +27,6 @@ export interface AuditEntry {
  * warn) so a failed audit insert doesn't break the user's actual
  * mutation — but this is auditable in production via the daily
  * audit-retention job that flags orphan rows.
- *
- * Use this from privileged mutation handlers (signup, settings,
- * demo reset, coverage accept/decline).
  */
 export async function recordAudit(entry: AuditEntry): Promise<void> {
   const systemUrl =
@@ -62,9 +45,6 @@ export async function recordAudit(entry: AuditEntry): Promise<void> {
       userAgent: entry.userAgent ?? null,
     });
   } catch (err) {
-    // Audit failure is non-fatal — log + swallow. The operation the
-    // user just performed still succeeded; we just lost the trail.
-    // In production wire this to Sentry so dropped audits are visible.
     console.warn(
       { err, action: entry.action, schoolId: entry.schoolId },
       'audit: failed to write audit row (non-fatal)',
@@ -74,11 +54,6 @@ export async function recordAudit(entry: AuditEntry): Promise<void> {
   }
 }
 
-/**
- * Extract IP + User-Agent from a Request. Returns undefined for
- * fields that aren't present so the helper doesn't write NULLs for
- * every audit row.
- */
 export function requestMetadata(request: Request): {
   ipAddress: string | null;
   userAgent: string | null;
@@ -89,9 +64,6 @@ export function requestMetadata(request: Request): {
   return { ipAddress, userAgent };
 }
 
-/**
- * Convenience wrapper: `recordAudit` with `requestMetadata` pre-filled.
- */
 export async function recordAuditFromRequest(
   request: Request,
   entry: Omit<AuditEntry, 'ipAddress' | 'userAgent'>,
@@ -100,9 +72,6 @@ export async function recordAuditFromRequest(
   return recordAudit({ ...entry, ipAddress, userAgent });
 }
 
-// Helper to ensure consistent action names across the codebase. Free
-// strings are fine but typing the common ones keeps typos out of
-// `audit_log.action`.
 export const AUDIT = {
   USER_SIGNUP_JOIN: 'user.signup.join',
   USER_SIGNUP_SOLO: 'user.signup.solo',
@@ -113,4 +82,13 @@ export const AUDIT = {
   COVERAGE_ACCEPT: 'coverage.accept',
   COVERAGE_DECLINE: 'coverage.decline',
   COVERAGE_RECORD_ABSENCE: 'coverage.record_absence',
+  COVERAGE_BROADCAST: 'coverage.broadcast',
+  // Phase 3 §3.1 — group duty assignments.
+  DUTY_GROUP_ASSIGN: 'duty.group_assign',
+  // Phase 3 §3.2 — recurring duty CRUD.
+  RECURRING_CREATE: 'recurring.create',
+  RECURRING_UPDATE: 'recurring.update',
+  RECURRING_DEACTIVATE: 'recurring.deactivate',
+  RECURRING_REACTIVATE: 'recurring.reactivate',
+  RECURRING_DELETE: 'recurring.delete',
 } as const;

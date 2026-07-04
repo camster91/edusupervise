@@ -45,6 +45,23 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
 
+  // Phase 1.4 — Educational Assistants show up, cover, leave. They do
+  // not "complete" a duty the way teachers do. The duty card UI hides
+  // the Mark Complete button for EAs, but the server check is the
+  // source of truth so a stale client or a curl replay can't bypass it.
+  // 403 because the role is recognized (so it's not 401) but the action
+  // is refused for this role. Body explains the EA coverage flow.
+  if (session.role === 'educational_assistant') {
+    logger.info(
+      { userId: session.userId, schoolId: session.schoolId },
+      'duty.complete: refused (educational_assistant uses coverage flow)',
+    );
+    return Response.json(
+      { error: 'EAs use the coverage flow instead.' },
+      { status: 403 },
+    );
+  }
+
   const dutyId = String(formObj['dutyId'] ?? '').trim();
   if (!dutyId) {
     return Response.json({ error: 'missing_duty_id' }, { status: 400 });

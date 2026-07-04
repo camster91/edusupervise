@@ -16,6 +16,8 @@ export default [
   // Onboarding (Phase 2A — Apple HIG spec)
   route('onboarding/teacher', 'routes/onboarding.teacher._index.tsx'),
   route('onboarding/admin', 'routes/onboarding.admin._index.tsx'),
+  // Phase 1 — solo teacher / EA wizard.
+  route('onboarding/solo', 'routes/onboarding.solo._index.tsx'),
 
   // Authenticated app shell
   layout('routes/_app.tsx', [
@@ -33,6 +35,8 @@ export default [
     // Coverage Router (Phase 2B)
     route('app/coverage', 'routes/_app.coverage._index.tsx'),
     route('app/coverage/alerts', 'routes/_app.coverage.alerts._index.tsx'),
+    // Phase 3 §3.2 — recurring duties CRUD page.
+    route('app/recurring', 'routes/_app.recurring._index.tsx'),
     // Other authenticated routes
     route('app/assignments', 'routes/_app.assignments._index.tsx'),
     route('app/reminders', 'routes/_app.reminders._index.tsx'),
@@ -51,6 +55,8 @@ export default [
   route('api/signup/join', 'routes/api.signup.join.ts'),
   route('api/signup/solo', 'routes/api.signup.solo.ts'),
   route('api/signup/demo', 'routes/api.signup.demo.ts'),
+  // Phase 1.2 — wizard final-submit endpoint.
+  route('api/onboarding/solo', 'routes/api.onboarding.solo.ts'),
 
   // Demo reset (authenticated school_admin only)
   route('app/api/demo/reset', 'routes/app.api.demo.reset.ts'),
@@ -70,6 +76,8 @@ export default [
   route('api/coverage/accept', 'routes/api.coverage.accept.ts'),
   route('api/coverage/decline', 'routes/api.coverage.decline.ts'),
   route('api/coverage/events', 'routes/api.coverage.events.ts'),
+  // Phase 3 §3.4 — broadcast coverage to all eligible teachers.
+  route('api/coverage/broadcast', 'routes/api.coverage.broadcast.ts'),
 
   // Duty quick actions (Phase 2C — Today redesign)
   route('app/api/duty.complete', 'routes/app.api.duty.complete.ts'),
