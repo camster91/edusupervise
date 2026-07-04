@@ -292,6 +292,37 @@ describe('billing adapter — stripe webhook (signature)', () => {
     expect(parsed.data).toBeDefined();
   });
 
+  it('rejects a valid signature whose timestamp is older than tolerance', () => {
+    // Audit #14 HIGH: replay protection at signature layer. STRIPE_TOLERANCE_SEC
+    // defaults to 300s (5 min, matching Stripe SDK). A captured webhook from
+    // an hour ago should be rejected even if the HMAC is valid.
+    const body = JSON.stringify({ id: 'evt_old', type: 'ping' });
+    const oldT = (Math.floor(Date.now() / 1000) - 7200).toString(); // 2h ago
+    const sig = createHmac('sha256', 'whsec_test_xxx')
+      .update(`${oldT}.${body}`)
+      .digest('hex');
+    const result = verifyWebhook({
+      rawBody: body,
+      signature: `t=${oldT},v1=${sig}`,
+    });
+    expect(result.verified).toBe(false);
+    expect(result.reason).toBeTruthy();
+  });
+
+  it('accepts a valid signature within tolerance window', () => {
+    // Edge: timestamp exactly 60s old, well within default 300s.
+    const body = JSON.stringify({ id: 'evt_recent', type: 'ping' });
+    const recentT = (Math.floor(Date.now() / 1000) - 60).toString();
+    const sig = createHmac('sha256', 'whsec_test_xxx')
+      .update(`${recentT}.${body}`)
+      .digest('hex');
+    const result = verifyWebhook({
+      rawBody: body,
+      signature: `t=${recentT},v1=${sig}`,
+    });
+    expect(result.verified).toBe(true);
+  });
+
   it('rejects a valid signature whose body has no id/type', () => {
     // The Stripe SDK's constructEvent rejects payloads that don't
     // include a real `id` and `type`; mirror that behavior so the
