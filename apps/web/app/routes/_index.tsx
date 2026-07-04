@@ -25,26 +25,32 @@ export async function loader({ request }: Route.LoaderArgs) {
 
 export default function LandingPage() {
   return (
-    <main className="min-h-screen bg-slate-50 grid place-items-center px-4">
+    <main id="main" className="min-h-screen bg-bg grid place-items-center px-md">
       <div className="max-w-2xl text-center">
-        <h1 className="text-4xl md:text-5xl font-bold text-slate-900 tracking-tight">
+        <h1 className="text-display md:text-[44px] font-bold text-primary tracking-tight">
           Your supervision schedule, on autopilot.
         </h1>
-        <p className="mt-4 text-lg text-slate-600">
+        <p className="mt-md text-callout text-secondary">
           Set up your personal 5-day duty cycle in two minutes. We send the
           reminders — you show up and supervise.
         </p>
-        <div className="mt-8 flex items-center justify-center gap-3">
-          <a href="/signup?mode=solo" className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-6 py-3 rounded-lg">
+        <div className="mt-xl flex items-center justify-center gap-sm">
+          <a
+            href="/signup?mode=solo"
+            className="inline-flex items-center justify-center min-h-[var(--touch-target-min)] px-xl rounded-md font-semibold bg-accent text-on-accent hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+          >
             Start solo — free
           </a>
-          <a href="/login" className="bg-white border border-slate-300 text-slate-700 font-medium px-6 py-3 rounded-lg hover:bg-slate-100">
+          <a
+            href="/login"
+            className="inline-flex items-center justify-center min-h-[var(--touch-target-min)] px-xl rounded-md font-semibold bg-surface border border-border text-primary hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+          >
             Sign in
           </a>
         </div>
-        <p className="mt-6 text-sm text-slate-500">
+        <p className="mt-lg text-callout text-secondary">
           Running this for your whole school?{' '}
-          <a href="/signup?mode=join" className="text-blue-600 hover:underline font-medium">
+          <a href="/signup?mode=join" className="text-accent hover:underline font-semibold">
             Set up your school →
           </a>
         </p>
