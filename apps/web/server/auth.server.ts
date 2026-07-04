@@ -13,8 +13,8 @@ import { eq, and } from 'drizzle-orm';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { users, getSystemClient } from '@edusupervise/db';
+import type { UserRole } from '@edusupervise/db';
 
-export type UserRole = 'school_admin' | 'teacher' | 'substitute';
 
 export interface Session {
   userId: string;
