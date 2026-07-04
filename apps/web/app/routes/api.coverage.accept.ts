@@ -15,13 +15,13 @@ export async function action({ request }: Route.ActionArgs) {
   if (request.method !== 'POST') {
     return Response.json({ error: 'method_not_allowed' }, { status: 405 });
   }
-  let body: any;
+  let body: unknown;
   try {
     body = await request.json();
   } catch {
     return Response.json({ error: 'invalid_json' }, { status: 400 });
   }
-  const csrf = validateCsrfFromJson(request, body);
+  const csrf = validateCsrfFromJson(request, body as Record<string, unknown>);
   if (!csrf.ok) return csrf.response;
   const session = requireSession(await getSession(request));
   const parsed = Body.safeParse(body);
