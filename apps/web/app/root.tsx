@@ -15,7 +15,7 @@
 //
 // Per design system spec §1 (Foundations) and §6 (File structure).
 
-import { Links, Meta, Outlet, Scripts, ScrollRestoration, useLoaderData } from 'react-router';
+import { Links, Meta, Outlet, Scripts, ScrollRestoration, isRouteErrorResponse, useLoaderData, useRouteError } from 'react-router';
 import { ThemeStyle, ToastListener, ToastProvider, ToastViewport } from './components';
 import { accentFor } from './lib/theme';
 import type { Route } from './+types/root';
@@ -70,6 +70,15 @@ export function Layout({ children }: { children: React.ReactNode }): React.React
         <Links />
       </head>
       <body className="min-h-screen bg-bg text-primary antialiased">
+        {/*
+          Skip-to-content link (WCAG SC 2.4.1 Bypass Blocks, Level A).
+          Sits as the FIRST focusable element on every page so keyboard
+          users can jump past nav/sidebar/header to <main id="main">.
+          Visually hidden until focused — see .skip-link in tokens.css.
+        */}
+        <a href="#main" className="skip-link">
+          Skip to main content
+        </a>
         {children}
         <ScrollRestoration />
         <Scripts />
@@ -97,50 +106,81 @@ export default function App(): React.ReactElement {
  * `window.location.reload` — RR7's `<Form>` doesn't have a recovery
  * flow here because we don't have a session context to lean on.
  *
+ * 403s from `requireRole` are special-cased: instead of "Something
+ * went wrong", we tell the user this page is admin-only and point
+ * them back to /app/today. Audit finding S-U7.
+ *
  * Server-side errors are logged from `entry.server.tsx`'s per-request
  * pino child logger; this boundary runs in the browser and only has
  * client-side state to work with, so the message is surfaced in the
  * dev pre tag.
  */
-export function ErrorBoundary({ error }: { error: unknown }): React.ReactElement {
+export function ErrorBoundary(): React.ReactElement {
+  const error = useRouteError();
+  const isResponse = isRouteErrorResponse(error);
+  const status = isResponse ? error.status : 0;
+  const is403 = status === 403;
+  const is404 = status === 404;
   const message =
-    error instanceof Error
-      ? error.message
-      : typeof error === 'string'
-        ? error
-        : 'Something went wrong.';
+    isResponse
+      ? (typeof error.data === 'string' ? error.data : null)
+      : error instanceof Error
+        ? error.message
+        : typeof error === 'string'
+          ? error
+          : 'Something went wrong.';
+  const title = is403
+    ? 'This page is for admins only'
+    : is404
+      ? "We can't find that page"
+      : 'Something went wrong';
+  const body = is403
+    ? "This area is only available to school admins. If that's you, sign in with your admin account. Otherwise, head back to your Today screen."
+    : is404
+      ? "The page you were looking for doesn't exist. Check the URL, or head back to your Today screen."
+      : 'We hit an unexpected error rendering this page. The team has been notified — please refresh to try again.';
   return (
     <html lang="en">
       <head>
         <meta charSet="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>EduSupervise — error</title>
+        <title>EduSupervise — {is403 ? 'admin only' : is404 ? 'not found' : 'error'}</title>
         <Meta />
         <Links />
       </head>
       <body className="min-h-screen bg-bg flex items-center justify-center px-md">
-        <div className="max-w-md bg-surface rounded-xl border border-border shadow-elev-1 p-2xl text-center">
-          <div className="text-display mb-md" aria-hidden>⚠️</div>
-          <h1 className="text-title-2 text-primary mb-sm">
-            Something went wrong
-          </h1>
-          <p className="text-callout text-secondary mb-lg">
-            We hit an unexpected error rendering this page. The team has
-            been notified — please refresh to try again.
-          </p>
+        <a href="#main" className="skip-link">
+          Skip to main content
+        </a>
+        <main id="main" className="max-w-md bg-surface rounded-xl border border-border shadow-elev-1 p-2xl text-center">
+          <div className="text-display mb-md" aria-hidden>
+            {is403 ? '🔒' : is404 ? '🔍' : '⚠️'}
+          </div>
+          <h1 className="text-title-2 text-primary mb-sm">{title}</h1>
+          <p className="text-callout text-secondary mb-lg">{body}</p>
           {message && process.env.NODE_ENV !== 'production' && (
             <pre className="text-left text-footnote text-secondary bg-surface-2 rounded-md p-md overflow-x-auto mb-lg text-left">
               {message}
             </pre>
           )}
-          <button
-            type="button"
-            onClick={() => window.location.reload()}
-            className="inline-flex items-center justify-center h-btn-md px-xl rounded-md font-medium text-on-accent bg-accent hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
-          >
-            Refresh page
-          </button>
-        </div>
+          <div className="flex items-center justify-center gap-sm">
+            <a
+              href="/app/today"
+              className="inline-flex items-center justify-center h-btn-md px-xl rounded-md font-medium text-on-accent bg-accent hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+            >
+              Back to Today
+            </a>
+            {!is403 && !is404 && (
+              <button
+                type="button"
+                onClick={() => window.location.reload()}
+                className="inline-flex items-center justify-center h-btn-md px-xl rounded-md font-medium text-primary bg-surface border border-border hover:bg-surface-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2"
+              >
+                Refresh page
+              </button>
+            )}
+          </div>
+        </main>
         <Scripts />
       </body>
     </html>
