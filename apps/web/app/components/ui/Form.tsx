@@ -182,8 +182,8 @@ export function useIsSubmitting(): boolean {
  */
 export function ServerErrorBanner(): React.ReactElement | null {
   const form = useFormContext();
-  const message = (form.formState.errors as Record<string, { message?: string }>)
-    ?.root?.serverError?.message;
+  const message = ((form.formState.errors as unknown as { root?: { serverError?: { message?: string } } })
+    ?.root?.serverError?.message)
   if (!message) return null;
   return (
     <div

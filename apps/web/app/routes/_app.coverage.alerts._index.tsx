@@ -102,7 +102,7 @@ export default function ParentAlertsPage() {
                 key={a.id}
                 className="bg-surface rounded-xl border border-border shadow-elev-1 p-xl"
               >
-                <AlertRow alert={a} />
+                <AlertRow alert={a} csrfToken={csrfToken} />
               </li>
             ))}
           </ul>
@@ -164,6 +164,7 @@ export default function ParentAlertsPage() {
 
 function AlertRow({
   alert,
+  csrfToken,
 }: {
   alert: {
     id: string;
@@ -182,6 +183,7 @@ function AlertRow({
     dutyEndTime: string;
     absenceDate: string;
     newTeacherName: string | null;
+    csrfToken: string;
   };
 }): React.ReactElement {
   const fetcher = useFetcher();

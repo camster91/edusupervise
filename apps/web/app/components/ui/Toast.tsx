@@ -47,13 +47,15 @@ export const ToastViewport = React.forwardRef<
 });
 
 const toastVariants = cva(
-  'group pointer-events-auto relative flex w-full items-center justify-between space-x-3',
-  'overflow-hidden rounded-lg border p-4 pr-8 shadow-lg',
-  'data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)]',
-  'data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none',
-  'data-[state=open]:animate-in data-[state=open]:slide-in-from-right-full',
-  'data-[state=closed]:animate-out data-[state=closed]:fade-out-80',
-  'data-[state=closed]:slide-out-to-right-full',
+  [
+    'group pointer-events-auto relative flex w-full items-center justify-between space-x-3',
+    'overflow-hidden rounded-lg border p-4 pr-8 shadow-lg',
+    'data-[swipe=cancel]:translate-x-0 data-[swipe=end]:translate-x-[var(--radix-toast-swipe-end-x)]',
+    'data-[swipe=move]:translate-x-[var(--radix-toast-swipe-move-x)] data-[swipe=move]:transition-none',
+    'data-[state=open]:animate-in data-[state=open]:slide-in-from-right-full',
+    'data-[state=closed]:animate-out data-[state=closed]:fade-out-80',
+    'data-[state=closed]:slide-out-to-right-full',
+  ].join(' '),
   {
     variants: {
       variant: {

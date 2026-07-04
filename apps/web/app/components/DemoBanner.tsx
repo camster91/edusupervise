@@ -16,7 +16,7 @@ import { Form } from 'react-router';
 import { Sparkles, RefreshCw, ExternalLink, AlertTriangle } from 'lucide-react';
 
 export interface DemoBannerProps {
-  demoExpiresAt: string;       // ISO date string
+  demoExpiresAt: string;  // ISO-8601 from server       // ISO date string
   /**
    * CSRF token to write into the reset form's hidden field. Caller
    * MUST pass this from loader data (read server-side from the

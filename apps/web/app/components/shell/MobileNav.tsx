@@ -21,7 +21,7 @@ import {
 } from '../ui/Dialog';
 import { Button } from '../ui/Button';
 import { cn } from '../../lib/cn';
-import type { UserRole } from '../../../server/auth';
+import type { UserRole } from '../../../server/auth.server';
 
 export interface MobileNavProps {
   role: UserRole;
@@ -56,7 +56,7 @@ export function MobileNav({ role, school }: MobileNavProps): React.ReactElement 
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button
-          variant="ghost"
+          variant="tertiary"
           size="icon"
           aria-label="Open navigation menu"
           className={cn('md:hidden')}

@@ -2,7 +2,11 @@
 import { useLoaderData, Link, Form, redirect } from 'react-router';
 import type { Route } from './+types/_app.duties.$id';
 import { getSession, requireSession, requireRole } from '../../server/auth.server.ts';
-import { readCsrfCookie, validateCsrfWithFormToken } from '../../server/csrf.server.ts';
+import {
+  mintCsrfCookie,
+  readCsrfCookie,
+  validateCsrfWithFormToken,
+} from '../../server/csrf.server';
 import { withSchoolId } from '../../server/db.server.ts';
 import { duties, dutyAssignments, users } from '@edusupervise/db';
 import { eq } from 'drizzle-orm';

@@ -13,7 +13,7 @@ import { cn } from '../../lib/cn';
 import { Button } from '../ui/Button';
 import { MobileNav } from './MobileNav';
 import { NotificationBell } from './NotificationBell';
-import type { UserRole } from '../../../server/auth';
+import type { UserRole } from '../../../server/auth.server';
 
 export interface TopbarProps {
   school: { id: string; name: string; plan: string; accentColor: string | null };

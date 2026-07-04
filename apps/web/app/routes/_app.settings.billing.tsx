@@ -297,6 +297,8 @@ function InvoicesList({
  *     will replace this with the real plan-limit / checkout flow.
  */
 function TestDevTools() {
+  const csrfApp = useRouteLoaderData('routes/_app') as { csrfToken?: string } | undefined;
+  const csrfToken = csrfApp?.csrfToken ?? '';
   if (process.env.NODE_ENV === 'production') return null;
   return (
     <section className="bg-slate-50 border border-slate-200 border-dashed rounded-xl p-4 text-xs text-slate-700">

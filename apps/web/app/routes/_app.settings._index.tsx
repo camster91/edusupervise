@@ -164,7 +164,7 @@ export default function SettingsPage() {
 
       {school.plan === 'demo' && school.demoExpiresAt && (
         <DemoStatusCard
-          expiresAt={school.demoExpiresAt}
+          expiresAt={school.demoExpiresAt.toISOString()}
         />
       )}
 

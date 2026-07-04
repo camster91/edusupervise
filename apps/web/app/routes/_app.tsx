@@ -101,7 +101,7 @@ export default function AppShell(): React.ReactElement {
     <ThemeStyle accent={school?.accentColor ?? '#3b82f6'}>
       <div className="min-h-screen bg-bg flex flex-col">
         {isDemo && school?.demoExpiresAt && (
-          <DemoBanner demoExpiresAt={school.demoExpiresAt} csrfToken={csrfToken} />
+          <DemoBanner demoExpiresAt={school.demoExpiresAt.toISOString()} csrfToken={csrfToken} />
         )}
         <div className="flex-1 min-h-screen flex">
           <Sidebar role={user.role} />

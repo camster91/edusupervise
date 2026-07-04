@@ -22,7 +22,7 @@ import {
   Settings,
   GraduationCap,
 } from 'lucide-react';
-import type { UserRole } from '../../../server/auth';
+import type { UserRole } from '../../../server/auth.server';
 import { cn } from '../../lib/cn';
 
 interface SidebarItem {
