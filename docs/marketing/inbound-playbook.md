@@ -57,7 +57,8 @@ maton hubspot contact search \
 #    replies stay linked to the same HubSpot record (one contact per thread,
 #    not one per message). Do this BEFORE replying to avoid orphaned threads.
 maton hubspot contact update <contact-id> \
-  --properties original_thread_id=<gmail-thread-id>,last_reply_date=$(date +%Y-%m-%d)
+  --set original_thread_id=<gmail-thread-id> \
+  --set last_reply_date=$(date +%Y-%m-%d)
 ```
 
 Time budget: **15 minutes** if zero new replies, **30-45 minutes** if 5+. Bump
@@ -425,6 +426,33 @@ thread.
   receipts or skip the opener.
 
 ---
+
+## 4b. HubSpot custom contact properties — pre-create before first reply
+
+The lead scoring rubric, daily-checklist item 7, and CRM hygiene commands all
+read contact properties that **don't exist by default**. Pre-create them in
+HubSpot (Settings → Properties → Contact properties) before your first
+inbound reply lands, or you'll hit "Property does not exist" errors and
+lose the lead.
+
+Free tier allows 10 custom contact properties. Eight needed here:
+
+| Property name | Type | Purpose | Default |
+|---|---|---|---|
+| `lead_source` | Single-line text | Where the lead came from (LinkedIn / Upwork / Cold email / Referral) | empty |
+| `lead_score` | Number (1-5) | From the rubric above — drives WARM/HOT sequencing | 0 |
+| `original_thread_id` | Single-line text | Gmail thread ID; ties multi-message threads to one contact | empty |
+| `last_reply_date` | Date picker | When Cameron last replied (drives slow-drip nurture math) | empty |
+| `next_action` | Single-line text | "send PDF" / "schedule call" / "nurture" / "drop" | empty |
+| `re_engage_date` | Date picker | For "not now" replies — when to nudge again | empty |
+| `project_type` | Dropdown | new_build / speed_opt / figma_to_wp / shopify / bug_fix | empty |
+| `lead_notes` | Multi-line text | Free-form observations from the audit + any replies | empty |
+
+That leaves 2 free-tier slots in reserve for follow-up properties
+(e.g. `proposal_sent_date`, `won_value`).
+
+**Action item for Cameron:** pre-create these in HubSpot BEFORE first reply.
+
 
 ## Appendix A — Quick-reference command cheatsheet
 
