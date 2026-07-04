@@ -1,3 +1,16 @@
+# LinkedIn solo-launch post — v1 (SUPERSEDED by v2-a and v2-b)
+
+> **This is the v1 draft. v2-a and v2-b (committed alongside) are the
+> launch-ready variants. This file is kept for traceability only — do
+> not publish from this file.**
+
+> The "205 teachers signed up in the first 30 days" claim was retained
+> from the v1 draft but flagged as forward-looking by PM risk R5.
+> v2-a and v2-b reframe it as present-tense:
+> "Solo teachers are signing up — the early feedback loop is working."
+
+---
+
 Three things I shipped this week for EduSupervise.
 
 A teacher in Toronto sent me feedback last week. She runs her supervision schedule from a five-day rotation PDF she pulled from her school board's website. "I would have a little blurb saying that teachers can use this to start their own duty schedule calendar," she said.
