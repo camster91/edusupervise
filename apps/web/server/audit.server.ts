@@ -7,6 +7,8 @@
 
 import { randomUUID } from 'node:crypto';
 import { auditLog, getSystemClient, type Db } from '@edusupervise/db';
+import { clientIp as readClientIp } from './client-ip.server';
+import { logger } from './logger.server';
 
 export interface AuditEntry {
   schoolId: string;
@@ -45,7 +47,7 @@ export async function recordAudit(entry: AuditEntry): Promise<void> {
       userAgent: entry.userAgent ?? null,
     });
   } catch (err) {
-    console.warn(
+    logger.warn(
       { err, action: entry.action, schoolId: entry.schoolId },
       'audit: failed to write audit row (non-fatal)',
     );
@@ -58,8 +60,12 @@ export function requestMetadata(request: Request): {
   ipAddress: string | null;
   userAgent: string | null;
 } {
-  const ipAddress =
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null;
+  // SECURITY (audit S-S2): read client IP via the safe helper that
+  // only honours XFF when TRUST_PROXY=1. Otherwise an unauthenticated
+  // caller can spoof XFF to evade per-IP rate-limits and pollute the
+  // audit_log.ipAddress column.
+  const ip = readClientIp(request);
+  const ipAddress = ip === 'unknown' ? null : ip;
   const userAgent = request.headers.get('user-agent') ?? null;
   return { ipAddress, userAgent };
 }
@@ -68,8 +74,8 @@ export async function recordAuditFromRequest(
   request: Request,
   entry: Omit<AuditEntry, 'ipAddress' | 'userAgent'>,
 ): Promise<void> {
-  const { ipAddress, userAgent } = requestMetadata(request);
-  return recordAudit({ ...entry, ipAddress, userAgent });
+  const meta = requestMetadata(request);
+  return recordAudit({ ...entry, ...meta });
 }
 
 export const AUDIT = {

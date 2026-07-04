@@ -35,6 +35,7 @@ import {
   validateCsrfWithFormToken,
 } from '../../server/csrf.server';
 import { checkLoginByIp } from '../../server/rate-limit.server';
+import { clientIp as readClientIp } from '../../server/client-ip.server';
 
 export function meta() {
   return [{ title: 'Sign in — EduSupervise' }];
@@ -71,7 +72,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   // Rate-limit by client IP. We honour X-Forwarded-For so the limit
   // keys off the real client behind a reverse proxy.
-  const ip = readClientIp(request);
+  const ip = readClientIp(request);  // safe: only honours XFF when TRUST_PROXY=1
   const rate = checkLoginByIp(ip);
   if (!rate.ok) {
     return Response.json(
@@ -166,10 +167,3 @@ export default function LoginPage() {
   );
 }
 
-function readClientIp(request: Request): string {
-  const xff = request.headers.get('x-forwarded-for');
-  if (xff) return xff.split(',')[0]!.trim();
-  const realIp = request.headers.get('x-real-ip');
-  if (realIp) return realIp;
-  return 'unknown';
-}

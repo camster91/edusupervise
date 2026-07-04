@@ -67,6 +67,14 @@ services:
       SMS_PROVIDER: ${SMS_PROVIDER:-mock}
       BILLING_PROVIDER: ${BILLING_PROVIDER:-mock}
       APP_URL: ${APP_URL:-https://edusupervise.ashbi.ca}
+      # SECURITY (audit S-S2): Traefik is the sole ingress for this app
+      # and sets X-Forwarded-For on every forwarded request. Trusting
+      # XFF on a direct connection would let attackers spoof their IP
+      # to evade the per-IP login throttle (apps/web/server/rate-limit.server.ts).
+      # When TRUST_PROXY=1, apps/web/server/client-ip.server.ts reads
+      # the leftmost XFF entry (= original client). Default off; flip
+      # to 1 here because Traefik is the documented ingress.
+      TRUST_PROXY: "1"
     depends_on:
       postgres:
         condition: service_healthy

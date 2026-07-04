@@ -9,6 +9,7 @@
 import { redirect } from 'react-router';
 import type { Route } from './+types/api.signup.demo';
 import { validateCsrfWithFormToken } from '../../server/csrf.server';
+import { clientIp as readClientIp } from '../../server/client-ip.server';
 import {
   signupDemo,
   type DemoSignupInput,
@@ -26,11 +27,7 @@ export async function loader() {
   return redirect('/signup');
 }
 
-function clientIp(request: Request): string | null {
-  return (
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null
-  );
-}
+
 
 function clientUa(request: Request): string | null {
   return request.headers.get('user-agent') ?? null;
@@ -57,7 +54,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   const result = await signupDemo(
     { mode: 'demo', name, email, password } satisfies DemoSignupInput,
-    { ipAddress: clientIp(request), userAgent: clientUa(request) },
+    { ipAddress: readClientIp(request), userAgent: clientUa(request) },
   );
 
   if (!result.ok || !result.userId) {

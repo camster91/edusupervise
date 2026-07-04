@@ -19,6 +19,7 @@ import {
 import { getSession } from '../../server/auth.server';
 import { withSchoolId } from '../../server/db.server';
 import { validateCsrfWithFormToken } from '../../server/csrf.server';
+import { clientIp as readClientIp } from '../../server/client-ip.server';
 import { logger } from '../../server/logger.server';
 import { recordAudit } from '../../server/audit.server';
 
@@ -28,11 +29,7 @@ export async function loader() {
   return redirect('/onboarding/solo');
 }
 
-function clientIp(request: Request): string | null {
-  return (
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null
-  );
-}
+
 
 function clientUa(request: Request): string | null {
   return request.headers.get('user-agent') ?? null;
@@ -195,7 +192,7 @@ export async function action({ request }: Route.ActionArgs) {
         endTime,
         role: soloRole,
       },
-      ipAddress: clientIp(request),
+      ipAddress: readClientIp(request),
       userAgent: clientUa(request),
     });
 

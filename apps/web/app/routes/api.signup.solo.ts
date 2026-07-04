@@ -9,6 +9,7 @@
 import { redirect } from 'react-router';
 import type { Route } from './+types/api.signup.solo';
 import { validateCsrfWithFormToken } from '../../server/csrf.server';
+import { clientIp as readClientIp } from '../../server/client-ip.server';
 import {
   signupSolo,
   parseSoloRole,
@@ -25,11 +26,7 @@ export async function loader() {
   return redirect('/signup');
 }
 
-function clientIp(request: Request): string | null {
-  return (
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ?? null
-  );
-}
+
 
 function clientUa(request: Request): string | null {
   return request.headers.get('user-agent') ?? null;
@@ -60,7 +57,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   const result = await signupSolo(
     { mode: 'solo', name, email, password, schoolName, role: role ?? undefined } satisfies SoloSignupInput,
-    { ipAddress: clientIp(request), userAgent: clientUa(request) },
+    { ipAddress: readClientIp(request), userAgent: clientUa(request) },
   );
 
   if (!result.ok || !result.userId) {
