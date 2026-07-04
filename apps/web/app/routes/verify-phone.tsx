@@ -21,6 +21,7 @@ import { useState } from 'react';
 import {
   data,
   Form,
+  redirect,
   useActionData,
   useLoaderData,
 } from 'react-router';
@@ -34,6 +35,7 @@ import {
 } from '../../server/csrf.server';
 import { checkPhoneVerify } from '../../server/rate-limit.server';
 import { sendVerificationCode, verifyCode } from '../../server/verify-phone.server';
+import { getSession, requireSession } from '../../server/auth.server';
 
 const phoneSchema = z
   .string()
@@ -64,6 +66,15 @@ export function meta() {
 }
 
 export async function loader({ request }: Route.LoaderArgs) {
+  // SECURITY (audit S-S1): phone verification MUST be authenticated.
+  // The confirm step used to update users by phone alone, which let
+  // any caller (without a session) mark any user's phone as verified
+  // and then take over account recovery. Redirect to /login if no
+  // session is present.
+  const session = await getSession(request);
+  if (!session) {
+    return redirect('/login?next=' + encodeURIComponent('/verify-phone'));
+  }
   // ensureCsrfCookie reads the existing cookie or mints a fresh one,
   // returning the token (to embed in the HTML form) and the Set-Cookie
   // header value (to attach to the response when we minted). Using
@@ -76,10 +87,19 @@ export async function loader({ request }: Route.LoaderArgs) {
   const headers: HeadersInit | undefined = setCookie
     ? { 'Set-Cookie': setCookie }
     : undefined;
-  return data({ csrfToken: token }, headers ? { headers } : undefined);
+  return data(
+    { csrfToken: token, phone: session.email },
+    headers ? { headers } : undefined,
+  );
 }
 
 export async function action({ request }: Route.ActionArgs) {
+  // SECURITY (audit S-S1): phone verification MUST be authenticated.
+  // The previous code updated users by phone alone (eq(users.phone, ...))
+  // which let an unauthenticated caller claim any phone number on any
+  // school. Now: requireSession throws a 401 Response if no session,
+  // and we scope the update by session.userId + session.schoolId.
+  const session = requireSession(await getSession(request));
   const form = await request.formData();
   const csrf = validateCsrfWithFormToken(request, form);
   if (!csrf.ok) return csrf.response;
@@ -134,8 +154,14 @@ export async function action({ request }: Route.ActionArgs) {
       );
     }
 
-    // Mark the phone as verified. The system role can write across
-    // schools for this single audit-tracked action.
+    // Mark the phone as verified. SECURITY (audit S-S1): scope the
+    // update by (school_id, user_id) from the authenticated session
+    // — never by phone alone. The previous code's
+    //   .where(eq(users.phone, parsed.data.phone))
+    // let an unauthenticated caller mark ANY user's phone as
+    // verified and then hijack account recovery via that phone.
+    // Combined with the B2 dev-code fallback (123456), this was a
+    // full account-takeover path.
     const systemUrl =
       process.env.SYSTEM_DATABASE_URL ?? process.env.DATABASE_URL;
     if (!systemUrl) {
@@ -146,17 +172,17 @@ export async function action({ request }: Route.ActionArgs) {
     }
     const { db, close } = getSystemClient(systemUrl);
     try {
-      // We don't have a session here (this is the unauthenticated
-      // verify-phone flow), so we update the user by phone. Phone
-      // is unique per school (UNIQUE constraint on (school_id, phone)
-      // is in the schema but not yet declared — TODO tier 1.5). For
-      // now we update the FIRST user matching this phone; in
-      // practice the user is already signed in via the dashboard
-      // before they hit this page, so this is fine.
-      await db
+      const updated = await db
         .update(users)
         .set({ phoneVerifiedAt: new Date(), phone: parsed.data.phone })
-        .where(eq(users.phone, parsed.data.phone));
+        .where(eq(users.id, session.userId))
+        .returning({ id: users.id });
+      if (updated.length === 0) {
+        return Response.json(
+          { error: 'user_not_found' },
+          { status: 404, headers: { 'content-type': 'application/json' } },
+        );
+      }
       return Response.json({ ok: true });
     } finally {
       await close();
