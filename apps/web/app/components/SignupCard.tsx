@@ -120,7 +120,7 @@ export function SignupCard(props: SignupCardProps): React.ReactElement {
               autoComplete="email"
               required
             />
-            <PasswordField />
+            <PasswordField error={inlineError?.field === 'password' ? inlineError.message : undefined} />
 
             {props.id === 'solo' && (
               <fieldset>
@@ -149,8 +149,7 @@ export function SignupCard(props: SignupCardProps): React.ReactElement {
                       key={r.id}
                       className={
                         'flex items-start gap-sm p-sm rounded-md border cursor-pointer transition-colors duration-fast ' +
-                        ((props.hiddenFields?.defaultSoloRole ?? '') === r.id ||
-                         (r.id === 'teacher' && !props.hiddenFields?.defaultSoloRole)
+                        (r.id === 'teacher'
                           ? 'border-accent bg-accent-soft'
                           : 'border-border hover:bg-surface-2')
                       }
@@ -159,9 +158,7 @@ export function SignupCard(props: SignupCardProps): React.ReactElement {
                         type="radio"
                         name="role"
                         value={r.id}
-                        defaultChecked={
-                          (props.hiddenFields?.defaultSoloRole ?? 'teacher') === r.id
-                        }
+                        defaultChecked={r.id === 'teacher'}
                         className="sr-only"
                       />
                       <div className="flex-1 min-w-0">
@@ -176,12 +173,12 @@ export function SignupCard(props: SignupCardProps): React.ReactElement {
                         aria-hidden
                         className={
                           'w-4 h-4 rounded-full border-2 grid place-items-center shrink-0 mt-xs ' +
-                          ((props.hiddenFields?.defaultSoloRole ?? 'teacher') === r.id
+                          (r.id === 'teacher'
                             ? 'border-accent'
                             : 'border-border-strong')
                         }
                       >
-                        {(props.hiddenFields?.defaultSoloRole ?? 'teacher') === r.id && (
+                        {r.id === 'teacher' && (
                           <span className="w-2 h-2 rounded-full bg-accent" />
                         )}
                       </div>
@@ -226,7 +223,9 @@ function Field(props: {
   maxLength?: number;
   placeholder?: string;
   uppercase?: boolean;
+  error?: string;
 }): React.ReactElement {
+  const errorId = props.error ? `${props.name}-error` : undefined;
   return (
     <label className="block">
       <span className="text-subhead text-secondary font-semibold mb-xs block">
@@ -240,17 +239,25 @@ function Field(props: {
         minLength={props.minLength}
         maxLength={props.maxLength}
         placeholder={props.placeholder}
+        aria-invalid={props.error ? true : undefined}
+        aria-describedby={errorId}
         className={
-          'w-full h-input px-md bg-surface border border-border rounded-md text-body text-primary ' +
-          'focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition-colors duration-fast ' +
+          'w-full h-input px-md bg-surface border rounded-md text-body text-primary ' +
+          'focus:outline-none focus:ring-2 focus:ring-accent transition-colors duration-fast ' +
+          (props.error ? 'border-error' : 'border-border focus:border-accent ') +
           (props.uppercase ? 'uppercase tracking-wide font-mono' : '')
         }
       />
+      {props.error && (
+        <p id={errorId} role="alert" className="mt-xs text-callout text-error">
+          {props.error}
+        </p>
+      )}
     </label>
   );
 }
 
-function PasswordField(): React.ReactElement {
+function PasswordField({ error }: { error?: string }): React.ReactElement {
   const [show, setShow] = useState(false);
   return (
     <label className="block">
@@ -268,16 +275,55 @@ function PasswordField(): React.ReactElement {
           required
           minLength={8}
           maxLength={128}
-          className="w-full h-input px-md pr-20 bg-surface border border-border rounded-md text-body text-primary focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition-colors duration-fast"
+          aria-invalid={error ? true : undefined}
+          aria-describedby={error ? 'password-error' : undefined}
+          className={
+            'w-full h-input px-md pr-20 bg-surface border rounded-md text-body text-primary focus:outline-none focus:ring-2 focus:ring-accent transition-colors duration-fast ' +
+            (error ? 'border-error' : 'border-border focus:border-accent')
+          }
         />
         <button
           type="button"
           onClick={() => setShow((s) => !s)}
+          aria-label={show ? 'Hide password' : 'Show password'}
           className="absolute right-2 top-1/2 -translate-y-1/2 text-callout text-secondary hover:text-primary px-sm py-xs rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           {show ? 'Hide' : 'Show'}
         </button>
       </div>
+      {error && (
+        <p id="password-error" role="alert" className="mt-xs text-callout text-error">
+          {error}
+        </p>
+      )}
     </label>
   );
+}
+
+
+/**
+ * Heuristic keyword match for server error strings. The signup API
+ * returns `{ error: 'human string' }` with no structured code, so
+ * we sniff the message for the field it most likely refers to. If
+ * nothing matches, returns null and the caller falls back to the
+ * bottom-of-form summary.
+ *
+ * Keep the keywords tight — false positives (highlighting the wrong
+ * field) are worse than false negatives (fall back to summary).
+ */
+function fieldForError(message: string): { field: string; message: string } | null {
+  const lower = message.toLowerCase();
+  if (lower.includes('email') && (lower.includes('already') || lower.includes('exists') || lower.includes('invalid'))) {
+    return { field: 'email', message };
+  }
+  if (lower.includes('password') && (lower.includes('short') || lower.includes('chars') || lower.includes('weak') || lower.includes('invalid'))) {
+    return { field: 'password', message };
+  }
+  if (lower.includes('name') && (lower.includes('required') || lower.includes('enter') || lower.includes('invalid'))) {
+    return { field: 'name', message };
+  }
+  if (lower.includes('school') && (lower.includes('not found') || lower.includes('invalid') || lower.includes('join code') || lower.includes('code'))) {
+    return { field: 'schoolCode', message };
+  }
+  return null;
 }
