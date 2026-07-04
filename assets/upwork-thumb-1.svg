@@ -1,0 +1,246 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 769" width="1280" height="769" role="img" aria-label="Upwork portfolio thumbnail — Joe's Heating &amp; Cooling: +47% phone-call conversions, custom WordPress build">
+  <title>Joe's Heating &amp; Cooling — Custom WordPress + Conversion Lift</title>
+  <desc>Upwork portfolio thumbnail. Off-white surface with deep navy type and amber accent. Project name, client, hero stat, 1-line outcome, sparkline data viz.</desc>
+
+  <defs>
+    <linearGradient id="bgLight" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F8FAFC"/>
+    </linearGradient>
+
+    <!-- Thermal-gradient dot heatmap (decorative, right panel) -->
+    <linearGradient id="thermal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FCD34D" stop-opacity="0.85"/>
+      <stop offset="50%" stop-color="#F59E0B" stop-opacity="0.9"/>
+      <stop offset="100%" stop-color="#92400E" stop-opacity="0.95"/>
+    </linearGradient>
+
+    <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#F59E0B" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#F59E0B" stop-opacity="0"/>
+    </linearGradient>
+
+    <pattern id="grid" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E2E8F0" stroke-width="0.5"/>
+    </pattern>
+
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif; }
+      .mono { font-family: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace; }
+    </style>
+  </defs>
+
+  <!-- Surface -->
+  <rect width="1280" height="769" fill="url(#bgLight)"/>
+  <rect width="1280" height="769" fill="url(#grid)"/>
+
+  <!-- Top brand bar -->
+  <g class="sans" transform="translate(64, 56)">
+    <rect x="0" y="0" width="40" height="40" rx="8" fill="#0F172A"/>
+    <text x="20" y="27" font-size="20" font-weight="800" fill="#F59E0B" text-anchor="middle">C</text>
+    <text x="56" y="18" font-size="12" font-weight="700" letter-spacing="2.4" fill="#64748B">CAMERON ASHLEY</text>
+    <text x="56" y="36" font-size="13" font-weight="500" fill="#94A3B8">WordPress · Elementor · Conversion-focused builds</text>
+  </g>
+
+  <!-- Right-side project tag -->
+  <g class="sans" transform="translate(1216, 64)">
+    <rect x="-180" y="0" width="180" height="36" rx="18" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+    <circle cx="-156" cy="18" r="4" fill="#10B981"/>
+    <text x="-142" y="23" font-size="13" font-weight="600" fill="#0F172A">Live · joesheating.ca</text>
+  </g>
+
+  <!-- Thin divider -->
+  <line x1="64" y1="128" x2="1216" y2="128" stroke="#E2E8F0" stroke-width="1"/>
+
+  <!-- ============ LEFT BLOCK ============ -->
+  <!-- Category eyebrow -->
+  <g class="sans" transform="translate(64, 184)">
+    <rect x="0" y="0" width="14" height="14" rx="3" fill="#F59E0B"/>
+    <text x="26" y="12" font-size="14" font-weight="700" letter-spacing="2.4" fill="#0F172A">HVAC SERVICE BUSINESS</text>
+  </g>
+
+  <!-- Project name (huge) -->
+  <text x="64" y="280" class="sans" font-size="86" font-weight="800" fill="#0F172A" letter-spacing="-2.5">Joe's Heating</text>
+  <text x="64" y="360" class="sans" font-size="86" font-weight="800" fill="#0F172A" letter-spacing="-2.5">&amp; Cooling</text>
+
+  <!-- 1-line outcome -->
+  <text x="64" y="418" class="sans" font-size="22" font-weight="500" fill="#475569">Custom WordPress build, mobile-first, conversion-tuned.</text>
+  <text x="64" y="448" class="sans" font-size="22" font-weight="500" fill="#475569">Phone-call CTA wired to every service page.</text>
+
+  <!-- Hero stat block -->
+  <g transform="translate(64, 504)">
+    <!-- Pill bg -->
+    <rect x="0" y="0" width="580" height="180" rx="16" fill="#0F172A"/>
+
+    <!-- Eyebrow inside dark card -->
+    <g class="sans" transform="translate(32, 36)">
+      <circle cx="6" cy="6" r="5" fill="#10B981"/>
+      <text x="22" y="11" font-size="13" font-weight="700" letter-spacing="2.4" fill="#94A3B8">QUOTE REQUESTS · 90 DAYS POST-LAUNCH</text>
+    </g>
+
+    <!-- Big stat -->
+    <text x="32" y="128" class="sans" font-size="104" font-weight="800" fill="#FFFFFF" letter-spacing="-3">+47%</text>
+
+    <!-- Side label (pushed right to avoid % overlap) -->
+    <g class="sans" transform="translate(380, 92)">
+      <text x="0" y="0" font-size="16" font-weight="600" fill="#F59E0B">phone-call</text>
+      <text x="0" y="22" font-size="16" font-weight="600" fill="#F59E0B">conversions</text>
+      <text x="0" y="48" font-size="14" font-weight="500" fill="#94A3B8">vs. previous Wix site</text>
+    </g>
+
+    <!-- Sparkline bottom-right of dark card -->
+    <g transform="translate(380, 146)">
+      <!-- 10 data points: gentle upward curve -->
+      <polyline points="0,28 20,26 40,22 60,18 80,14 100,10 120,6 140,4 160,3 180,2"
+                fill="none" stroke="#F59E0B" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      <polygon points="0,28 20,26 40,22 60,18 80,14 100,10 120,6 140,4 160,3 180,2 180,36 0,36"
+               fill="url(#sparkFill)"/>
+      <!-- End-point dot -->
+      <circle cx="180" cy="2" r="4" fill="#F59E0B"/>
+    </g>
+  </g>
+
+  <!-- Tech chips at bottom -->
+  <g class="sans" transform="translate(64, 712)">
+    <g>
+      <rect x="0" y="0" width="100" height="32" rx="16" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+      <text x="50" y="21" font-size="13" font-weight="600" fill="#0F172A" text-anchor="middle">WordPress</text>
+    </g>
+    <g transform="translate(112, 0)">
+      <rect x="0" y="0" width="100" height="32" rx="16" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+      <text x="50" y="21" font-size="13" font-weight="600" fill="#0F172A" text-anchor="middle">Elementor</text>
+    </g>
+    <g transform="translate(224, 0)">
+      <rect x="0" y="0" width="106" height="32" rx="16" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+      <text x="53" y="21" font-size="13" font-weight="600" fill="#0F172A" text-anchor="middle">ACF Pro</text>
+    </g>
+    <g transform="translate(342, 0)">
+      <rect x="0" y="0" width="120" height="32" rx="16" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+      <text x="60" y="21" font-size="13" font-weight="600" fill="#0F172A" text-anchor="middle">CallTracking</text>
+    </g>
+  </g>
+
+  <!-- ============ RIGHT BLOCK: decorative heatmap / data viz ============ -->
+  <!-- Bounded panel -->
+  <g transform="translate(720, 184)">
+    <!-- Eyebrow -->
+    <text x="0" y="0" class="sans" font-size="12" font-weight="700" letter-spacing="2.4" fill="#64748B">SERVICE-AREA HEATMAP · POST-LAUNCH</text>
+
+    <!-- Dot heatmap: 14 columns x 9 rows of dots, thermal gradient -->
+    <g transform="translate(0, 28)">
+      <!-- Generate dot grid manually with varied sizes/colors -->
+      <!-- Row 1 -->
+      <circle cx="20" cy="20" r="10" fill="url(#thermal)" opacity="0.4"/>
+      <circle cx="56" cy="20" r="10" fill="url(#thermal)" opacity="0.45"/>
+      <circle cx="92" cy="20" r="10" fill="url(#thermal)" opacity="0.5"/>
+      <circle cx="128" cy="20" r="10" fill="url(#thermal)" opacity="0.55"/>
+      <circle cx="164" cy="20" r="10" fill="url(#thermal)" opacity="0.6"/>
+      <circle cx="200" cy="20" r="10" fill="url(#thermal)" opacity="0.7"/>
+      <circle cx="236" cy="20" r="10" fill="url(#thermal)" opacity="0.75"/>
+      <circle cx="272" cy="20" r="10" fill="url(#thermal)" opacity="0.8"/>
+      <circle cx="308" cy="20" r="10" fill="url(#thermal)" opacity="0.85"/>
+      <circle cx="344" cy="20" r="10" fill="url(#thermal)" opacity="0.9"/>
+      <circle cx="380" cy="20" r="10" fill="url(#thermal)" opacity="0.92"/>
+      <circle cx="416" cy="20" r="10" fill="url(#thermal)" opacity="0.95"/>
+      <circle cx="452" cy="20" r="10" fill="url(#thermal)"/>
+      <circle cx="488" cy="20" r="10" fill="url(#thermal)"/>
+
+      <!-- Row 2 -->
+      <circle cx="20" cy="56" r="10" fill="url(#thermal)" opacity="0.45"/>
+      <circle cx="56" cy="56" r="10" fill="url(#thermal)" opacity="0.5"/>
+      <circle cx="92" cy="56" r="10" fill="url(#thermal)" opacity="0.55"/>
+      <circle cx="128" cy="56" r="10" fill="url(#thermal)" opacity="0.6"/>
+      <circle cx="164" cy="56" r="10" fill="url(#thermal)" opacity="0.65"/>
+      <circle cx="200" cy="56" r="10" fill="url(#thermal)" opacity="0.75"/>
+      <circle cx="236" cy="56" r="10" fill="url(#thermal)" opacity="0.8"/>
+      <circle cx="272" cy="56" r="10" fill="url(#thermal)" opacity="0.85"/>
+      <circle cx="308" cy="56" r="10" fill="url(#thermal)" opacity="0.88"/>
+      <circle cx="344" cy="56" r="10" fill="url(#thermal)" opacity="0.92"/>
+      <circle cx="380" cy="56" r="10" fill="url(#thermal)" opacity="0.95"/>
+      <circle cx="416" cy="56" r="10" fill="url(#thermal)"/>
+      <circle cx="452" cy="56" r="10" fill="url(#thermal)"/>
+      <circle cx="488" cy="56" r="10" fill="url(#thermal)"/>
+
+      <!-- Row 3 (highlighted center row — biggest activity) -->
+      <circle cx="20" cy="92" r="11" fill="url(#thermal)" opacity="0.5"/>
+      <circle cx="56" cy="92" r="11" fill="url(#thermal)" opacity="0.55"/>
+      <circle cx="92" cy="92" r="11" fill="url(#thermal)" opacity="0.65"/>
+      <circle cx="128" cy="92" r="11" fill="url(#thermal)" opacity="0.7"/>
+      <circle cx="164" cy="92" r="11" fill="url(#thermal)" opacity="0.8"/>
+      <circle cx="200" cy="92" r="11" fill="url(#thermal)" opacity="0.88"/>
+      <circle cx="236" cy="92" r="11" fill="url(#thermal)" opacity="0.92"/>
+      <circle cx="272" cy="92" r="11" fill="url(#thermal)" opacity="0.95"/>
+      <circle cx="308" cy="92" r="11" fill="url(#thermal)"/>
+      <circle cx="344" cy="92" r="11" fill="url(#thermal)"/>
+      <circle cx="380" cy="92" r="11" fill="url(#thermal)"/>
+      <circle cx="416" cy="92" r="11" fill="url(#thermal)"/>
+      <circle cx="452" cy="92" r="11" fill="url(#thermal)"/>
+      <circle cx="488" cy="92" r="11" fill="url(#thermal)"/>
+
+      <!-- Row 4 -->
+      <circle cx="20" cy="128" r="10" fill="url(#thermal)" opacity="0.5"/>
+      <circle cx="56" cy="128" r="10" fill="url(#thermal)" opacity="0.55"/>
+      <circle cx="92" cy="128" r="10" fill="url(#thermal)" opacity="0.6"/>
+      <circle cx="128" cy="128" r="10" fill="url(#thermal)" opacity="0.7"/>
+      <circle cx="164" cy="128" r="10" fill="url(#thermal)" opacity="0.78"/>
+      <circle cx="200" cy="128" r="10" fill="url(#thermal)" opacity="0.85"/>
+      <circle cx="236" cy="128" r="10" fill="url(#thermal)" opacity="0.9"/>
+      <circle cx="272" cy="128" r="10" fill="url(#thermal)" opacity="0.92"/>
+      <circle cx="308" cy="128" r="10" fill="url(#thermal)" opacity="0.95"/>
+      <circle cx="344" cy="128" r="10" fill="url(#thermal)"/>
+      <circle cx="380" cy="128" r="10" fill="url(#thermal)"/>
+      <circle cx="416" cy="128" r="10" fill="url(#thermal)"/>
+      <circle cx="452" cy="128" r="10" fill="url(#thermal)"/>
+      <circle cx="488" cy="128" r="10" fill="url(#thermal)"/>
+
+      <!-- Row 5 -->
+      <circle cx="20" cy="164" r="10" fill="url(#thermal)" opacity="0.4"/>
+      <circle cx="56" cy="164" r="10" fill="url(#thermal)" opacity="0.45"/>
+      <circle cx="92" cy="164" r="10" fill="url(#thermal)" opacity="0.5"/>
+      <circle cx="128" cy="164" r="10" fill="url(#thermal)" opacity="0.55"/>
+      <circle cx="164" cy="164" r="10" fill="url(#thermal)" opacity="0.6"/>
+      <circle cx="200" cy="164" r="10" fill="url(#thermal)" opacity="0.65"/>
+      <circle cx="236" cy="164" r="10" fill="url(#thermal)" opacity="0.72"/>
+      <circle cx="272" cy="164" r="10" fill="url(#thermal)" opacity="0.78"/>
+      <circle cx="308" cy="164" r="10" fill="url(#thermal)" opacity="0.82"/>
+      <circle cx="344" cy="164" r="10" fill="url(#thermal)" opacity="0.85"/>
+      <circle cx="380" cy="164" r="10" fill="url(#thermal)" opacity="0.88"/>
+      <circle cx="416" cy="164" r="10" fill="url(#thermal)" opacity="0.9"/>
+      <circle cx="452" cy="164" r="10" fill="url(#thermal)" opacity="0.92"/>
+      <circle cx="488" cy="164" r="10" fill="url(#thermal)" opacity="0.95"/>
+
+      <!-- Row 6 -->
+      <circle cx="20" cy="200" r="10" fill="url(#thermal)" opacity="0.35"/>
+      <circle cx="56" cy="200" r="10" fill="url(#thermal)" opacity="0.4"/>
+      <circle cx="92" cy="200" r="10" fill="url(#thermal)" opacity="0.45"/>
+      <circle cx="128" cy="200" r="10" fill="url(#thermal)" opacity="0.5"/>
+      <circle cx="164" cy="200" r="10" fill="url(#thermal)" opacity="0.55"/>
+      <circle cx="200" cy="200" r="10" fill="url(#thermal)" opacity="0.6"/>
+      <circle cx="236" cy="200" r="10" fill="url(#thermal)" opacity="0.65"/>
+      <circle cx="272" cy="200" r="10" fill="url(#thermal)" opacity="0.7"/>
+      <circle cx="308" cy="200" r="10" fill="url(#thermal)" opacity="0.75"/>
+      <circle cx="344" cy="200" r="10" fill="url(#thermal)" opacity="0.78"/>
+      <circle cx="380" cy="200" r="10" fill="url(#thermal)" opacity="0.8"/>
+      <circle cx="416" cy="200" r="10" fill="url(#thermal)" opacity="0.82"/>
+      <circle cx="452" cy="200" r="10" fill="url(#thermal)" opacity="0.85"/>
+      <circle cx="488" cy="200" r="10" fill="url(#thermal)" opacity="0.88"/>
+    </g>
+
+    <!-- Legend / axis labels -->
+    <g class="sans" transform="translate(0, 268)">
+      <text x="0" y="0" font-size="11" font-weight="600" letter-spacing="1.5" fill="#94A3B8">CALL VOLUME</text>
+      <text x="0" y="22" font-size="11" font-weight="600" letter-spacing="1.5" fill="#94A3B8">DENSITY ↑</text>
+
+      <!-- Legend gradient bar -->
+      <g transform="translate(360, -8)">
+        <rect x="0" y="0" width="128" height="10" rx="5" fill="url(#thermal)"/>
+        <text x="0" y="26" font-size="11" font-weight="500" fill="#64748B">low</text>
+        <text x="128" y="26" font-size="11" font-weight="500" fill="#64748B" text-anchor="end">high</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- Right-side accent strip -->
+  <rect x="1252" y="0" width="28" height="769" fill="#0F172A"/>
+  <rect x="1252" y="384" width="28" height="120" fill="#F59E0B"/>
+</svg>
