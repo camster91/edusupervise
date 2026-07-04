@@ -121,6 +121,29 @@ export const notificationKindEnum = pgEnum('notification_kind', [
 ]);
 export type NotificationKind = (typeof notificationKindEnum.enumValues)[number];
 
+/**
+ * Coverage role for a duty assignment row (Migration 0009, Phase 3 §3.1).
+ *
+ * - 'primary':   the teacher who normally covers this duty slot.
+ * - 'backup':    called up if the primary is absent (absence flow).
+ * - 'rotation':  the third teacher in a group-duty slot (Jason's
+ *                "Cyriac, Loganathan, Sheikh" — three teachers on one
+ *                rotation, all primary in the absence sense, but
+ *                'rotation' lets the admin distinguish who is who on
+ *                the page).
+ *
+ * Stored as TEXT + CHECK (NOT a Postgres enum) to match the project
+ * convention from migration 0007. The TypeScript literal union here is
+ * the single source of truth for app code; db/init +
+ * db/migrations/0009_group_duties.sql holds the matching DB CHECK.
+ */
+export const coverageRoleEnum = pgEnum('coverage_role', [
+  'primary',
+  'backup',
+  'rotation',
+]);
+export type CoverageRole = (typeof coverageRoleEnum.enumValues)[number];
+
 // ---------------------------------------------------------------------------
 // Tenancy
 // ---------------------------------------------------------------------------
@@ -327,6 +350,18 @@ export const dutyAssignments = pgTable(
       .references(() => users.id, { onDelete: 'cascade' }),
     startDate: date('start_date').notNull(),
     endDate: date('end_date'),
+    // Phase 3 (Migration 0009): admin who initiated the assignment.
+    // Distinct from `created_by` (audit-only — system actor). Nullable
+    // because pre-existing rows have no record of who assigned them;
+    // for new admin-driven assignments we set this to session.userId.
+    assignedByUserId: uuid('assigned_by_user_id').references(() => users.id),
+    // Phase 3 (Migration 0009): primary / backup / rotation in a
+    // group-duty slot. See `coverageRoleEnum` for semantics. Defaults
+    // to 'primary' for backward compatibility — every pre-existing
+    // assignment is treated as the primary on that duty.
+    coverageRole: coverageRoleEnum('coverage_role')
+      .notNull()
+      .default('primary'),
     createdBy: uuid('created_by')
       .notNull()
       .references(() => users.id),
@@ -344,6 +379,21 @@ export const dutyAssignments = pgTable(
     ),
     index('idx_assignments_school_user').on(t.schoolId, t.userId),
     index('idx_assignments_school_duty').on(t.schoolId, t.dutyId),
+    // Partial index on the "who assigned this" column — only admins
+    // ever populate it, so the index stays small even at scale.
+    index('idx_assignments_assigned_by')
+      .on(t.schoolId, t.assignedByUserId)
+      .where(sql`${t.assignedByUserId} IS NOT NULL`),
+    // Phase 3 §3.1: prevent the same user from being tagged "primary"
+    // twice on the same duty (a data-entry bug). Three distinct users
+    // can still each have any role on the same duty — that's the
+    // intended multi-coverage model.
+    uniqueIndex('duty_assignments_duty_user_role_unique').on(
+      t.schoolId,
+      t.dutyId,
+      t.userId,
+      t.coverageRole,
+    ),
   ],
 );
 export type DutyAssignment = typeof dutyAssignments.$inferSelect;
@@ -699,6 +749,7 @@ export const schoolsRelations = relations(schools, ({ many }) => ({
   dutyAssignments: many(dutyAssignments),
   reminders: many(reminders),
   notifications: many(notifications),
+  recurringDuties: many(recurringDuties),
 }));
 
 export const usersRelations = relations(users, ({ one, many }) => ({
@@ -731,10 +782,17 @@ export const dutyAssignmentsRelations = relations(
     user: one(users, {
       fields: [dutyAssignments.userId],
       references: [users.id],
+      relationName: 'duty_assignments_user_id_users_id_fk',
     }),
     createdByUser: one(users, {
       fields: [dutyAssignments.createdBy],
       references: [users.id],
+      relationName: 'duty_assignments_created_by_users_id_fk',
+    }),
+    assignedByUser: one(users, {
+      fields: [dutyAssignments.assignedByUserId],
+      references: [users.id],
+      relationName: 'duty_assignments_assigned_by_user_id_users_id_fk',
     }),
     reminders: many(reminders),
   }),
@@ -1047,6 +1105,101 @@ export const authSessionRelations = relations(authSession, ({ one }) => ({
 }));
 
 // ---------------------------------------------------------------------------
+// Recurring duties (Phase 3 §3.2 — Migration 0010)
+//
+// Time-bound duties that fire every weekday at the same time, regardless
+// of the school's rotation cycle. Distinct from `duties` (which is
+// cycle-day-keyed) and `duty_assignments` (which is per-cycle-day).
+//
+// Example real-world case (Jason, 2026-07-04): "Early Entry 8:45-9:00
+// at Kiss N Ride (south end), Back Tarmac" — same time, same place,
+// every weekday.
+//
+// `days_of_week` is a bitmask (Mon=1, Tue=2, Wed=4, Thu=8, Fri=16,
+// Sat=32, Sun=64) so a single row can express multiple weekdays. A
+// CHECK constraint keeps it in the 1..127 range — 0 (fires nowhere)
+// is rejected as a data-entry bug.
+//
+// RLS is defined in db/migrations/0010_recurring_duties.sql: FORCE
+// ROW LEVEL SECURITY on the runtime role + the same `tenant_isolation`
+// policy as every other tenant-owned table.
+// ---------------------------------------------------------------------------
+
+export const recurringDuties = pgTable(
+  'recurring_duties',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    schoolId: uuid('school_id')
+      .notNull()
+      .references(() => schools.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    location: text('location'),
+    startTime: time('start_time').notNull(),
+    endTime: time('end_time').notNull(),
+    daysOfWeek: integer('days_of_week').notNull(),
+    assignedUserId: uuid('assigned_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    requiresVest: boolean('requires_vest').notNull().default(false),
+    requiresRadio: boolean('requires_radio').notNull().default(false),
+    isActive: boolean('is_active').notNull().default(true),
+    createdBy: uuid('created_by').references(() => users.id),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    check(
+      'recurring_duties_time_order',
+      sql`${t.endTime} > ${t.startTime}`,
+    ),
+    check(
+      'recurring_duties_dow_range',
+      sql`${t.daysOfWeek} BETWEEN 1 AND 127`,
+    ),
+    check(
+      'recurring_duties_name_length',
+      sql`length(${t.name}) BETWEEN 1 AND 200`,
+    ),
+    check(
+      'recurring_duties_location_length',
+      sql`${t.location} IS NULL OR length(${t.location}) <= 200`,
+    ),
+    // Workhorse lookup: "active recurring duties for school X"
+    // — partial index keeps it small as rows get soft-deleted.
+    index('idx_recurring_duties_school_active')
+      .on(t.schoolId, t.isActive)
+      .where(sql`${t.isActive}`),
+    // "What's recurring for user U" — for the /app/today rendering.
+    index('idx_recurring_duties_school_user_active')
+      .on(t.schoolId, t.assignedUserId)
+      .where(sql`${t.isActive} AND ${t.assignedUserId} IS NOT NULL`),
+  ],
+);
+export type RecurringDuty = typeof recurringDuties.$inferSelect;
+export type NewRecurringDuty = typeof recurringDuties.$inferInsert;
+
+export const recurringDutiesRelations = relations(recurringDuties, ({ one }) => ({
+  school: one(schools, {
+    fields: [recurringDuties.schoolId],
+    references: [schools.id],
+  }),
+  assignedUser: one(users, {
+    fields: [recurringDuties.assignedUserId],
+    references: [users.id],
+    relationName: 'recurring_duties_assigned_user_id_users_id_fk',
+  }),
+  createdByUser: one(users, {
+    fields: [recurringDuties.createdBy],
+    references: [users.id],
+    relationName: 'recurring_duties_created_by_users_id_fk',
+  }),
+}));
+
+// ---------------------------------------------------------------------------
 // Coverage Router (Phase 2B)
 //
 // The Coverage Router is the load-bearing adjacent opportunity from the
@@ -1316,4 +1469,5 @@ export const schema = {
   parentContacts,
   parentRouteTags,
   parentAlerts,
+  recurringDuties,
 };
