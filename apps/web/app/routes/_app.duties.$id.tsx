@@ -220,9 +220,7 @@ export default function DutyDetail() {
                     <span>{a.userEmail}</span>
                     <RoleBadge role={a.coverageRole} />
                     <span>
-                      {a.startDate instanceof Date
-                        ? a.startDate.toISOString().slice(0, 10)
-                        : String(a.startDate).slice(0, 10)}
+                      {String(a.startDate).slice(0, 10)}
                       {a.endDate ? ` → ${String(a.endDate).slice(0, 10)}` : ' (open-ended)'}
                     </span>
                   </div>
