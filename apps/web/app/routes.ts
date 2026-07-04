@@ -16,6 +16,8 @@ export default [
   // Onboarding (Phase 2A — Apple HIG spec)
   route('onboarding/teacher', 'routes/onboarding.teacher._index.tsx'),
   route('onboarding/admin', 'routes/onboarding.admin._index.tsx'),
+  // Phase 1 — solo teacher / EA wizard.
+  route('onboarding/solo', 'routes/onboarding.solo._index.tsx'),
 
   // Authenticated app shell
   layout('routes/_app.tsx', [
@@ -51,6 +53,8 @@ export default [
   route('api/signup/join', 'routes/api.signup.join.ts'),
   route('api/signup/solo', 'routes/api.signup.solo.ts'),
   route('api/signup/demo', 'routes/api.signup.demo.ts'),
+  // Phase 1.2 — wizard final-submit endpoint.
+  route('api/onboarding/solo', 'routes/api.onboarding.solo.ts'),
 
   // Demo reset (authenticated school_admin only)
   route('app/api/demo/reset', 'routes/app.api.demo.reset.ts'),
