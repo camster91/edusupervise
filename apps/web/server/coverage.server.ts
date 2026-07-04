@@ -722,6 +722,3 @@ export async function listCoverage(args: {
 // TS still flags it as no-unused without this hint. The `g`, `l`, `s` vars
 // below keep the unused-import linter quiet for the broadcast cohort
 // helpers that don't currently JOIN cycle_calendar by date range.
-void or;
-void Db;
-void schools;
