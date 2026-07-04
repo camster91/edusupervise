@@ -64,6 +64,14 @@ export default function SignupPage() {
   const { csrfToken } = useLoaderData<typeof loader>();
   const [params] = useSearchParams();
   const presetCode = params.get('school')?.toUpperCase().trim() ?? '';
+  // Phase 0 (2026-07-04): `?mode=solo` or `?mode=join` deep-links
+  // the homepage CTA to the matching card. Default behavior is
+  // unchanged: solo card is the first one shown when no param is
+  // present. This is the source of truth — the homepage links to
+  // /signup?mode=solo, so the user lands directly on the solo form.
+  const presetMode = params.get('mode')?.toLowerCase().trim();
+  const openSolo = presetMode === 'solo' || (!presetCode && presetMode !== 'join');
+  const openJoin = presetMode === 'join' || presetCode.length > 0;
 
   return (
     <main className="min-h-screen bg-bg px-md py-2xl">
@@ -87,7 +95,7 @@ export default function SignupPage() {
             description="Enter the join code your admin shared with you. You'll join as a teacher."
             action="/api/signup/join"
             submitLabel="Join my school"
-            defaultOpen={presetCode.length > 0}
+            defaultOpen={openJoin}
             hiddenFields={
               presetCode ? { schoolCode: presetCode } : undefined
             }
@@ -102,6 +110,7 @@ export default function SignupPage() {
             description="Create a school for just yourself. You're the admin, so you can manage duties and billing."
             action="/api/signup/solo"
             submitLabel="Create my school"
+            defaultOpen={openSolo}
             modeSpecific={
               <label className="block">
                 <span className="text-subhead text-secondary font-semibold mb-xs block">
