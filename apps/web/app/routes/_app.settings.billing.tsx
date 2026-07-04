@@ -13,7 +13,7 @@
 // Action: never — this page is read-only; mutations go to /api/billing/*
 
 import type { Route } from './+types/_app.settings.billing';
-import { Form, useLoaderData } from 'react-router';
+import { Form, useLoaderData, useRouteLoaderData, data } from 'react-router';
 import { eq } from 'drizzle-orm';
 import { schools } from '@edusupervise/db';
 
@@ -23,7 +23,7 @@ import {
   requireSession,
 } from '../../server/auth.server';
 import { getDb, withSchoolId } from '../../server/db.server';
-import { readCsrfCookie, validateCsrfWithFormToken } from '../../server/csrf.server';
+import { readCsrfCookie, ensureCsrfCookie, validateCsrfWithFormToken } from '../../server/csrf.server';
 import {
   listInvoicesForSchool,
   runDailyDowngradeFlip,
@@ -42,7 +42,7 @@ export function meta() {
 export async function loader({ request }: Route.LoaderArgs) {
   const session = requireSession(await getSession(request));
   requireRole(session, ['school_admin']);
-  const csrfToken = readCsrfCookie(request);
+  const { token: csrfToken, setCookie: csrfSetCookie } = ensureCsrfCookie(request);
 
   // Schools row lookup MUST go through the runtime role context
   // with `app.school_id` set — otherwise RLS filters it out and
@@ -67,7 +67,7 @@ export async function loader({ request }: Route.LoaderArgs) {
 
   const invoices = await listInvoicesForSchool(session.schoolId);
   const downgrade = downgradeBannerPropsFor(school);
-  return { school, invoices, downgrade, csrfToken };
+  return data({ school, invoices, downgrade, csrfToken }, csrfSetCookie ? { headers: { 'Set-Cookie': csrfSetCookie } } : undefined);
 }
 
 export default function BillingSettingsPage() {

@@ -34,7 +34,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   recordAudit({
     schoolId: session.schoolId,
-    actorUserId: session.userId,
+    userId: session.userId,
     action: 'reminder.toggled',
     targetType: 'reminder',
     targetId: reminderId,

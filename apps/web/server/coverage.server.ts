@@ -106,7 +106,7 @@ export async function findAffectedDuties(args: {
       .where(eq(cycleCalendar.date, args.absenceDate))
       .limit(1);
     if (!cycle) return [];
-    const cycleDay = cycle.cycleDay;
+    const cycleDay: number = cycle.cycleDay ?? 0;
 
     // Find all duty_assignments for this teacher on this cycle day that
     // were active on the absence date.

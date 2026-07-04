@@ -30,9 +30,8 @@ import { PassThrough } from 'node:stream';
 
 import {
   createReadableStreamFromReadable,
-  type EntryContext,
 } from '@react-router/node';
-import { ServerRouter } from 'react-router';
+import { ServerRouter, type EntryContext } from 'react-router';
 import { isbot } from 'isbot';
 import { renderToPipeableStream } from 'react-dom/server';
 import { randomUUID } from 'node:crypto';

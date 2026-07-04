@@ -139,10 +139,11 @@ export async function signupJoin(
     // Quota check
     const quota = await getTeacherQuota(db, school.plan);
     if (quota !== null) {
-      const [{ teacherCount }] = await db
+      const countRows = await db
         .select({ teacherCount: count() })
         .from(users)
         .where(and(eq(users.schoolId, school.id), eq(users.isActive, true)));
+      const teacherCount = countRows[0]?.teacherCount ?? 0;
       if (teacherCount >= quota) {
         await logAttempt(input.email, ctx, 'join', 'quota_full', school.id);
         return {
@@ -169,6 +170,9 @@ export async function signupJoin(
         })
         .returning({ id: users.id });
 
+      if (!user) {
+        return { ok: false, error: 'Signup failed' };
+      }
       await logAttempt(input.email, ctx, 'join', 'success', school.id, user.id);
       logger.info({ userId: user.id, schoolId: school.id, mode: 'join' }, 'signup: success');
       // Audit row — non-fatal if it fails (see audit.server.ts).

@@ -64,10 +64,10 @@ export async function action({ request }: Route.ActionArgs) {
   // Best-effort audit — failures here don't block the response.
   recordAudit({
     schoolId: session.schoolId,
-    actorUserId: session.userId,
+    userId: session.userId,
     action: 'reminder.created',
     targetType: 'reminder',
-    targetId: result.reminderId ?? null,
+    targetId: result.reminderId ?? undefined,
     metadata: { dutyId, minutesBefore, notifyEmail, notifySms },
   }).catch(() => {});
 

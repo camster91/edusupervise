@@ -3,7 +3,7 @@ import { useLoaderData, Link, Form, redirect } from 'react-router';
 import type { Route } from './+types/_app.duties.$id';
 import { getSession, requireSession, requireRole } from '../../server/auth.server.ts';
 import {
-  mintCsrfCookie,
+  ensureCsrfCookie,
   readCsrfCookie,
   validateCsrfWithFormToken,
 } from '../../server/csrf.server';
@@ -39,7 +39,7 @@ export async function loader({ request, params }: Route.LoaderArgs) {
     return { duty, assignments };
   });
   if (!data) throw new Response('Not found', { status: 404 });
-  const { token: csrfToken } = mintCsrfCookie(request);
+  const { token: csrfToken } = ensureCsrfCookie(request);
   return { ...data, role: session.role, csrfToken };
 }
 
@@ -60,6 +60,7 @@ export async function action({ request, params }: Route.ActionArgs) {
     if (!userId || !startDate) return Response.json({ error: 'missing_fields' }, { status: 400 });
     await withSchoolId(session.schoolId, (tx) =>
       tx.insert(dutyAssignments).values({
+        schoolId: session.schoolId,
         dutyId: params.id,
         userId,
         startDate,
@@ -86,7 +87,7 @@ export default function DutyDetail() {
           <div className="text-xs text-slate-500 uppercase tracking-wide">Day {duty.cycleDay} duty</div>
           <h2 className="text-2xl font-bold text-slate-900 mt-1">{duty.location}</h2>
           <div className="text-sm text-slate-600 mt-1">
-            {duty.startTime} – {duty.endTime} · {duty.duration ?? '—'} min
+            {duty.startTime} – {duty.endTime} · {minutesBetween(duty.startTime, duty.endTime)} min
             {duty.requiresVest ? ' · vest' : ''}{duty.requiresRadio ? ' · radio' : ''}
           </div>
         </div>
@@ -144,4 +145,15 @@ export default function DutyDetail() {
       )}
     </div>
   );
+}
+
+
+function minutesBetween(start: string, end: string): number {
+  const parts = (s: string): [number, number] => {
+    const [h, m] = s.split(':').map(Number);
+    return [h ?? 0, m ?? 0];
+  };
+  const [sh, sm] = parts(start);
+  const [eh, em] = parts(end);
+  return (eh * 60 + em) - (sh * 60 + sm);
 }

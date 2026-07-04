@@ -209,10 +209,11 @@ export async function generateAlertsForAssignment(args: {
     // coverage_assignments, parent_contacts, and parent_alerts admits
     // the reads/writes; WITH CHECK guarantees the schoolId matches.
     return withSchoolId(assignment.schoolId, async (tx) => {
+      if (!assignment.newTeacherId) return { created: 0, skipped: 0 };
       const [newTeacher] = await tx
-        .select({ name: users.name })
-        .from(users)
-        .where(eq(users.id, assignment.newTeacherId))
+      .select({ name: users.name })
+      .from(users)
+      .where(eq(users.id, assignment.newTeacherId))
         .limit(1);
       const newTeacherName = newTeacher?.name ?? 'A substitute teacher';
 
@@ -445,7 +446,7 @@ function formatTime12h(hhmm: string | null | undefined): string {
   if (!hhmm) return '—';
   const [h, m] = hhmm.split(':').map(Number);
   if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
-  const period = h >= 12 ? 'PM' : 'AM';
-  const h12 = h % 12 || 12;
+  const period = (h ?? 0) >= 12 ? 'PM' : 'AM';
+  const h12 = (h ?? 0) % 12 || 12;
   return `${h12}:${String(m).padStart(2, '0')} ${period}`;
 }

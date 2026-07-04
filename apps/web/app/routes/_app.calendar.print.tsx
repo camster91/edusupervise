@@ -16,7 +16,7 @@
 import type { Route } from './+types/_app.calendar.print';
 import { useEffect , useState } from 'react';
 import { and, eq, gte, lte, asc } from 'drizzle-orm';
-import { duties, dutyAssignments, cycleCalendar, schools, users } from '@edusupervise/db';
+import { duties, dutyAssignments, cycleCalendar, schools, users, type Duty } from "@edusupervise/db";
 import { getSession } from '../../server/auth.server';
 import { withSchoolId } from '../../server/db.server';
 import { cycleDayClasses, cycleDaySoftClasses } from '../components/ui/CycleLegend';
@@ -146,7 +146,7 @@ export default function PrintView({ loaderData }: Route.ComponentProps) {
   }
 
   // Group duties by cycle day.
-  const dutiesByDay = new Map<number, typeof duties>();
+  const dutiesByDay = new Map<number, Duty[]>();
   for (const d of duties) {
     const list = dutiesByDay.get(d.cycleDay) ?? [];
     list.push(d);
@@ -208,9 +208,6 @@ export default function PrintView({ loaderData }: Route.ComponentProps) {
                         {formatTime12h(d.startTime)}–{formatTime12h(d.endTime)}
                       </div>
                       <div className="font-medium">{d.location}</div>
-                      {d.assigneeName && (
-                        <div className="text-gray-700">→ {d.assigneeName}</div>
-                      )}
                       {(d.requiresVest || d.requiresRadio) && (
                         <div className="text-gray-600 mt-xs">
                           {d.requiresVest && <span className="mr-xs">[Vest]</span>}
@@ -259,8 +256,8 @@ function formatTime12h(hhmm: string | null | undefined): string {
   if (!hhmm) return '—';
   const [h, m] = hhmm.split(':').map(Number);
   if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
-  const period = h >= 12 ? 'PM' : 'AM';
-  const h12 = h % 12 || 12;
+  const period = (h ?? 0) >= 12 ? 'PM' : 'AM';
+  const h12 = (h ?? 0) % 12 || 12;
   return `${h12}:${String(m).padStart(2, '0')} ${period}`;
 }
 

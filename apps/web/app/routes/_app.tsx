@@ -106,7 +106,7 @@ export default function AppShell(): React.ReactElement {
         <div className="flex-1 min-h-screen flex">
           <Sidebar role={user.role} />
           <main className="flex-1 min-w-0 flex flex-col">
-            <Topbar school={school} user={user} unreadCount={unreadCount} csrfToken={csrfToken} />
+            <Topbar school={school!} user={user} unreadCount={unreadCount} csrfToken={csrfToken} />
             <div className="flex-1 px-md md:px-xl py-xl">
               {isExpired ? <ExpiredDemo /> : <Outlet />}
             </div>

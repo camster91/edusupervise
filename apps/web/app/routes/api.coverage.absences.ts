@@ -34,7 +34,10 @@ export async function action({ request }: Route.ActionArgs) {
   }
   const csrf = validateCsrfFromJson(request, body);
   if (!csrf.ok) return csrf.response;
-  const session = await requireRole(await (await import('../../server/auth.server')).getSession(request), 'school_admin');
+  const { getSession, requireRole } = await import('../../server/auth.server');
+  const maybeSession = await getSession(request);
+  if (!maybeSession) return Response.json({ error: 'unauthorized' }, { status: 401 });
+  const session = requireRole(maybeSession, ['school_admin']);
   const parsed = Body.safeParse(body);
   if (!parsed.success) {
     return Response.json({ error: 'validation_failed', issues: parsed.error.issues }, { status: 400 });

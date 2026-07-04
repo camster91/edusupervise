@@ -48,8 +48,8 @@ export function SignupCard(props: SignupCardProps): React.ReactElement {
   // Show the error either from the in-flight nav (when the response is still
   // pending display) or from the most recent settled action for this formAction.
   const navError =
-    nav.formAction === props.action
-      ? (nav.data as { error?: string } | undefined)?.error
+    nav.formAction === props.action && 'data' in nav
+      ? ((nav.data as { error?: string } | undefined)?.error)
       : undefined;
   const error = navError ?? actionData?.error;
 

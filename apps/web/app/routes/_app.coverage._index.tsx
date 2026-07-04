@@ -204,7 +204,7 @@ function StatusBadge({ status }: { status: string }): React.ReactElement {
     declined:{ label: 'Declined', cls: 'bg-error-soft text-error' },
     uncovered:{ label: 'Uncovered', cls: 'bg-error-soft text-error' },
   };
-  const c = config[status] ?? config.open;
+  const c: { label: string; cls: string } = config[status] ?? config.open ?? { label: 'Unknown', cls: 'bg-surface-3 text-secondary' };
   return (
     <span
       className={`inline-flex items-center px-sm py-xs rounded-full text-caption-2 font-semibold uppercase tracking-wide ${c.cls}`}
@@ -328,7 +328,7 @@ function CreateAbsenceSheet({
                 {
                   teacherId: selectedTeacher,
                   absenceDate,
-                  reason: reason || undefined,
+                  reason: reason || null,
                   source: 'manual' as CoverageSource,
                   autoRoute: true,
                   csrf: csrfToken,
@@ -396,7 +396,7 @@ function formatTime12h(hhmm: string | null | undefined): string {
   if (!hhmm) return '—';
   const [h, m] = hhmm.split(':').map(Number);
   if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
-  const period = h >= 12 ? 'PM' : 'AM';
-  const h12 = h % 12 || 12;
+  const period = (h ?? 0) >= 12 ? 'PM' : 'AM';
+  const h12 = (h ?? 0) % 12 || 12;
   return `${h12}:${String(m).padStart(2, '0')} ${period}`;
 }

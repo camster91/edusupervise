@@ -32,6 +32,7 @@ import {
   useForm,
   useFormContext,
   type FieldValues,
+  type Path,
   type UseFormProps,
   type UseFormReturn,
 } from 'react-hook-form';
@@ -95,7 +96,7 @@ export function useZodForm<T extends FieldValues, S extends z.ZodType<T>>(
  *   />
  */
 export interface FormFieldProps<T extends FieldValues> {
-  name: keyof T & string;
+  name: Path<T>;
   render: (field: {
     name: string;
     value: T[keyof T];

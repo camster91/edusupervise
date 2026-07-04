@@ -56,8 +56,8 @@ export default function AdminOnboarding() {
   const [copied, setCopied] = useState(false);
   const navigate = useNavigate();
 
-  const next = () => setStep((s) => Math.min(3, (s + 1) as Step));
-  const back = () => setStep((s) => Math.max(0, (s - 1) as Step));
+  const next = () => setStep((s) => Math.min(3, s + 1) as Step);
+  const back = () => setStep((s) => Math.max(0, s - 1) as Step);
   const done = () => navigate('/app/today');
 
   async function copyCode() {

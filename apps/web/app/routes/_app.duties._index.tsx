@@ -104,7 +104,7 @@ export default function DutiesList() {
                         {d.location}
                       </div>
                       <div className="text-footnote text-secondary mt-xs">
-                        {d.duration ?? '—'} min
+                        {minutesBetween(d.startTime, d.endTime)} min
                         {d.requiresVest ? ' · vest' : ''}
                         {d.requiresRadio ? ' · radio' : ''}
                       </div>
@@ -118,4 +118,15 @@ export default function DutiesList() {
       )}
     </div>
   );
+}
+
+
+function minutesBetween(start: string, end: string): number {
+  const parts = (s: string): [number, number] => {
+    const [h, m] = s.split(':').map(Number);
+    return [h ?? 0, m ?? 0];
+  };
+  const [sh, sm] = parts(start);
+  const [eh, em] = parts(end);
+  return (eh * 60 + em) - (sh * 60 + sm);
 }

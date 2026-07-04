@@ -51,6 +51,7 @@ export async function action({ request }: Route.ActionArgs) {
   }
   const [duty] = await withSchoolId(session.schoolId, (tx) =>
     tx.insert(duties).values({
+      schoolId: session.schoolId,
       cycleDay,
       startTime,
       endTime,
@@ -60,6 +61,7 @@ export async function action({ request }: Route.ActionArgs) {
       createdBy: session.userId,
     }).returning(),
   );
+  if (!duty) throw new Response('Failed to create duty', { status: 500 });
   return redirect(`/app/duties/${duty.id}`);
 }
 

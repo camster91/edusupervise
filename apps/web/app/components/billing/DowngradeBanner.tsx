@@ -13,6 +13,7 @@
 // clock for billing decisions).
 
 import { Link } from 'react-router';
+import { useClientNow } from '../../../lib/useClientNow';
 
 export interface DowngradeBannerProps {
   /** ISO-8601 string of `plan_downgrade_effective_at`. */

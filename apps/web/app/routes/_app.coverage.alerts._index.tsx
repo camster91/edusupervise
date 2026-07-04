@@ -166,6 +166,7 @@ function AlertRow({
   alert,
   csrfToken,
 }: {
+  csrfToken: string;
   alert: {
     id: string;
     parentName: string;
@@ -340,7 +341,7 @@ function formatTime12h(hhmm: string | null | undefined): string {
   if (!hhmm) return '—';
   const [h, m] = hhmm.split(':').map(Number);
   if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
-  const period = h >= 12 ? 'PM' : 'AM';
-  const h12 = h % 12 || 12;
+  const period = (h ?? 0) >= 12 ? 'PM' : 'AM';
+  const h12 = (h ?? 0) % 12 || 12;
   return `${h12}:${String(m).padStart(2, '0')} ${period}`;
 }

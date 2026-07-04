@@ -164,7 +164,6 @@ export async function createReminder(
         notifyEmail: input.notifyEmail ?? true,
         notifySms: input.notifySms ?? false,
         customMessage: input.customMessage?.trim() || null,
-        createdBy,
         isEnabled: true,
       })
       .returning({ id: reminders.id });
@@ -216,7 +215,7 @@ export async function updateReminder(
       })
       .where(and(eq(reminders.id, reminderId), eq(reminders.schoolId, schoolId)));
 
-    if (result.rowCount === 0) {
+    if (result.count === 0) {
       return { ok: false, error: 'Reminder not found.' };
     }
     return { ok: true };
@@ -264,7 +263,7 @@ export async function deleteReminder(
     const result = await db
       .delete(reminders)
       .where(and(eq(reminders.id, reminderId), eq(reminders.schoolId, schoolId)));
-    if (result.rowCount === 0) {
+    if (result.count === 0) {
       return { ok: false, error: 'Reminder not found.' };
     }
     logger.info({ reminderId, schoolId }, 'reminders: deleted');
