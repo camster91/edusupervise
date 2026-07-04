@@ -1,0 +1,208 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 769" width="1280" height="769" role="img" aria-label="Upwork portfolio thumbnail — Figma to WordPress handoff: 3-day turnaround, +38% conversion lift">
+  <title>Figma → WordPress — 3-day handoff, +38% conversion</title>
+  <desc>Upwork portfolio thumbnail. Off-white surface with deep navy type and amber accent. Split-panel showing Figma source and WordPress output, with arrow between, hero stats.</desc>
+
+  <defs>
+    <linearGradient id="bgLight3" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#F8FAFC"/>
+    </linearGradient>
+
+    <linearGradient id="arrowGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#FBBF24"/>
+    </linearGradient>
+
+    <linearGradient id="figmaPanel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#1E293B"/>
+    </linearGradient>
+
+    <pattern id="grid3" x="0" y="0" width="40" height="40" patternUnits="userSpaceOnUse">
+      <path d="M 40 0 L 0 0 0 40" fill="none" stroke="#E2E8F0" stroke-width="0.5"/>
+    </pattern>
+
+    <style>
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif; }
+      .mono { font-family: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace; }
+    </style>
+  </defs>
+
+  <!-- Surface -->
+  <rect width="1280" height="769" fill="url(#bgLight3)"/>
+  <rect width="1280" height="769" fill="url(#grid3)"/>
+
+  <!-- Top brand bar -->
+  <g class="sans" transform="translate(64, 56)">
+    <rect x="0" y="0" width="40" height="40" rx="8" fill="#0F172A"/>
+    <text x="20" y="27" font-size="20" font-weight="800" fill="#F59E0B" text-anchor="middle">C</text>
+    <text x="56" y="18" font-size="12" font-weight="700" letter-spacing="2.4" fill="#64748B">CAMERON ASHLEY</text>
+    <text x="56" y="36" font-size="13" font-weight="500" fill="#94A3B8">Figma → WordPress · Elementor Global Styles · Pixel-accurate</text>
+  </g>
+
+  <!-- Right-side project tag -->
+  <g class="sans" transform="translate(1216, 64)">
+    <rect x="-184" y="0" width="184" height="36" rx="18" fill="#F8FAFC" stroke="#E2E8F0" stroke-width="1"/>
+    <circle cx="-160" cy="18" r="4" fill="#10B981"/>
+    <text x="-146" y="23" font-size="13" font-weight="600" fill="#0F172A">Service · Figma → WP handoff</text>
+  </g>
+
+  <line x1="64" y1="128" x2="1216" y2="128" stroke="#E2E8F0" stroke-width="1"/>
+
+  <!-- ============ TOP HEADER ============ -->
+  <g class="sans" transform="translate(64, 184)">
+    <rect x="0" y="0" width="14" height="14" rx="3" fill="#F59E0B"/>
+    <text x="26" y="12" font-size="14" font-weight="700" letter-spacing="2.4" fill="#0F172A">DESIGN-TO-DEVELOPMENT HANDOFF</text>
+  </g>
+
+  <!-- Project name (huge, 2 lines) -->
+  <text x="64" y="270" class="sans" font-size="78" font-weight="800" fill="#0F172A" letter-spacing="-2.2">Figma → WordPress</text>
+
+  <!-- 1-line outcome -->
+  <text x="64" y="312" class="sans" font-size="22" font-weight="500" fill="#475569">Pixel-accurate build with Elementor Global Styles.</text>
+  <text x="64" y="342" class="sans" font-size="22" font-weight="500" fill="#475569">Tokenised color &amp; type. Zero post-launch revisions.</text>
+
+  <!-- ============ BEFORE / AFTER COMPARISON: FIGMA PANEL + ARROW + WP PANEL ============ -->
+  <!-- FIGMA panel -->
+  <g transform="translate(64, 388)">
+    <!-- Eyebrow + tag -->
+    <g class="sans">
+      <circle cx="6" cy="6" r="5" fill="#94A3B8"/>
+      <text x="22" y="11" font-size="12" font-weight="700" letter-spacing="2" fill="#475569">SOURCE</text>
+    </g>
+    <text x="0" y="42" class="sans" font-size="22" font-weight="800" fill="#0F172A">Figma design</text>
+
+    <!-- Frame mock -->
+    <g transform="translate(0, 64)">
+      <rect x="0" y="0" width="368" height="240" rx="14" fill="url(#figmaPanel)"/>
+
+      <!-- Window chrome dots -->
+      <circle cx="20" cy="20" r="4" fill="#334155"/>
+      <circle cx="34" cy="20" r="4" fill="#334155"/>
+      <circle cx="48" cy="20" r="4" fill="#334155"/>
+      <text x="356" y="24" class="sans" font-size="11" font-weight="600" fill="#64748B" text-anchor="end">Home.figma · 1440×900</text>
+
+      <!-- Faux design content: hero block + text blocks -->
+      <rect x="20" y="48" width="160" height="12" rx="3" fill="#F59E0B"/>
+      <rect x="20" y="72" width="328" height="32" rx="4" fill="#FFFFFF" opacity="0.92"/>
+      <rect x="20" y="114" width="328" height="10" rx="3" fill="#94A3B8" opacity="0.6"/>
+      <rect x="20" y="130" width="280" height="10" rx="3" fill="#94A3B8" opacity="0.45"/>
+      <rect x="20" y="146" width="200" height="10" rx="3" fill="#94A3B8" opacity="0.45"/>
+
+      <!-- CTA button -->
+      <rect x="20" y="168" width="110" height="28" rx="6" fill="#F59E0B"/>
+      <text x="75" y="186" class="sans" font-size="11" font-weight="700" fill="#0F172A" text-anchor="middle">Get started</text>
+
+      <!-- Right image placeholder (offset further right, taller) -->
+      <rect x="200" y="48" width="148" height="100" rx="6" fill="#FFFFFF" opacity="0.14"/>
+
+      <!-- Color tokens row at bottom -->
+      <g transform="translate(20, 210)">
+        <rect x="0" y="0" width="18" height="18" rx="4" fill="#0F172A" stroke="#334155" stroke-width="1"/>
+        <rect x="24" y="0" width="18" height="18" rx="4" fill="#F59E0B"/>
+        <rect x="48" y="0" width="18" height="18" rx="4" fill="#FFFFFF" stroke="#334155" stroke-width="1"/>
+        <rect x="72" y="0" width="18" height="18" rx="4" fill="#94A3B8"/>
+        <text x="104" y="14" class="mono" font-size="11" font-weight="600" fill="#94A3B8">tokens.json</text>
+      </g>
+    </g>
+
+    <!-- Caption -->
+    <text x="0" y="328" class="sans" font-size="13" font-weight="500" fill="#64748B">32 frames · Auto-layout · Variables baked in</text>
+  </g>
+
+  <!-- ARROW + STATS in middle -->
+  <g transform="translate(456, 432)">
+    <!-- Arrow shaft -->
+    <rect x="0" y="62" width="280" height="6" rx="3" fill="url(#arrowGrad)"/>
+    <!-- Arrow head -->
+    <path d="M 270 50 L 296 65 L 270 80 Z" fill="#FBBF24"/>
+
+    <!-- Stat chips above arrow -->
+    <g class="sans" transform="translate(0, 0)">
+      <rect x="0" y="0" width="280" height="48" rx="10" fill="#0F172A"/>
+      <text x="20" y="22" font-size="11" font-weight="700" letter-spacing="2" fill="#F59E0B">HANDOFF TIME</text>
+      <text x="20" y="42" font-size="20" font-weight="800" fill="#FFFFFF">3 days · 0 revisions</text>
+    </g>
+
+    <!-- Stat chips below arrow -->
+    <g class="sans" transform="translate(0, 86)">
+      <rect x="0" y="0" width="280" height="48" rx="10" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.5"/>
+      <text x="20" y="22" font-size="11" font-weight="700" letter-spacing="2" fill="#64748B">CONVERSION LIFT</text>
+      <text x="20" y="42" font-size="20" font-weight="800" fill="#0F172A">+38% <tspan font-size="13" font-weight="500" fill="#64748B">vs. dev-from-scratch</tspan></text>
+    </g>
+  </g>
+
+  <!-- WP panel -->
+  <g transform="translate(816, 388)">
+    <!-- Eyebrow + tag -->
+    <g class="sans">
+      <circle cx="6" cy="6" r="5" fill="#10B981"/>
+      <text x="22" y="11" font-size="12" font-weight="700" letter-spacing="2" fill="#0F172A">SHIP</text>
+    </g>
+    <text x="0" y="42" class="sans" font-size="22" font-weight="800" fill="#0F172A">WordPress site</text>
+
+    <!-- Frame mock -->
+    <g transform="translate(0, 64)">
+      <rect x="0" y="0" width="368" height="240" rx="14" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1.5"/>
+
+      <!-- Browser chrome -->
+      <rect x="0" y="0" width="368" height="28" rx="14" fill="#F8FAFC"/>
+      <rect x="0" y="14" width="368" height="14" fill="#F8FAFC"/>
+      <circle cx="16" cy="14" r="3" fill="#CBD5E1"/>
+      <circle cx="28" cy="14" r="3" fill="#CBD5E1"/>
+      <circle cx="40" cy="14" r="3" fill="#CBD5E1"/>
+      <rect x="60" y="6" width="240" height="16" rx="8" fill="#FFFFFF" stroke="#E2E8F0" stroke-width="1"/>
+      <text x="180" y="18" class="mono" font-size="10" font-weight="500" fill="#94A3B8" text-anchor="middle">https://example.com</text>
+
+      <!-- Hero content -->
+      <rect x="20" y="44" width="160" height="14" rx="3" fill="#F59E0B"/>
+      <rect x="20" y="72" width="328" height="36" rx="4" fill="#0F172A"/>
+      <rect x="20" y="116" width="328" height="12" rx="3" fill="#CBD5E1"/>
+      <rect x="20" y="134" width="280" height="12" rx="3" fill="#CBD5E1"/>
+      <rect x="20" y="152" width="200" height="12" rx="3" fill="#CBD5E1"/>
+
+      <rect x="20" y="180" width="120" height="32" rx="6" fill="#F59E0B"/>
+      <text x="80" y="200" class="sans" font-size="12" font-weight="700" fill="#0F172A" text-anchor="middle">Get started</text>
+
+      <!-- Right image placeholder -->
+      <rect x="160" y="44" width="186" height="120" rx="6" fill="#F1F5F9"/>
+
+      <!-- Footer indicator (live) -->
+      <g transform="translate(20, 200)">
+        <circle cx="6" cy="6" r="5" fill="#10B981"/>
+        <text x="22" y="11" class="sans" font-size="11" font-weight="600" fill="#0F172A">Elementor Global Styles · LCP 1.2s</text>
+      </g>
+    </g>
+
+    <!-- Caption -->
+    <text x="0" y="328" class="sans" font-size="13" font-weight="500" fill="#64748B">Elementor Global Styles · CSS variables · ACF blocks</text>
+  </g>
+
+  <!-- Bottom chips -->
+  <g class="sans" transform="translate(64, 712)">
+    <g>
+      <rect x="0" y="0" width="100" height="32" rx="16" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+      <text x="50" y="21" font-size="13" font-weight="600" fill="#0F172A" text-anchor="middle">Figma</text>
+    </g>
+    <g transform="translate(112, 0)">
+      <rect x="0" y="0" width="120" height="32" rx="16" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+      <text x="60" y="21" font-size="13" font-weight="600" fill="#0F172A" text-anchor="middle">Elementor</text>
+    </g>
+    <g transform="translate(244, 0)">
+      <rect x="0" y="0" width="100" height="32" rx="16" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+      <text x="50" y="21" font-size="13" font-weight="600" fill="#0F172A" text-anchor="middle">ACF Pro</text>
+    </g>
+    <g transform="translate(356, 0)">
+      <rect x="0" y="0" width="120" height="32" rx="16" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+      <text x="60" y="21" font-size="13" font-weight="600" fill="#0F172A" text-anchor="middle">CSS variables</text>
+    </g>
+    <g transform="translate(488, 0)">
+      <rect x="0" y="0" width="148" height="32" rx="16" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1"/>
+      <text x="74" y="21" font-size="13" font-weight="600" fill="#0F172A" text-anchor="middle">Core Web Vitals</text>
+    </g>
+  </g>
+
+  <!-- Right-side accent strip -->
+  <rect x="1252" y="0" width="28" height="769" fill="#0F172A"/>
+  <rect x="1252" y="384" width="28" height="120" fill="#F59E0B"/>
+</svg>
