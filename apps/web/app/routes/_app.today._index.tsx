@@ -278,6 +278,7 @@ export default function Today() {
     groupRoster,
     recurringDuties,
     showOnboardingBanner,
+    userId,
   } = useLoaderData<typeof loader>();
   const [swapOpen, setSwapOpen] = useState(false);
   const [activeDuty, setActiveDuty] = useState<typeof allDuties[number] | null>(null);
