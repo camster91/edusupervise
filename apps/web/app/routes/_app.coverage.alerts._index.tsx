@@ -184,7 +184,6 @@ function AlertRow({
     dutyEndTime: string;
     absenceDate: string;
     newTeacherName: string | null;
-    csrfToken: string;
   };
 }): React.ReactElement {
   const fetcher = useFetcher();
