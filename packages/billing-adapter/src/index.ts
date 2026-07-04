@@ -274,6 +274,12 @@ function verifyStripeV1Signature(
   if (!tPart || !v1Part) return null;
   const t = tPart.slice(2);
   const v1 = v1Part.slice(3);
+  // Replay protection: reject signatures whose timestamp is older than the
+  // configured tolerance (default 5 min, matching Stripe SDK default).
+  // Defense-in-depth on top of stripe_events.id UNIQUE constraint.
+  const toleranceSec = Number(process.env.STRIPE_TOLERANCE_SEC ?? 300);
+  const tsAgeSec = Math.abs(Date.now() / 1000 - Number(t));
+  if (!Number.isFinite(tsAgeSec) || tsAgeSec > toleranceSec) return null;
   const expected = createHmac('sha256', secret)
     .update(`${t}.${rawBody}`)
     .digest('hex');
