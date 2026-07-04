@@ -54,6 +54,15 @@ export interface SignupResult {
   userId?: string;
   /** Newly created school id (only set when ok=true for solo/demo). */
   schoolId?: string;
+  /**
+   * The role assigned to the new user (only set when ok=true for solo).
+   * The action handler uses this to pick the right onboarding wizard:
+   *   teacher  -> /onboarding/solo
+   *   ea       -> /onboarding/solo (same wizard, default reminder differs)
+   *   admin    -> /onboarding/admin
+   * Join and demo paths do not populate this (they use hard-coded defaults).
+   */
+  role?: SoloRole;
 }
 
 export interface BaseSignupInput {
@@ -67,9 +76,40 @@ export interface JoinSignupInput extends BaseSignupInput {
   schoolCode: string;
 }
 
+/**
+ * Allowed roles for the solo signup flow. The signup form MUST
+ * pass one of these values; the server falls back to
+ * 'school_admin' when the field is missing (backward compatibility
+ * with pre-Phase-1 POST callers that do not include `role`).
+ *
+ * Phase 1 (solo teacher onboarding): all three roles are accepted
+ * over the same form. Phase 2+ may restrict EA self-signup if
+ * governance starts to outweigh the friction.
+ */
+export const SOLO_ALLOWED_ROLES = [
+  'teacher',
+  'educational_assistant',
+  'school_admin',
+] as const;
+export type SoloRole = (typeof SOLO_ALLOWED_ROLES)[number];
+
+/**
+ * Validate + coerce a form-supplied role string into SoloRole.
+ * Returns null on bad input; callers must default or reject.
+ */
+export function parseSoloRole(input: unknown): SoloRole | null {
+  if (typeof input !== 'string') return null;
+  const v = input.trim().toLowerCase();
+  return (SOLO_ALLOWED_ROLES as readonly string[]).includes(v)
+    ? (v as SoloRole)
+    : null;
+}
+
 export interface SoloSignupInput extends BaseSignupInput {
   mode: 'solo';
   schoolName: string;
+  /** Optional. Defaults to 'school_admin' for backward compatibility. */
+  role?: SoloRole;
 }
 
 export interface DemoSignupInput extends BaseSignupInput {
@@ -222,6 +262,13 @@ export async function signupSolo(
   if (schoolName.length < 2 || schoolName.length > 80) {
     return { ok: false, error: 'School name must be 2–80 characters.', code: 'error' };
   }
+  // Default to school_admin when the caller did not pass a role
+  // (backward compatibility with the pre-Phase-1 solo POST shape).
+  // parseSoloRole validates; an invalid string falls back to school_admin
+  // rather than 400'ing the form — solo signups should never lose a user
+  // over an unknown role (they'd just hit admin wizard). To strict-reject,
+  // change to `const role = parseSoloRole(input.role); if (!role) return 400`.
+  const role: SoloRole = input.role ?? 'school_admin';
 
   const rate = await checkRateLimit(input.email, ctx.ipAddress);
   if (!rate.ok) {
@@ -266,14 +313,14 @@ export async function signupSolo(
             email: input.email.toLowerCase(),
             passwordHash,
             name: input.name,
-            role: 'school_admin',
+            role,
             emailVerifiedAt: sql`${new Date().toISOString()}::timestamptz`,
             isActive: true,
           })
           .returning({ id: users.id });
         if (!user) throw new Error('user_insert_failed');
 
-        return { school, user };
+        return { school, user, role };
       });
 
       await logAttempt(input.email, ctx, 'solo', 'success', result.school.id, result.user.id);
@@ -290,12 +337,18 @@ export async function signupSolo(
         metadata: {
           email: input.email.toLowerCase(),
           schoolName,
+          role,
           mode: 'solo',
         },
         ipAddress: ctx.ipAddress,
         userAgent: ctx.userAgent,
       });
-      return { ok: true, userId: result.user.id, schoolId: result.school.id };
+      return {
+        ok: true,
+        userId: result.user.id,
+        schoolId: result.school.id,
+        role: result.role,
+      };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.includes('unique') || msg.includes('duplicate')) {
