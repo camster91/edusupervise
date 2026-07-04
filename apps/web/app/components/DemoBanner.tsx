@@ -35,17 +35,18 @@ export function DemoBanner({ demoExpiresAt, csrfToken }: DemoBannerProps): React
 
   return (
     <div className="bg-warning-soft text-warning border-b border-warning/40">
-      <div className="max-w-6xl mx-auto px-md py-sm flex items-center gap-md text-callout">
-        <Sparkles size={18} aria-hidden className="shrink-0" />
-        <p className="flex-1 min-w-0">
-          <strong>Demo mode</strong> — your school resets in{' '}
+      <div className="max-w-6xl mx-auto px-md py-sm flex items-center gap-sm md:gap-md text-callout">
+        <Sparkles size={18} aria-hidden className="shrink-0 hidden sm:block" />
+        <p className="flex-1 min-w-0 truncate">
+          <strong>Demo mode</strong>
+          <span className="hidden sm:inline"> — your school resets in{' '}</span>
           <strong>
             {daysLeft} {daysLeft === 1 ? 'day' : 'days'}
             {daysLeft === 0 && hoursLeft > 0
               ? `, ${hoursLeft} ${hoursLeft === 1 ? 'hour' : 'hours'}`
               : ''}
           </strong>
-          .
+          <span className="hidden sm:inline">.</span>
         </p>
         <ResetDemoButton csrfToken={csrfToken} />
         <a
