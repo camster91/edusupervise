@@ -10,7 +10,7 @@ I shipped three things this week to fix the model and meet him where he is.
 
 **1. Solo teacher path.**
 Any teacher can sign up and run their own duty rotation. No school admin needed.
-205 teachers signed up in the first 30 days.
+Solo teachers are signing up — the early feedback loop is working.
 
 **2. Educational Assistants as a first-class user type.**
 They show up, cover, leave. No "mark complete" gate.
