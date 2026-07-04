@@ -6,7 +6,14 @@
 //     `userId` from `session`, so the rendered page threw
 //     ReferenceError when a teacher was on a group-duty with
 //     colleagues. The fix added `userId: session.userId` to the
-//     returned object. This test guards the loader's return shape.
+//     returned object. THIS FILE guards B5 with TWO layers:
+//       (a) the loader-invocation test below mocks getSession +
+//           withSchoolId + getGroupDutyRoster + listRemindersForDuties
+//           and calls the real loader — this catches a mutation that
+//           removes `userId: session.userId` from the return.
+//       (b) the fixture-shape tests (kept) document the contract
+//           between loader and component; they pin the keys the
+//           component destructures but don't catch real mutations.
 //   - B6 (commit e0ad1a7): a duplicate `myDuties.map((d) => ...)`
 //     block in the component rendered duties twice (visible UX bug).
 //     The fix collapsed to a single map. This test renders the
@@ -103,36 +110,268 @@ vi.mock('../../lib/useClientNow', () => ({
 }));
 
 // ---------------------------------------------------------------------------
-// B5: loader return shape
+// Mocks for the REAL loader invocation (B5 mutation-resistant regression).
 //
-// We can't directly invoke the exported `loader` because it depends
-// on `getSession`, `withSchoolId`, `getGroupDutyRoster`,
-// `listRemindersForDuties`. We assert the SHAPE indirectly by reading
-// what the component would consume via useLoaderData — i.e. that
-// `userId` is present and non-empty.
+// The loader imports:
+//   - getSession              from ../../server/auth.server
+//   - withSchoolId            from ../../server/db.server
+//   - getGroupDutyRoster      from ../../server/duty-assignments.server
+//   - listRemindersForDuties  from ../../server/reminders.server
 //
-// This is the cheapest, most-robust regression guard: if anyone
-// removes `userId: session.userId` from the loader return, the
-// fixture the component depends on would mismatch the runtime
-// shape and this assertion fires.
+// We mock each as a vi.fn() so the test can control the return shape
+// per-test. Static `vi.fn()` placeholders here; beforeEach reimports +
+// resetMocks + wires the implementation for the current test case.
 // ---------------------------------------------------------------------------
 
-describe('_app.today loader shape (B5 regression guard)', () => {
-  beforeEach(() => {
+vi.mock('../../server/auth.server', () => ({
+  getSession: vi.fn(),
+}));
+
+vi.mock('../../server/db.server', () => ({
+  withSchoolId: vi.fn(),
+}));
+
+vi.mock('../../server/duty-assignments.server', () => ({
+  getGroupDutyRoster: vi.fn(),
+}));
+
+vi.mock('../../server/reminders.server', () => ({
+  listRemindersForDuties: vi.fn(),
+}));
+
+// ---------------------------------------------------------------------------
+// Fake Drizzle transaction for withSchoolId.
+//
+// The loader calls 5 queries against `tx` (in this order):
+//   1. tx.select({...}).from(schools).where(...).limit(1)
+//   2. tx.select({...}).from(duties).where(...).limit(200)
+//   3. tx.select({...}).from(dutyAssignments).where(...).limit(200)
+//   4. tx.select({...}).from(cycleCalendar).where(...).limit(1)
+//   5. tx.select({...}).from(recurringDuties).leftJoin(users,...).where(...).orderBy(...).limit(20)
+//
+// We build a chainable, thenable object whose `.limit(N)` resolves
+// with the next canned rowset. The select columns passed in (Drizzle
+// column refs) are ignored — the chain only reads .from() and .limit().
+// ---------------------------------------------------------------------------
+
+function buildFakeTx() {
+  const canned: Array<unknown[]> = [
+    // 1: schools row — non-demo so showOnboardingBanner=false
+    [{ timezone: 'America/Toronto', demoExpiresAt: null }],
+    // 2: all active duties — one entry so the loader's filter chain
+    // has something to compute against.
+    [
+      {
+        id: 'duty-1',
+        name: 'Cafeteria Lunch A',
+        location: 'Cafeteria',
+        startTime: '11:30:00',
+        endTime: '12:00:00',
+        cycleDay: 3,
+        requiresVest: false,
+        requiresRadio: false,
+      },
+    ],
+    // 3: myAssignments — one assignment for the logged-in user so
+    // myUpcoming > 0 and showOnboardingBanner is false.
+    [{ dutyId: 'duty-1', startDate: '2026-09-01', endDate: null, userId: 'user-1' }],
+    // 4: cycleCalendar for today
+    [{ cycleDay: 3, isSchoolDay: true, date: '2026-07-04' }],
+    // 5: recurringDuties (leftJoin users) — empty
+    [],
+  ];
+  let queryCall = 0;
+  return {
+    select(_cols: unknown) {
+      return {
+        from(_table: unknown) {
+          const chain: Record<string, unknown> = {};
+          // Every chainable method returns the chain itself so the
+          // loader's pipeline can call them in any order.
+          chain.where = () => chain;
+          chain.leftJoin = () => chain;
+          chain.innerJoin = () => chain;
+          chain.orderBy = () => chain;
+          // `.limit(N)` is the terminal await point. Drizzle
+          // promise-resolves the whole chain here.
+          chain.limit = (_n: number) => {
+            queryCall += 1;
+            return Promise.resolve(canned[queryCall - 1] ?? []);
+          };
+          return chain;
+        },
+      };
+    },
+    // Expose the call count so a test can assert "exactly 5 queries
+    // were issued" if needed.
+    __getQueryCallCount: () => queryCall,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// B5: REAL loader invocation (mutation-resistant regression guard).
+//
+// These tests mock the loader's transitive deps (getSession /
+// withSchoolId / getGroupDutyRoster / listRemindersForDuties) and
+// invoke the exported `loader` directly. They are the load-bearing
+// B5 guard — the fixture-shape tests below are kept as documentation
+// of the loader↔component contract but cannot catch a mutation that
+// drops `userId: session.userId` from the loader return.
+//
+// Mutation probe that THIS catches:
+//   - "remove `userId: session.userId` from the loader's return
+//     object" → first assertion trips
+//   - "remove the entire `userId` field"  → first assertion trips
+//   - "rename `userId` to `user_id`"      → first assertion trips
+//   - "rewrite userId to a literal string" → alt-session test trips
+//     (because we change session.userId per-test and assert the
+//     return matches)
+// ---------------------------------------------------------------------------
+
+describe('_app.today loader (B5 mutation-resistant regression)', () => {
+  // Re-import the mocked modules per test. vi.mock factories are
+  // hoisted, so the vi.fn() instances are stable across imports —
+  // but we re-import to get a typed reference in the test scope.
+  let mockGetSession: ReturnType<typeof vi.fn>;
+  let mockWithSchoolId: ReturnType<typeof vi.fn>;
+  let mockGetGroupDutyRoster: ReturnType<typeof vi.fn>;
+  let mockListRemindersForDuties: ReturnType<typeof vi.fn>;
+
+  const fakeSession = {
+    schoolId: 'school-1',
+    userId: 'user-1',
+    role: 'teacher' as const,
+    email: 'teacher@example.com',
+    name: 'Ms. Test',
+  };
+
+  beforeEach(async () => {
     vi.clearAllMocks();
+    const auth = await import('../../server/auth.server');
+    const dbsrv = await import('../../server/db.server');
+    const daMod = await import('../../server/duty-assignments.server');
+    const rmMod = await import('../../server/reminders.server');
+    mockGetSession = auth.getSession as unknown as ReturnType<typeof vi.fn>;
+    mockWithSchoolId = dbsrv.withSchoolId as unknown as ReturnType<typeof vi.fn>;
+    mockGetGroupDutyRoster = daMod.getGroupDutyRoster as unknown as ReturnType<typeof vi.fn>;
+    mockListRemindersForDuties = rmMod.listRemindersForDuties as unknown as ReturnType<typeof vi.fn>;
+
+    // Default wiring — overridden in specific tests as needed.
+    mockGetSession.mockResolvedValue(fakeSession);
+    const fakeTx = buildFakeTx();
+    mockWithSchoolId.mockImplementation(
+      async (_schoolId: string, fn: (tx: ReturnType<typeof buildFakeTx>) => Promise<unknown>) =>
+        fn(fakeTx),
+    );
+    mockGetGroupDutyRoster.mockResolvedValue(new Map());
+    mockListRemindersForDuties.mockResolvedValue(new Map());
   });
 
-  it('loaderData fixture includes userId (guards the userId destructure fix)', () => {
+  it('returns userId === session.userId when loader runs (B5 tripwire)', async () => {
+    const mod = await import('./_app.today._index');
+    const loader = mod.loader as (args: {
+      request: Request;
+    }) => Promise<Record<string, unknown>>;
+    const result = await loader({ request: new Request('http://localhost/app/today') });
+
+    // Primary B5 assertion — fires if anyone removes the
+    // `userId: session.userId` line from the loader return.
+    expect(result.userId).toBe(fakeSession.userId);
+  });
+
+  it('returns userId === session.userId even when the session is a fresh value', async () => {
+    // Mutation-resistant variant: change the session and confirm
+    // the returned userId follows. Catches "hard-coded literal"
+    // cheats that try to fake the first test.
+    const altSession = { ...fakeSession, userId: 'different-user-id-xyz' };
+    mockGetSession.mockResolvedValue(altSession);
+
+    const mod = await import('./_app.today._index');
+    const loader = mod.loader as (args: {
+      request: Request;
+    }) => Promise<Record<string, unknown>>;
+    const result = await loader({ request: new Request('http://localhost/app/today') });
+
+    expect(result.userId).toBe('different-user-id-xyz');
+    expect(result.userId).not.toBe(fakeSession.userId);
+  });
+
+  it('returns all 14 fields the component destructures from useLoaderData', async () => {
+    const mod = await import('./_app.today._index');
+    const loader = mod.loader as (args: {
+      request: Request;
+    }) => Promise<Record<string, unknown>>;
+    const result = await loader({ request: new Request('http://localhost/app/today') });
+
+    // Component destructures these 14 names. If any are missing
+    // (e.g. someone accidentally replaces `userId` with a comment
+    // out the line, or renames `reminderMap`), the rendered page
+    // throws ReferenceError. Pin the shape against that.
+    const requiredKeys = [
+      'role',
+      'userId',
+      'today',
+      'tomorrow',
+      'weekFromNow',
+      'allDuties',
+      'myAssignments',
+      'cycleDay',
+      'isSchoolDay',
+      'stats',
+      'groupRoster',
+      'recurringDuties',
+      'showOnboardingBanner',
+      'reminderMap',
+    ];
+    for (const k of requiredKeys) {
+      expect(result).toHaveProperty(k);
+    }
+  });
+
+  it('throws a 302 redirect to /login when session is missing', async () => {
+    // The loader has a hard auth guard: no session → 302 to /login.
+    // If someone removes the guard, this test fails.
+    mockGetSession.mockResolvedValue(null);
+
+    const mod = await import('./_app.today._index');
+    const loader = mod.loader as (args: {
+      request: Request;
+    }) => Promise<unknown>;
+    let thrown: unknown;
+    try {
+      await loader({ request: new Request('http://localhost/app/today') });
+    } catch (e) {
+      thrown = e;
+    }
+    expect(thrown).toBeInstanceOf(Response);
+    const response = thrown as Response;
+    expect(response.status).toBe(302);
+    expect(response.headers.get('Location')).toBe('/login');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// B5 contract documentation — kept as a secondary guard.
+//
+// These tests pin the SHAPE of the fixture that the component tests
+// below rely on. They do NOT catch a mutation that drops
+// `userId: session.userId` from the loader return (the loader-invocation
+// tests above are the load-bearing B5 guard). They DO catch:
+//   - accidental removal of a key from the fixture
+//   - drift between the fixture and what the real loader returns
+//     (e.g. someone changes the destructuring to `loaderData.user`
+//      but forgets to rename the fixture key)
+//
+// Keep them as documentation of the loader↔component contract.
+// ---------------------------------------------------------------------------
+
+describe('_app.today loader→component contract (B5 secondary guard)', () => {
+  it('loaderData fixture includes userId', () => {
     expect(fixtureLoaderData).toHaveProperty('userId');
     expect(fixtureLoaderData.userId).toBe('user-1');
   });
 
-  it('loaderData fixture includes all fields the component reads from useLoaderData', () => {
-    // These are the destructured names in the default export. If
-    // any are missing, the component throws ReferenceError on
-    // render — which is what B6 also guards against. Pinning the
-    // shape here means a future loader refactor that drops a field
-    // breaks this test before it breaks the page.
+  it('loaderData fixture includes all 12 fields the component reads from useLoaderData', () => {
     const requiredKeys = [
       'allDuties',
       'myAssignments',
