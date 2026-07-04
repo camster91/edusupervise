@@ -14,6 +14,8 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import bcrypt from 'bcryptjs';
 import { users, getSystemClient } from '@edusupervise/db';
 import type { UserRole } from '@edusupervise/db';
+// Re-export so shell/* components can keep importing the Session's role type.
+export type { UserRole };
 
 
 export interface Session {
