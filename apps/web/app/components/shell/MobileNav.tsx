@@ -21,7 +21,7 @@ import {
 } from '../ui/Dialog';
 import { Button } from '../ui/Button';
 import { cn } from '../../lib/cn';
-import type { UserRole } from '../../../server/auth.server';
+import type { UserRole } from '@edusupervise/db';
 
 export interface MobileNavProps {
   role: UserRole;
