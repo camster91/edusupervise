@@ -82,6 +82,11 @@ services:
         condition: service_healthy
     volumes:
       - /data/uploads:/app/uploads
+      # Audit B12 (2026-07-04): expose the textfile-collector
+      # dir so the metrics route can read the backup-freshness
+      # stamp written by deploy/backup.sh. Read-only because the
+      # web process is not the source of truth for these files.
+      - /var/lib/node_exporter:/var/lib/node_exporter:ro
     mem_limit: 1.5g
     cpus: "1.0"
     healthcheck:

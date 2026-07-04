@@ -142,4 +142,18 @@ done
 shopt -u nullglob
 log "retention done: kept=${kept} deleted=${deleted}"
 
+# ---- 6. Emit Prometheus freshness stamp (audit B12) ----
+# /var/lib/node_exporter/edusupervise_backup_last_success is read
+# by apps/web/app/routes/metrics.tsx on every /metrics scrape and
+# surfaced as the `backup_last_success_timestamp_seconds` gauge.
+# The directory is the textfile-collector convention so a sibling
+# node_exporter could also pick it up later (the file is one
+# timestamp per line; the web route reads the first).
+STAMP_DIR="/var/lib/node_exporter"
+STAMP_FILE="${STAMP_DIR}/edusupervise_backup_last_success"
+mkdir -p "${STAMP_DIR}"
+date -u +%s > "${STAMP_FILE}" 2>/dev/null \
+  || printf '%s\n' "$(date +%s)" > "${STAMP_FILE}"
+log "wrote last-success stamp: ${STAMP_FILE} ($(cat ${STAMP_FILE}))"
+
 log "backup finished OK"
