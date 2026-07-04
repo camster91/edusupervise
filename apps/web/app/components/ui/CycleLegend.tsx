@@ -37,14 +37,14 @@ export function CycleLegend({
   return (
     <div
       className={cn(
-        'flex flex-wrap items-center gap-x-md gap-y-xs',
+        'flex flex-wrap items-center gap-x-sm gap-y-0',
         'text-footnote text-secondary',
         className,
       )}
       role="group"
       aria-label="Cycle day legend"
     >
-      <span className="text-caption-2 font-semibold uppercase tracking-wider text-tertiary">
+      <span className="text-caption-2 font-semibold uppercase tracking-wider text-tertiary shrink-0">
         Rotation
       </span>
       {days.map((d) => {
@@ -54,7 +54,7 @@ export function CycleLegend({
           <span
             key={d}
             className={cn(
-              'inline-flex items-center gap-xs',
+              'inline-flex items-center gap-xs shrink-0 whitespace-nowrap',
               isToday && c.text,
             )}
             aria-current={isToday ? 'true' : undefined}
