@@ -112,6 +112,8 @@ interface StripeBillingPortalSession {
 interface StripeWebhookEvent {
   id: string;
   type: string;
+  data?: { object?: Record<string, unknown> };
+  [key: string]: unknown;
 }
 interface StripeClient {
   checkout: {
@@ -278,7 +280,25 @@ function verifyStripeV1Signature(
   const a = Buffer.from(expected, 'hex');
   const b = Buffer.from(v1, 'hex');
   if (a.length !== b.length) return null;
-  return timingSafeEqual(a, b) ? { id: '', type: '' } : null;
+  if (!timingSafeEqual(a, b)) return null;
+  // Signature verified — now parse the body so the caller sees a real
+  // event (with id + type) rather than an empty stub. The Stripe SDK's
+  // constructEvent does this for us in the async path; we mirror that
+  // here for the sync HMAC path.
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawBody);
+  } catch {
+    return null;
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const event = parsed as { id?: unknown; type?: unknown };
+  if (typeof event.id !== 'string' || typeof event.type !== 'string') return null;
+  if (!event.id || !event.type) return null;
+  // Return the full parsed payload (downstream reads event.data.object in
+  // billing.server.ts:applyStripeEvent). The StripeWebhookEvent interface
+  // above lists id/type/data but [key:string]unknown admits extras.
+  return event as unknown as StripeWebhookEvent;
 }
 
 // ---------------------------------------------------------------------------

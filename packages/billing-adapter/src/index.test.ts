@@ -266,6 +266,62 @@ describe('billing adapter — stripe webhook (signature)', () => {
     expect(good.verified).toBe(true);
   });
 
+  it('returns the parsed event payload (id + type) on a valid signature', () => {
+    // Regression for audit B3: prior to this fix the helper returned
+    // `{ id: '', type: '' }` on signature match, which made every real
+    // Stripe webhook silently rejected by billing.server.ts because
+    // `event.id || event.type` was empty.
+    const event = {
+      id: 'evt_real_1N2AbC3XyZ',
+      type: 'checkout.session.completed',
+      data: { object: { id: 'cs_test_real', customer: 'cus_real' } },
+    };
+    const body = JSON.stringify(event);
+    const t = Math.floor(Date.now() / 1000).toString();
+    const sig = createHmac('sha256', 'whsec_test_xxx')
+      .update(`${t}.${body}`)
+      .digest('hex');
+    const result = verifyWebhook({
+      rawBody: body,
+      signature: `t=${t},v1=${sig}`,
+    });
+    expect(result.verified).toBe(true);
+    const parsed = result.event as { id: string; type: string; data?: unknown };
+    expect(parsed.id).toBe('evt_real_1N2AbC3XyZ');
+    expect(parsed.type).toBe('checkout.session.completed');
+    expect(parsed.data).toBeDefined();
+  });
+
+  it('rejects a valid signature whose body has no id/type', () => {
+    // The Stripe SDK's constructEvent rejects payloads that don't
+    // include a real `id` and `type`; mirror that behavior so the
+    // handler can rely on the guard at billing.server.ts:170-172.
+    const body = JSON.stringify({ data: { object: {} } });
+    const t = Math.floor(Date.now() / 1000).toString();
+    const sig = createHmac('sha256', 'whsec_test_xxx')
+      .update(`${t}.${body}`)
+      .digest('hex');
+    const result = verifyWebhook({
+      rawBody: body,
+      signature: `t=${t},v1=${sig}`,
+    });
+    expect(result.verified).toBe(false);
+    expect(result.reason).toBeTruthy();
+  });
+
+  it('rejects a valid signature over a non-JSON body', () => {
+    const body = 'not-json{';
+    const t = Math.floor(Date.now() / 1000).toString();
+    const sig = createHmac('sha256', 'whsec_test_xxx')
+      .update(`${t}.${body}`)
+      .digest('hex');
+    const result = verifyWebhook({
+      rawBody: body,
+      signature: `t=${t},v1=${sig}`,
+    });
+    expect(result.verified).toBe(false);
+  });
+
   it('throws clear error when STRIPE_WEBHOOK_SECRET missing', () => {
     delete process.env.STRIPE_WEBHOOK_SECRET;
     expect(() =>
