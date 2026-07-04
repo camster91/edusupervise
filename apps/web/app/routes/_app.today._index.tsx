@@ -314,7 +314,7 @@ export default function Today() {
         <SectionHeader
           icon={CalendarDays}
           title="Today"
-          meta={isSchoolDay ? `Day ${cycleDay ?? '—'}` : 'No school'}
+          meta={isSchoolDay && cycleDay ? `Day ${cycleDay}` : isSchoolDay ? 'No cycle info' : 'No school'}
         />
         {myDuties.length === 0 ? (
           isSchoolDay ? (
