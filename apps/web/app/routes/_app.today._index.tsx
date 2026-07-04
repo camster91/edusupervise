@@ -99,11 +99,18 @@ export async function loader({ request }: Route.LoaderArgs) {
     // and midnight local — the WeekStrip would silently jump to
     // tomorrow's date. (Bug found 2026-06-30.)
     const [school] = await tx
-      .select({ timezone: schools.timezone })
+      .select({
+        timezone: schools.timezone,
+        demoExpiresAt: schools.demoExpiresAt,
+      })
       .from(schools)
       .where(eq(schools.id, session.schoolId))
       .limit(1);
     const tz = school?.timezone ?? 'America/Toronto';
+    // Solo teachers and EAs in solo schools (non-demo) see the
+    // onboarding banner until they have at least one duty assignment.
+    // Demo schools do not (they already have seed duties).
+    const isSoloSchool = !school?.demoExpiresAt;
 
     const now = new Date();
     const today = formatDateInTz(now, tz);
@@ -163,6 +170,12 @@ export async function loader({ request }: Route.LoaderArgs) {
     // Total scheduled minutes per week for the logged-in teacher.
     const myMinutesPerWeek = myUpcoming * 25; // avg 25 min/duty estimate
 
+    // Phase 1.3 — solo onboarding banner.
+    //   Show when (a) this is NOT a demo school (demo users already
+    //   have seed duties) AND (b) the teacher has zero upcoming duties
+    //   from the active cycle.
+    const showOnboardingBanner: boolean = isSoloSchool && myUpcoming === 0;
+
     return {
       role: session.role,
       userId: session.userId,
@@ -179,6 +192,9 @@ export async function loader({ request }: Route.LoaderArgs) {
         myUpcoming,
         myMinutesPerWeek,
       },
+      // Phase 1.3 — solo onboarding banner driver. Set true when the
+      // user is in a non-demo school with zero upcoming duties.
+      showOnboardingBanner,
     };
   });
 
@@ -197,8 +213,17 @@ export async function loader({ request }: Route.LoaderArgs) {
 export default function Today() {
   const appData = useRouteLoaderData('routes/_app') as { csrfToken?: string } | undefined;
   const csrfToken = appData?.csrfToken ?? '';
-    const { allDuties, myAssignments, cycleDay, today, isSchoolDay, stats, role, reminderMap } =
-    useLoaderData<typeof loader>();
+    const {
+      allDuties,
+      myAssignments,
+      cycleDay,
+      today,
+      isSchoolDay,
+      stats,
+      role,
+      reminderMap,
+      showOnboardingBanner,
+    } = useLoaderData<typeof loader>();
   const [swapOpen, setSwapOpen] = useState(false);
   const [activeDuty, setActiveDuty] = useState<typeof allDuties[number] | null>(null);
 
@@ -233,6 +258,16 @@ export default function Today() {
 
   return (
     <div className="max-w-2xl mx-auto space-y-xl pb-3xl">
+      {/* Phase 1.3 — solo onboarding banner. Renders above the HeroCard
+          so it's the first thing a new solo teacher sees on Today.
+          Dismiss state lives in local state for SSR-friendliness; the
+          wizard still creates the duty on first /onboarding/solo submit,
+          which causes the loader's myUpcoming count to flip to 1 and the
+          banner disappears on the next page load. */}
+      {showOnboardingBanner ? (
+        <OnboardingSoloBanner />
+      ) : null}
+
       {/* Hero card */}
       <HeroCard
         current={currentDuty ? {
@@ -413,6 +448,56 @@ export default function Today() {
           </div>
         ) : null}
       </Sheet>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// OnboardingSoloBanner — yellow CTA strip for first-run solo users.
+// Renders nothing after the user clicks "Skip for now" (local
+// state). Keeps the Today page welcoming without nagging the user
+// who has already opted out. The loader flips showOnboardingBanner to
+// false once the user has at least one duty assignment; that path is
+// the authoritative dismiss so refreshing the page re-hides it.
+// ---------------------------------------------------------------------------
+
+function OnboardingSoloBanner(): React.ReactElement {
+  const [dismissed, setDismissed] = useState<boolean>(false);
+  if (dismissed) return <></>;
+
+  return (
+    <div
+      role="status"
+      data-testid="onboarding-solo-banner"
+      className="bg-warning-soft border border-warning rounded-lg p-md flex items-start gap-md"
+    >
+      <Sparkles size={20} className="text-warning shrink-0 mt-xs" aria-hidden />
+      <div className="flex-1 min-w-0">
+        <div className="text-body-em text-primary font-semibold">
+          Welcome — let's add your first duty
+        </div>
+        <p className="text-callout text-secondary mt-xs">
+          Five short steps and you'll have your first supervision duty
+          scheduled with a reminder. No school setup, no admin
+          involvement.
+        </p>
+        <div className="mt-md flex gap-sm flex-wrap">
+          <a
+            href="/onboarding/solo"
+            className="inline-flex items-center gap-xs text-callout font-semibold bg-accent text-on-accent hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 transition-opacity duration-fast px-md h-btn-sm rounded-md"
+          >
+            Set up my first duty
+            <ArrowRight size={14} aria-hidden />
+          </a>
+          <button
+            type="button"
+            onClick={() => setDismissed(true)}
+            className="inline-flex items-center text-callout text-secondary hover:text-primary px-md h-btn-sm rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            Skip for now
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
