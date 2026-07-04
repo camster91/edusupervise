@@ -33,7 +33,8 @@ import {
   type CoverageRole,
 } from '@edusupervise/db';
 import { logger } from './logger.server';
-import { withSchoolId, type SchoolContextTx } from './db.server';
+import { withSchoolId } from './db.server';
+import type { SchoolContextTx } from '@edusupervise/db';
 
 // ---------------------------------------------------------------------------
 // Read helpers
