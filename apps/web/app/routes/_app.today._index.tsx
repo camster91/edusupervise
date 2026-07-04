@@ -374,6 +374,7 @@ export default function Today() {
                 reminders={reminderMap[d.id] ?? []}
                 onSwap={() => { setActiveDuty(d); setSwapOpen(true); }}
                 csrfToken={csrfToken}
+                role={role}
               />
             ))}
           </ul>
@@ -513,6 +514,7 @@ function DutyCard({
   reminders,
   onSwap,
   csrfToken,
+  role,
 }: {
   duty: {
     id: string;
@@ -526,7 +528,15 @@ function DutyCard({
   reminders: ReminderRow[];
   onSwap: () => void;
   csrfToken: string;
+  /**
+   * Phase 1.4 — Educational Assistants don't "complete" a duty.
+   * Server-side rejection lives in app.api.duty.complete.ts; UI-side
+   * we swap the Mark Complete icon for a passive "Covering" badge so
+   * the card still has a recognizable right-side action area.
+   */
+  role?: string | null;
 }): React.ReactElement {
+  const isEa = role === 'educational_assistant';
   return (
     <li
       className="bg-surface rounded-lg border border-border p-md hover:bg-surface-2 transition-colors duration-fast"
@@ -562,7 +572,23 @@ function DutyCard({
           >
             <ArrowRightLeft size={16} aria-hidden />
           </Button>
-          <MarkCompleteButton dutyId={duty.id} dutyName={duty.name} variant="icon" csrfToken={csrfToken} />
+          {isEa ? (
+            <span
+              data-testid="ea-covering-badge"
+              className="inline-flex items-center gap-xs px-sm h-7 rounded-md bg-info-soft text-info text-footnote font-semibold"
+              aria-label={`Covering ${duty.name}`}
+            >
+              <Check size={12} aria-hidden />
+              Covering
+            </span>
+          ) : (
+            <MarkCompleteButton
+              dutyId={duty.id}
+              dutyName={duty.name}
+              variant="icon"
+              csrfToken={csrfToken}
+            />
+          )}
         </div>
       </div>
       {/* Inline reminders — the big win of v2. Hidden when none set
