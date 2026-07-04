@@ -88,7 +88,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     ? { 'Set-Cookie': setCookie }
     : undefined;
   return data(
-    { csrfToken: token, phone: session.email },
+    { csrfToken: token },
     headers ? { headers } : undefined,
   );
 }
