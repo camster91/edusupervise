@@ -10,7 +10,7 @@ I run a one-person shop out of Toronto. I work directly with US service business
 
 I've shipped 80+ sites on WordPress, Elementor, Shopify, and WooCommerce over the last five years. The split is roughly 60% WordPress / 40% Shopify. The work most clients hire me for twice is page speed — I regularly lift WordPress and Shopify sites from a 40 mobile PageSpeed score to 85+ without breaking the layout.
 
-I'm also the solo founder of EduSupervise. That's a K-12 supervision-duty scheduler I built after a Toronto teacher told me, in a feedback chat, "I would have a little blurb saying that teachers can use this to start their own duty schedule calendar." 205 teachers signed up in the first 30 days after the solo-teacher launch. The reason it lives on this profile: shipping your own product changes how you ship for clients. You learn what "good enough to charge for" actually means.
+I'm also the solo founder of EduSupervise. That's a K-12 supervision-duty scheduler I built after a Toronto teacher told me, in a feedback chat, "I would have a little blurb saying that teachers can use this to start their own duty schedule calendar." 205 teachers signed up in the first 30 days after the solo-teacher launch (per `docs/runbooks/solo-funnel.sql`, historical pre-launch metric). The reason it lives on this profile: shipping your own product changes how you ship for clients. You learn what "good enough to charge for" actually means.
 
 For client work, my default is a fixed-price quote after a short scope call. No hourly surprises. No "let me run this by the team." No bloated plugin stack — every plugin in the build is one I'd ship in my own product.
 
