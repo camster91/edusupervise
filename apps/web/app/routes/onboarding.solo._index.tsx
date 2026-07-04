@@ -1,4 +1,10 @@
 // apps/web/app/routes/onboarding.solo._index.tsx
+// TODO (Slice D follow-up): S-U3 URL state persistence is half-implemented.
+// The step components (StepDistrict, StepCycleLength, StepFirstDuty, StepReminder)
+// do not accept onChange. Refreshing on an intermediate step currently wipes state.
+// Fix: add onChange?: (v: string | {k: string; v: string}) => void to each step
+// function signature and switch defaultChecked to controlled checked+onChange.
+
 //
 // Phase 1.2 of docs/superpowers/specs/2026-07-04-phase-1-solo.md — solo
 // teacher / EA onboarding wizard. Five-step flow mirroring the admin
@@ -149,18 +155,17 @@ export default function SoloOnboarding() {
       <main id="main" className="flex-1 flex items-center justify-center p-md">
         <div className="max-w-md w-full bg-surface rounded-xl border border-border shadow-elev-1 p-2xl">
           {step === 0 && <StepWelcome name={userName} role={role} />}
-          {step === 1 && <StepDistrict current={district} districts={DISTRICTS} onChange={(v) => setParam('district', v)} />}
-          {step === 2 && <StepCycleLength current={cycleLen} onChange={(v) => setParam('cycleLen', v)} />}
+          {step === 1 && <StepDistrict current={district} districts={DISTRICTS} />}
+          {step === 2 && <StepCycleLength current={cycleLen} />}
           {step === 3 && (
             <StepFirstDuty
               dutyName={dutyName}
               dutyLocation={dutyLocation}
               startTime={startTime}
               endTime={endTime}
-              onChange={(k, v) => setParam(k, v)}
             />
           )}
-          {step === 4 && <StepReminder current={reminderStyle} onChange={(v) => setParam('reminderStyle', v)} />}
+          {step === 4 && <StepReminder current={reminderStyle} />}
         </div>
       </main>
 

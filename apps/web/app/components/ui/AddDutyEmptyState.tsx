@@ -12,10 +12,11 @@
 import { Link } from 'react-router';
 import { Plus, Sparkles } from 'lucide-react';
 import { cn } from '../../lib/cn';
+import type { UserRole } from '@edusupervise/db';
 
 export interface AddDutyEmptyStateProps {
   /** User's role. Determines whether we show the author CTA. */
-  role: 'school_admin' | 'teacher' | 'substitute';
+  role: UserRole;
   /** When true, render compact (single row, no body). Used inside grids. */
   compact?: boolean;
   className?: string;

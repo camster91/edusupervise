@@ -80,6 +80,7 @@ export default function UploadPdfPage() {
     try {
       const form = new FormData();
       form.append('file', file);
+      if (!csrfToken) { setError('Session expired \u2014 reload the page.'); setBusy(false); return; }
       form.append('csrf', csrfToken);
       const res = await fetch('/api/onboarding/upload-pdf', {
         method: 'POST',

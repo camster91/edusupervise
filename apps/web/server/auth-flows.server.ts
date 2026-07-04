@@ -145,7 +145,8 @@ export async function consumeToken(
   // Lazy import keeps the typecheck in this module decoupled from
   // the @edusupervise/db build (avoids the stale dist + this file's
   // type errors round-tripping during dev).
-  const { authVerification, and, eq, gt } = await import('@edusupervise/db');
+  const { authVerification } = await import('@edusupervise/db');
+  const { and, eq, gt } = await import('drizzle-orm');
   const now = new Date();
   try {
     // 1. Find a non-expired row matching identifier + value

@@ -188,7 +188,7 @@ export async function listRemindersForDuties(
         notifyEmail: r.notifyEmail,
         notifySms: r.notifySms,
         customMessage: r.customMessage,
-        createdAt: r.createdAt,
+        createdAt: r.createdAt.toISOString(),
       });
       out.set(r.dutyId, list);
     }
