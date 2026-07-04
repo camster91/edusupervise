@@ -119,7 +119,7 @@ export default function SoloOnboarding() {
   }
 
   return (
-    <div className="min-h-content bg-bg flex flex-col">
+    <div className="min-h-[min-content] bg-bg flex flex-col">
       {/* Progress dots — ARIA progressbar with active step marked aria-current (audit S-U2). */}
       <div
         role="progressbar"

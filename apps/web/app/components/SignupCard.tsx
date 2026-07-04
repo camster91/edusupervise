@@ -53,6 +53,14 @@ export function SignupCard(props: SignupCardProps): React.ReactElement {
       : undefined;
   const error = navError ?? actionData?.error;
 
+  /**
+   * Map a server error string to the field it belongs to (best-effort
+   * keyword matching — server returns human strings, not codes). Audit
+   * S-U8: render the same message inline next to the field AND keep
+   * the bottom-of-form summary for general errors.
+   */
+  const inlineError = error ? fieldForError(error) : null;
+
   return (
     <div
       className={

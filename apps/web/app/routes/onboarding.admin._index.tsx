@@ -72,9 +72,9 @@ export default function AdminOnboarding() {
   }
 
   return (
-    <div className="min-h-content bg-bg flex flex-col">
+    <div className="min-h-[min-content] bg-bg flex flex-col">
       {/* Progress dots \u2014 ARIA progressbar with active step aria-current (audit S-U2).
-          S-U5: outer div caps at min-h-content so the card isn't floating in
+          S-U5: outer div caps at min-h-[min-content] so the card isn't floating in
           the middle of a 1080p desktop screen. */}
       <div
         role="progressbar"
