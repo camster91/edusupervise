@@ -429,7 +429,7 @@ function redis(): IORedis | null {
   if (_redis) return _redis;
   _redis = new IORedis(url, {
     db: 1,
-    enableOfflineQueue: false,
+    enableOfflineQueue: true,
     maxRetriesPerRequest: 1,
     lazyConnect: false,
   });
@@ -486,7 +486,3 @@ async function hashRequest(body: unknown): Promise<string> {
   return createHash('sha256').update(JSON.stringify(body)).digest('hex');
 }
 
-// Suppress unused — kept for parity with sibling routes that may
-// need origin-checking in a future iteration.
-void timingSafeEqual;
-void ParsedRow;

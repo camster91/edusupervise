@@ -50,6 +50,7 @@
 // pure and easy to test.
 
 import { execFile, type ChildProcess } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
@@ -148,7 +149,7 @@ function getRedis(): IORedis | null {
   if (_redis) return _redis;
   _redis = new IORedis(url, {
     db: 1,
-    enableOfflineQueue: false,
+    enableOfflineQueue: true,
     maxRetriesPerRequest: 1,
     lazyConnect: false,
   });
@@ -309,16 +310,32 @@ interface ExtractErr {
 type ExtractResult = ExtractOk | ExtractErr;
 
 function resolveScriptPath(): string | null {
-  // When running from the bundled RR7 server, `import.meta.url` points
-  // at apps/web/server/pdf-parser.server.ts. The Python helper sits
-  // next to it. In a vitest test, cwd may differ — fall back to
-  // `process.cwd()/apps/web/server/pdf_extract.py`.
+  // The Python helper is co-located with this module in the source
+  // tree (apps/web/server/pdf_extract.py), preserved in the runtime
+  // image by the Dockerfile's `COPY --from=build /app/apps/web/server`
+  // step. But this module's `import.meta.url` at runtime points to
+  // the BUNDLED location under apps/web/build/server/assets/, not the
+  // source location. So we walk up the path to find the first
+  // directory that contains a `server/pdf_extract.py` sibling.
+  //
+  // In vitest, `import.meta.url` points at the .ts file directly, so
+  // the sibling-lookup succeeds on the first hop.
   try {
     const here = path.dirname(fileURLToPath(import.meta.url));
-    const candidate = path.resolve(here, 'pdf_extract.py');
-    // Existence check is done at exec time via the child's fs; here we
-    // only resolve the path string.
-    return candidate;
+    let dir = here;
+    for (let i = 0; i < 6; i += 1) {
+      const candidate = path.join(dir, 'pdf_extract.py');
+      if (existsSync(candidate)) return candidate;
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+    // Final fallback: derive from the working directory of the running
+    // process. In docker the cwd is /app/apps/web (set by the CMD
+    // sh -c), so the relative path lands at /app/apps/web/server/.
+    const cwdCandidate = path.resolve(process.cwd(), 'server', 'pdf_extract.py');
+    if (existsSync(cwdCandidate)) return cwdCandidate;
+    return null;
   } catch {
     return null;
   }
