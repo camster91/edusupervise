@@ -7,7 +7,7 @@ So I built three things.
 **1. Solo teacher path.**
 You don't need a school admin to start.
 Sign up. Run the 5-step wizard. Your own duty rotation in under 10 minutes.
-205 teachers signed up in the first 30 days.
+Solo teachers are signing up — the early feedback loop is working.
 
 **2. Educational Assistants are a real user type now.**
 They get assigned to specific slots.
