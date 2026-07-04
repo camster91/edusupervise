@@ -439,19 +439,10 @@ export default function Today() {
                   onSwap={() => { setActiveDuty(d); setSwapOpen(true); }}
                   csrfToken={csrfToken}
                   groupCount={colleagues.length}
+                  role={role}
                 />
               );
             })}
-            {myDuties.map((d) => (
-              <DutyCard
-                key={d.id}
-                duty={d}
-                reminders={reminderMap[d.id] ?? []}
-                onSwap={() => { setActiveDuty(d); setSwapOpen(true); }}
-                csrfToken={csrfToken}
-                role={role}
-              />
-            ))}
           </ul>
         )}
       </section>
