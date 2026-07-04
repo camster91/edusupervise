@@ -36,7 +36,7 @@ export function StatsRow({ cards, className }: StatsRowProps): React.ReactElemen
   return (
     <div
       className={cn(
-        'grid gap-md',
+        'grid gap-sm md:gap-md',
         // 1 col on phones, 2 on iPad portrait, 4 on iPad landscape.
         'grid-cols-2 md:grid-cols-2 lg:grid-cols-4',
         className,
@@ -57,7 +57,7 @@ function StatCard(props: StatCardData): React.ReactElement {
       className={cn(
         'flex items-center gap-md',
         'bg-surface rounded-xl border border-border shadow-elev-1',
-        'px-lg py-lg',
+        'px-md py-md md:px-lg md:py-lg',
         'transition-colors duration-fast',
         props.href && 'hover:bg-surface-2 cursor-pointer',
       )}
