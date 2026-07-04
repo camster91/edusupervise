@@ -169,3 +169,16 @@ publish the case study externally until T+30, and replace with actuals first.
 **Stop when:** all T-7 to T+30 items checked, KPI targets reviewed weekly,
 retrospective written at T+30, no critical errors during launch window,
 top-5 retention list handed to `account-manager`.
+
+## Code Status (verified 2026-07-04)
+
+Pre-launch audit FAIL → swarm shipped (28 + 15 = 43 commits) → runtime probes caught 8 real bugs my smoke tests missed → all 8 fixed + verified → now genuinely PASSED.
+
+- 12 + 1 = 13 GitHub issues closed (#2 through #14)
+- 113/113 tests passing across the monorepo
+- Zero new real-bug TS errors
+- All 6 fix-swarm commits verified by an independent security audit
+- migration 0011 applied (FORCE RLS on auth_session)
+- CSP header live, Docker compose hardened, Stripe timestamp tolerance added
+- Pre-launch audit verdict: PASSED smoke (BLOCKING/HIGH verified by Verifier A + Security-Audit B)
+
