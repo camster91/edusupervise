@@ -24,9 +24,11 @@ import { logger } from './logger.server';
 // ---------------------------------------------------------------------------
 
 /**
- * Token kinds stored in auth_verification.identifier column.
- * The schema's `kind` enum (verify_email, verify_phone, password_reset,
- * magic_link) maps 1:1 to these strings.
+ * Token kinds. The auth_verification table does NOT have a `kind` column —
+ * callers (password reset, magic link, verify-email) look up by
+ * (identifier, value) and the route context implicitly determines kind.
+ * This constant is kept so callers + log lines can speak a common
+ * vocabulary, but consumeToken does not filter by it.
  */
 export const TOKEN_KIND = {
   VERIFY_EMAIL: 'verify_email',
@@ -110,16 +112,92 @@ export async function persistToken(
  * Stub: return ok=true unconditionally.
  */
 export async function consumeToken(
-  _db: unknown,
+  db: unknown,
   _kind: TokenKind,
-  _identifier: string,
-  _token: string,
-): Promise<{ ok: boolean; reason?: 'not_found' | 'expired' | 'used' | 'mismatch' }> {
-  logger.info(
-    { kind: _kind, identifier: _identifier, stub: true },
-    'auth-flows.consumeToken: stubbed — would SELECT + UPDATE auth_verification',
-  );
-  return { ok: true };
+  identifier: string,
+  token: string,
+): Promise<TokenValidationResult> {
+  // The auth_verification table is keyed on (identifier, value). The kind
+  // parameter is carried by the caller for log clarity but is NOT
+  // stored on the row — multiple kinds can share the same identifier
+  // (e.g. a user verifying email AND requesting a password reset) and
+  // the token value is unique per call. One-shot semantics: the row
+  // is DELETEd on success so a leaked token cannot be replayed.
+  //
+  // The db param is the Drizzle client returned by getSystemClient() in
+  // the caller (reset.tsx, auth.magic.tsx, verify-email.tsx). It is
+  // typed as `unknown` here because the auth-flows module deliberately
+  // stays decoupled from the db package's typed surface — it only
+  // needs the small set of query methods that match better_auth's
+  // auth_verification contract.
+  const drizzleDb = db as {
+    select: (...args: unknown[]) => {
+      from: (table: unknown) => {
+        where: (...conds: unknown[]) => {
+          limit: (n: number) => Promise<{ id: string; expiresAt: Date }[]>;
+        };
+      };
+    };
+    delete: (...args: unknown[]) => {
+      where: (...conds: unknown[]) => Promise<unknown>;
+    };
+  };
+  // Lazy import keeps the typecheck in this module decoupled from
+  // the @edusupervise/db build (avoids the stale dist + this file's
+  // type errors round-tripping during dev).
+  const { authVerification, and, eq, gt } = await import('@edusupervise/db');
+  const now = new Date();
+  try {
+    // 1. Find a non-expired row matching identifier + value
+    const rows = await drizzleDb
+      .select({ id: authVerification.id, expiresAt: authVerification.expiresAt })
+      .from(authVerification)
+      .where(
+        and(
+          eq(authVerification.identifier, identifier),
+          eq(authVerification.value, token),
+          gt(authVerification.expiresAt, now),
+        ),
+      )
+      .limit(1);
+    const row = rows[0];
+    if (!row) {
+      // Could be not_found, expired, or mismatch — all three are "the
+      // token is not valid right now" from the caller's perspective.
+      // The single-shot DELETE pattern means used tokens also return
+      // not_found. We do NOT distinguish in the response (avoids
+      // token enumeration / timing oracles).
+      logger.info(
+        { kind: _kind, identifier },
+        'auth-flows.consumeToken: token not found or expired',
+      );
+      return { ok: false, reason: 'not_found' };
+    }
+    // 2. One-shot: delete the row so the same token can't be reused.
+    await drizzleDb
+      .delete(authVerification)
+      .where(
+        and(
+          eq(authVerification.id, row.id),
+          // Belt-and-suspenders: only delete if still not expired.
+          // In practice the just-read row IS the row, but this guards
+          // against a race where expiresAt is updated between the
+          // SELECT and the DELETE.
+          gt(authVerification.expiresAt, new Date()),
+        ),
+      );
+    logger.info(
+      { kind: _kind, identifier, rowId: row.id },
+      'auth-flows.consumeToken: token consumed',
+    );
+    return { ok: true };
+  } catch (err) {
+    logger.error(
+      { err, kind: _kind, identifier },
+      'auth-flows.consumeToken: DB error',
+    );
+    return { ok: false, reason: 'not_found' };
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -151,29 +229,16 @@ export async function findUserByEmail(
 // Token validation
 // ---------------------------------------------------------------------------
 
+/**
+ * Result of a one-shot token consumption. `ok=true` means the token was
+ * valid (matched identifier + value + not-expired) and has been deleted
+ * from auth_verification. `ok=false` means the caller should treat the
+ * token as invalid (could be not_found / expired / used — we don't
+ * distinguish in the response to avoid token-enumeration oracles).
+ */
 export interface TokenValidationResult {
   ok: boolean;
   reason?: 'not_found' | 'expired' | 'used' | 'mismatch';
-}
-
-/**
- * Stub for `SELECT FROM auth_verification WHERE identifier=? AND value=?`.
- * Real implementation: open a transaction, mark `used=true` so the
- * token is single-use, return ok=true. For now: just pretend every
- * token is valid (the route handlers will return success UI and the
- * user can navigate to the next step).
- *
- * TODO when wiring real email/sms:
- *   1. Look up the token in auth_verification
- *   2. Check expires_at > now()
- *   3. Atomically mark as used
- *   4. Return ok=false with reason if any check fails
- */
-export function validateAuthToken(
-  _identifier: string,
-  _token: string,
-): TokenValidationResult {
-  return { ok: true };
 }
 
 // ---------------------------------------------------------------------------
