@@ -16,6 +16,8 @@ export default [
   // Onboarding (Phase 2A — Apple HIG spec)
   route('onboarding/teacher', 'routes/onboarding.teacher._index.tsx'),
   route('onboarding/admin', 'routes/onboarding.admin._index.tsx'),
+  // Phase 2 (2026-07-04) — PDF schedule ingestion review UI.
+  route('onboarding/pdf-review', 'routes/onboarding.pdf-review._index.tsx'),
   // Phase 1 — solo teacher / EA wizard.
   route('onboarding/solo', 'routes/onboarding.solo._index.tsx'),
 
@@ -57,6 +59,9 @@ export default [
   route('api/signup/demo', 'routes/api.signup.demo.ts'),
   // Phase 1.2 — wizard final-submit endpoint.
   route('api/onboarding/solo', 'routes/api.onboarding.solo.ts'),
+  // Phase 2 (2026-07-04) — PDF schedule ingestion.
+  route('api/onboarding/upload-pdf', 'routes/api.onboarding.upload-pdf.ts'),
+  route('api/onboarding/confirm-pdf', 'routes/api.onboarding.confirm-pdf.ts'),
 
   // Demo reset (authenticated school_admin only)
   route('app/api/demo/reset', 'routes/app.api.demo.reset.ts'),

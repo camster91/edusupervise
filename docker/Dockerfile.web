@@ -34,6 +34,24 @@ FROM node:22-alpine AS runtime
 ENV NODE_ENV=production
 ENV PORT=3011
 WORKDIR /app
+# Phase 2 (2026-07-04): PDF schedule ingestion. We shell out to
+# pdfplumber from `apps/web/server/pdf-parser.server.ts`, which means
+# the runtime image needs Python 3 + pdfplumber on PATH. Alpine ships
+# `python3` in the community repo; `pip` comes from the `py3-pip`
+# package. pdfplumber pulls pdfminer.six (pure Python) — Pillow is
+# optional and we don't need it because we only call `extract_tables()`,
+# not `to_image()`.
+#
+# We keep the install tight (`--no-cache`) so the layer doesn't ship
+# the apk index, and pin pdfplumber to a known-good version so a
+# future upstream change can't silently break PDF parsing.
+#
+# Why we don't install `pillow` or `cryptography`: pdfplumber's
+# `extract_tables()` works without them, and Alpine + pip + C
+# extensions is a notoriously fragile combination (missing
+# libffi-dev / jpeg-dev headers). Keep this minimal.
+RUN apk add --no-cache python3 py3-pip \
+    && pip3 install --no-cache-dir --break-system-packages 'pdfplumber==0.11.4'
 # Copy the full workspace tree (node_modules, source, build artifacts).
 # Pnpm creates per-workspace node_modules via symlinks pointing to the
 # .pnpm store, so we need the entire tree — not just /app/node_modules.
@@ -45,6 +63,14 @@ COPY --from=build /app/apps/web/vite.config.ts ./apps/web/vite.config.ts
 COPY --from=build /app/apps/web/node_modules ./apps/web/node_modules
 COPY --from=build /app/packages ./packages
 COPY --from=build /app/node_modules ./node_modules
+# Phase 2: pre-create the uploads root and chown it to `node:node` so
+# the unprivileged `node` user (USER node below) can write staged PDFs.
+# The host bind-mount at /data/uploads will overlay this in compose;
+# in compose the host dir's perms govern (we chown it via an entrypoint
+# step if needed, but the empty dir we create here survives any
+# non-bind case). Mode 2775 = setgid + owner-writable so future
+# subdirs inherit the group, matching the existing /data/uploads dir.
+RUN mkdir -p /app/uploads && chown -R node:node /app/uploads && chmod 2775 /app/uploads
 EXPOSE 3011
 USER node
 # Use react-router-serve to run the RR7 bundle. apps/web/build/server/index.js
