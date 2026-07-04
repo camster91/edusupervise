@@ -33,7 +33,7 @@ const variantConfig: Record<
 export interface BannerProps {
   variant?: BannerVariant;
   /** Banner body — keep under 140 chars. */
-  message: string;
+  message: ReactNode;
   /** Optional inline action (button) shown to the right of the message. */
   action?: {
     label: string;
