@@ -66,9 +66,12 @@ export async function loader({ request }: Route.LoaderArgs) {
 }
 
 export default function CoveragePage() {
-  const { events, role, teachers, plan } = useLoaderData<typeof loader>();
-  const appData = useRouteLoaderData('routes/_app') as { csrfToken?: string } | undefined;
+  const { events, teachers, plan } = useLoaderData<typeof loader>();
+  const appData = useRouteLoaderData('routes/_app') as
+    | { csrfToken?: string; user?: { role: 'school_admin' | 'teacher' | 'educational_assistant' | 'substitute' } }
+    | undefined;
   const csrfToken = appData?.csrfToken ?? '';
+  const role = appData?.user?.role;
   const [createOpen, setCreateOpen] = useState(false);
   const fetcher = useFetcher();
   const [upgradeReason, setUpgradeReason] = useState<UpgradeReason | null>(null);
