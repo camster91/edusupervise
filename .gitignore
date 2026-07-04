@@ -34,6 +34,9 @@ coverage/
 # Drizzle
 drizzle/.snapshots/
 
+# React Router 7 build artifact (auto-regenerated on every build)
+apps/web/.react-router/
+
 # Postgres data
 /data/postgres/
 /data/redis/
