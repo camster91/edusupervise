@@ -2,7 +2,7 @@
 
 ## Summary
 
-EduSupervise is a K-12 supervision-duty scheduler I built and shipped solo. A teacher signs up, drops in their school's duty rotation (PDF or typed), and gets a printable, mobile-ready weekly schedule with automatic reminders 15 minutes before each duty. In the first 30 days after launching the solo-teacher path, 205 teachers signed up.
+EduSupervise is a K-12 supervision-duty scheduler I built and shipped solo. A teacher signs up, drops in their school's duty rotation (PDF or typed), and gets a printable, mobile-ready weekly schedule with automatic reminders 15 minutes before each duty. In the first 30 days after launching the solo-teacher path, 205 teachers signed up (per `docs/runbooks/solo-funnel.sql`).
 
 ## The problem
 
@@ -30,7 +30,7 @@ The brief wasn't "build us a tool" — it was "let me see my own duty slot witho
 
 ## Outcome
 
-- **205 teachers signed up** in the first 30 days after the solo path launched (vs. 50 school-admins in the same window — solo is 4× the funnel)
+- **205 teachers signed up** in the first 30 days after the solo path launched (per `docs/runbooks/solo-funnel.sql`) (vs. 50 school-admins in the same window — solo is 4× the funnel)
 - **14 Educational Assistants** onboarded as a separate role in that same window
 - **PDF ingestion:** sub-500ms p95 parse time on real district-format PDFs, zero hallucination (table extraction, not vision models)
 - **Auth-gated routes** verified: 401 unauth, 503 system-down, 403 wrong-role all return clean JSON
