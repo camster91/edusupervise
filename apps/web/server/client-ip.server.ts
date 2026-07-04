@@ -73,19 +73,6 @@ export function clientIp(request: Request): string {
 }
 
 /**
- * Test seam: reset the cached TRUST_PROXY value. Used by the unit
- * test in client-ip.test.ts to flip the env between cases without
- * re-importing the module.
- */
-export function __resetTrustProxyForTests(value: boolean): void {
-  // We can't actually mutate the const, but tests can flip
-  // process.env.TRUST_PROXY and then re-import the module via
-  // `vi.resetModules()`. This helper exists for symmetry with
-  // other __reset*ForTests seams in the codebase.
-  process.env.TRUST_PROXY = value ? '1' : '0';
-}
-
-/**
  * Returns the current trust-proxy mode. Exposed for tests + the
  * /api/health endpoint so an operator can confirm at a glance.
  */
