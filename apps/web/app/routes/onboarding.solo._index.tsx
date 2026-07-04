@@ -90,7 +90,7 @@ const DISTRICTS: Array<{ id: string; label: string }> = [
 
 export default function SoloOnboarding() {
   const { csrfToken, userName, role } = useLoaderData<typeof loader>();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const step = parseStep(params.get('step'));
 
   // Inputs read back from URL params (refresh-safe source of truth).
@@ -102,6 +102,14 @@ export default function SoloOnboarding() {
   const endTime = params.get('endTime') ?? '11:00';
   const reminderStyle = params.get('reminderStyle') ?? '15m_email';
 
+  // Lift radio/select state up to the URL on every change so a refresh
+  // on an intermediate step retains the selection (audit S-U3).
+  function setParam(key: string, value: string): void {
+    const next = new URLSearchParams(params);
+    next.set(key, value);
+    setParams(next, { replace: true, preventScrollReset: true });
+  }
+
   function nextHref(next: Step, overrides: Record<string, string> = {}): string {
     const merged = new URLSearchParams(params);
     merged.delete('step');
@@ -111,9 +119,16 @@ export default function SoloOnboarding() {
   }
 
   return (
-    <div className="min-h-screen bg-bg flex flex-col">
-      {/* Progress dots */}
-      <div className="px-md pt-md flex items-center justify-center gap-xs">
+    <div className="min-h-content bg-bg flex flex-col">
+      {/* Progress dots — ARIA progressbar with active step marked aria-current (audit S-U2). */}
+      <div
+        role="progressbar"
+        aria-valuemin={1}
+        aria-valuemax={STEPS.length}
+        aria-valuenow={step + 1}
+        aria-valuetext={`Step ${step + 1} of ${STEPS.length}: ${STEPS[step]}`}
+        className="px-md pt-md flex items-center justify-center gap-xs"
+      >
         {STEPS.map((label, i) => (
           <div
             key={label}
@@ -125,34 +140,40 @@ export default function SoloOnboarding() {
                   ? 'w-1.5 bg-accent'
                   : 'w-1.5 bg-divider')
             }
-            aria-label={`Step ${i + 1} of ${STEPS.length}: ${label}`}
+            aria-current={i === step ? 'step' : undefined}
+            aria-label={i === step ? `Step ${i + 1} of ${STEPS.length}: ${label} (current)` : undefined}
           />
         ))}
       </div>
 
-      <div className="flex-1 flex items-center justify-center p-md">
+      <main id="main" className="flex-1 flex items-center justify-center p-md">
         <div className="max-w-md w-full bg-surface rounded-xl border border-border shadow-elev-1 p-2xl">
           {step === 0 && <StepWelcome name={userName} role={role} />}
-          {step === 1 && <StepDistrict current={district} districts={DISTRICTS} />}
-          {step === 2 && <StepCycleLength current={cycleLen} />}
+          {step === 1 && <StepDistrict current={district} districts={DISTRICTS} onChange={(v) => setParam('district', v)} />}
+          {step === 2 && <StepCycleLength current={cycleLen} onChange={(v) => setParam('cycleLen', v)} />}
           {step === 3 && (
             <StepFirstDuty
               dutyName={dutyName}
               dutyLocation={dutyLocation}
               startTime={startTime}
               endTime={endTime}
+              onChange={(k, v) => setParam(k, v)}
             />
           )}
-          {step === 4 && <StepReminder current={reminderStyle} />}
+          {step === 4 && <StepReminder current={reminderStyle} onChange={(v) => setParam('reminderStyle', v)} />}
         </div>
-      </div>
+      </main>
 
-      {/* Footer \u2014 Back / Next (or Finish on the last step) */}
-      <div className="px-md pb-md max-w-md w-full mx-auto flex items-center justify-between">
+      {/* Footer — Back / Next (or Finish on the last step). Every interactive
+          sits on min-h/min-w 44px for WCAG 2.5.5 Target Size (audit S-U4). */}
+      <nav
+        aria-label="Wizard navigation"
+        className="px-md pb-md max-w-md w-full mx-auto flex items-center justify-between gap-sm"
+      >
         {step > 0 ? (
           <Link
             to={nextHref((step - 1) as Step)}
-            className="inline-flex items-center gap-xs text-callout text-secondary hover:text-primary transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded"
+            className="inline-flex items-center gap-xs min-h-[var(--touch-target-min)] min-w-[var(--touch-target-min)] px-sm text-callout text-secondary hover:text-primary transition-colors duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-md"
           >
             <ArrowLeft size={18} aria-hidden />
             Back
@@ -160,7 +181,7 @@ export default function SoloOnboarding() {
         ) : (
           <Link
             to="/app/today"
-            className="text-callout text-secondary hover:text-primary"
+            className="inline-flex items-center min-h-[var(--touch-target-min)] min-w-[var(--touch-target-min)] px-sm text-callout text-secondary hover:text-primary"
           >
             Skip for now
           </Link>
@@ -178,7 +199,7 @@ export default function SoloOnboarding() {
                 endTime,
               }),
             )}
-            className="inline-flex items-center gap-sm text-callout font-semibold bg-accent text-on-accent hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 transition-opacity duration-fast px-md h-btn-md rounded-md"
+            className="inline-flex items-center gap-sm min-h-[var(--touch-target-min)] min-w-[var(--touch-target-min)] text-callout font-semibold bg-accent text-on-accent hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 transition-opacity duration-fast px-md rounded-md"
           >
             Next
             <ArrowRight size={18} aria-hidden />
@@ -195,12 +216,10 @@ export default function SoloOnboarding() {
             reminderStyle={reminderStyle}
           />
         )}
-      </div>
+      </nav>
     </div>
   );
-}
-
-// ---------------------------------------------------------------------------
+}// ---------------------------------------------------------------------------
 // Step components. Each is a single visual block; none exceeds 50 lines
 // of JSX so we keep them in this file rather than splitting into
 // SoloStep*.tsx per spec section 1.2 ("extract if JSX exceeds 50 lines").

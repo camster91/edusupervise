@@ -72,9 +72,18 @@ export default function AdminOnboarding() {
   }
 
   return (
-    <div className="min-h-screen bg-bg flex flex-col">
-      {/* Progress dots */}
-      <div className="px-md pt-md flex items-center justify-center gap-xs">
+    <div className="min-h-content bg-bg flex flex-col">
+      {/* Progress dots \u2014 ARIA progressbar with active step aria-current (audit S-U2).
+          S-U5: outer div caps at min-h-content so the card isn't floating in
+          the middle of a 1080p desktop screen. */}
+      <div
+        role="progressbar"
+        aria-valuemin={1}
+        aria-valuemax={STEPS.length}
+        aria-valuenow={step + 1}
+        aria-valuetext={`Step ${step + 1} of ${STEPS.length}: ${STEPS[step]}`}
+        className="px-md pt-md flex items-center justify-center gap-xs"
+      >
         {STEPS.map((label, i) => (
           <div
             key={label}
@@ -86,12 +95,13 @@ export default function AdminOnboarding() {
                   ? 'w-1.5 bg-accent'
                   : 'w-1.5 bg-divider')
             }
-            aria-label={`Step ${i + 1} of ${STEPS.length}: ${label}`}
+            aria-current={i === step ? 'step' : undefined}
+            aria-label={i === step ? `Step ${i + 1} of ${STEPS.length}: ${label} (current)` : undefined}
           />
         ))}
       </div>
 
-      <div className="flex-1 flex items-center justify-center p-md">
+      <main id="main" className="flex-1 flex items-center justify-center p-md">
         <div className="max-w-md w-full bg-surface rounded-xl border border-border shadow-elev-1 p-2xl">
           {step === 0 && (
             <Step
@@ -223,7 +233,7 @@ export default function AdminOnboarding() {
             </Step>
           )}
         </div>
-      </div>
+      </main>
 
       {/* Footer */}
       <div className="px-md pb-md max-w-md w-full mx-auto flex items-center justify-between">

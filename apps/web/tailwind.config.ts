@@ -129,6 +129,12 @@ export default {
         'content': 'var(--max-content-width)',
       },
 
+      // audit S-U5: cap wizard card height on tall viewports so the
+      // card isn't floating in the middle of a 1080p desktop screen.
+      minHeight: {
+        'content': 'min-content',
+      },
+
       height: {
         'tabbar':  'var(--tab-bar-height)',
         'topbar':  'var(--topbar-height)',
