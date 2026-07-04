@@ -37,6 +37,7 @@ import { renderToPipeableStream } from 'react-dom/server';
 import { randomUUID } from 'node:crypto';
 
 import { logger } from '../server/logger.server';
+import { recordHttpRequest, routePatternFor, setDbPoolCount } from '../server/metrics.server';
 
 // RR7 requires `streamTimeout` for the response stream. Five minutes is
 // the canonical default — long enough that very slow SSR (e.g. on a cold
@@ -120,12 +121,26 @@ export default async function handleRequest(
 ): Promise<Response> {
   const requestId = mintRequestId(request);
   const startedAt = Date.now();
+  // Skip /metrics from the HTTP histogram. The scraper hits
+  // /metrics every 15s in prod — counting those against the
+  // request rate would dominate the dashboard and obscure real
+  // user traffic. The Registry itself still emits all counters;
+  // we just don't push a sample into the histogram for this path.
+  const url = new URL(request.url);
+  const isMetricsScrape = url.pathname === '/metrics';
   const childLog = logger.child({
     requestId,
     method: request.method,
     url: request.url,
   });
   childLog.debug('request received');
+  // Initialize the DB-pool gauge with the runtime singleton count.
+  // The web container opens exactly one Drizzle client (see
+  // db.server.ts#getDb); the system client only opens on the
+  // worker container. Recording a 0 for 'system' here makes the
+  // label set complete on the first scrape (audit B10).
+  setDbPoolCount('runtime', 1);
+  setDbPoolCount('system', 0);
 
   // Forward the request id back to the client so log correlation works
   // even when the request starts at a CDN or proxy.
@@ -177,11 +192,22 @@ export default async function handleRequest(
           );
 
           pipe(body);
+          // Record Prometheus sample (audit B10, 2026-07-04).
+          // Skipped for /metrics scrapes to avoid self-observation.
+          if (!isMetricsScrape) {
+            recordHttpRequest(
+              request.method,
+              routePatternFor(url.pathname),
+              responseStatusCode,
+              (Date.now() - startedAt) / 1000,
+            );
+          }
           childLog.info(
             {
               status: responseStatusCode,
               durationMs: Date.now() - startedAt,
               stream: 'pipeable',
+              metricRecorded: !isMetricsScrape,
             },
             'request completed',
           );

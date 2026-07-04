@@ -51,8 +51,19 @@ export default [
     route('app/settings/billing', 'routes/_app.settings.billing.tsx'),
   ]),
 
-  // Health check (no auth)
+  // Health probes (no auth). /healthz + /health share one handler
+  // (DB ping + uptime) and resolve under the standard K8s/Docker
+  // probe paths. /api/health stays as the legacy JSON endpoint
+  // used by the docker-compose healthcheck (audit B11, 2026-07-04).
+  // Explicit `id:` so each path maps to a distinct RR7 route ID,
+  // not a collision from the shared file path (audit B11).
+  route('healthz', 'routes/healthz.tsx', { id: 'healthz' }),
+  route('health', 'routes/healthz.tsx', { id: 'health' }),
   route('api/health', 'routes/api.health.tsx'),
+  // Prometheus scrape endpoint (anonymous; restrict at firewall).
+  // Excludes itself from the HTTP histogram (see recordHttpRequest
+  // call site in entry.server.tsx) (audit B10, 2026-07-04).
+  route('metrics', 'routes/metrics.tsx'),
 
   // Favicon (served as SVG, silently replaces the 404)
   route('favicon.ico', 'routes/favicon[.]ico.ts'),
