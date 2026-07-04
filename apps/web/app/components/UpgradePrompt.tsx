@@ -39,7 +39,7 @@ import {
   DialogHeader,
   DialogFooter,
 } from './ui/Dialog';
-import { Button } from './ui/Button';
+import { Button, buttonClassName } from './ui/Button';
 
 // ---------------------------------------------------------------------------
 // Types
@@ -131,17 +131,16 @@ export function UpgradePrompt({
           >
             Not now
           </Button>
-          <Button variant="primary" size="md" asChild>
-            <a
-              href={upgradePlan ? `/api/billing/checkout?plan=${upgradePlan}` : '/app/settings/billing'}
-              data-method="post"
-              data-csrf={reason.upgrade_url ? 'auto' : undefined}
-            >
-              {upgradePlan
-                ? `Upgrade to ${capitalize(upgradePlan)}${tierPrice(upgradePlan) ? ` — ${tierPrice(upgradePlan)}` : ''}`
-                : 'Compare plans'}
-            </a>
-          </Button>
+          <a
+            href={upgradePlan ? `/api/billing/checkout?plan=${upgradePlan}` : '/app/settings/billing'}
+            data-method="post"
+            data-csrf={reason.upgrade_url ? 'auto' : undefined}
+            className={buttonClassName({ variant: 'primary', size: 'md' })}
+          >
+            {upgradePlan
+              ? `Upgrade to ${capitalize(upgradePlan)}${tierPrice(upgradePlan) ? ` — ${tierPrice(upgradePlan)}` : ''}`
+              : 'Compare plans'}
+          </a>
         </DialogFooter>
       </DialogContent>
     </Dialog>
