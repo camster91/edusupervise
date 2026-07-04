@@ -1,0 +1,101 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1584 396" width="1584" height="396" role="img" aria-label="Cameron Ashley — WordPress + Shopify Developer — Top Rated on Upwork">
+  <title>Cameron Ashley — WordPress + Shopify Developer</title>
+  <desc>LinkedIn cover banner: deep navy with amber accent. Left: name + role. Right: Top Rated, 80+ projects, $100K+ earned stats.</desc>
+
+  <defs>
+    <!-- Background gradient: deep slate navy, subtle vignette -->
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0F172A"/>
+      <stop offset="100%" stop-color="#0B1220"/>
+    </linearGradient>
+
+    <!-- Amber accent gradient (sparingly used) -->
+    <linearGradient id="amberBar" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#F59E0B"/>
+      <stop offset="100%" stop-color="#FBBF24"/>
+    </linearGradient>
+
+    <!-- Subtle dot grid pattern for right-side panel -->
+    <pattern id="dotGrid" x="0" y="0" width="24" height="24" patternUnits="userSpaceOnUse">
+      <circle cx="1.2" cy="1.2" r="1.2" fill="#1E293B"/>
+    </pattern>
+
+    <style>
+      /* system-ui fallback chain — no external font load */
+      .sans { font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif; }
+      .mono { font-family: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace; }
+    </style>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1584" height="396" fill="url(#bg)"/>
+
+  <!-- Right-side dot grid panel (subtle texture) -->
+  <rect x="900" y="0" width="684" height="396" fill="url(#dotGrid)" opacity="0.55"/>
+
+  <!-- Thin amber accent stripe (top, full width) -->
+  <rect x="0" y="0" width="1584" height="3" fill="url(#amberBar)"/>
+
+  <!-- ===== LEFT BLOCK: identity ===== -->
+  <!-- Eyebrow tag with amber dot -->
+  <g class="sans" transform="translate(80, 84)">
+    <circle cx="6" cy="6" r="5" fill="#F59E0B"/>
+    <text x="22" y="11" font-size="16" font-weight="600" letter-spacing="2.4" fill="#F59E0B">TOP RATED UPWORK · WORDPRESS + SHOPIFY</text>
+  </g>
+
+  <!-- Name (huge) -->
+  <text x="80" y="178" class="sans" font-size="76" font-weight="800" fill="#FFFFFF" letter-spacing="-1.5">Cameron Ashley</text>
+
+  <!-- Role line -->
+  <text x="80" y="222" class="sans" font-size="24" font-weight="500" fill="#94A3B8">Conversion-focused dev for brands that want results.</text>
+
+  <!-- Stack chips -->
+  <g class="sans" transform="translate(80, 270)">
+    <g>
+      <rect x="0" y="0" width="118" height="36" rx="18" fill="#1E293B" stroke="#334155" stroke-width="1"/>
+      <text x="59" y="23" font-size="14" font-weight="600" fill="#E2E8F0" text-anchor="middle">WordPress</text>
+    </g>
+    <g transform="translate(128, 0)">
+      <rect x="0" y="0" width="100" height="36" rx="18" fill="#1E293B" stroke="#334155" stroke-width="1"/>
+      <text x="50" y="23" font-size="14" font-weight="600" fill="#E2E8F0" text-anchor="middle">Shopify</text>
+    </g>
+    <g transform="translate(238, 0)">
+      <rect x="0" y="0" width="148" height="36" rx="18" fill="#1E293B" stroke="#334155" stroke-width="1"/>
+      <text x="74" y="23" font-size="14" font-weight="600" fill="#E2E8F0" text-anchor="middle">Figma → WP</text>
+    </g>
+    <g transform="translate(396, 0)">
+      <rect x="0" y="0" width="120" height="36" rx="18" fill="#1E293B" stroke="#334155" stroke-width="1"/>
+      <text x="60" y="23" font-size="14" font-weight="600" fill="#E2E8F0" text-anchor="middle">Elementor</text>
+    </g>
+  </g>
+
+  <!-- Location / tagline footer line -->
+  <text x="80" y="358" class="sans" font-size="14" font-weight="500" fill="#64748B" letter-spacing="1.5">TORONTO · CAMERONASHLEY.CA · UPWORK TOP RATED</text>
+
+  <!-- Vertical separator between blocks -->
+  <line x1="900" y1="60" x2="900" y2="336" stroke="#1E293B" stroke-width="1"/>
+
+  <!-- ===== RIGHT BLOCK: stats ===== -->
+  <!-- Stat 1: Top Rated -->
+  <g transform="translate(960, 96)">
+    <!-- Star mark -->
+    <path d="M14 0 L17.5 9 L27 9 L19.5 14.5 L22.5 24 L14 18.5 L5.5 24 L8.5 14.5 L1 9 L10.5 9 Z" fill="#F59E0B"/>
+    <text x="42" y="20" class="sans" font-size="14" font-weight="700" letter-spacing="2" fill="#F59E0B">UPWORK</text>
+    <text x="0" y="70" class="sans" font-size="42" font-weight="800" fill="#FFFFFF" letter-spacing="-1">Top Rated</text>
+    <text x="0" y="100" class="sans" font-size="16" font-weight="500" fill="#94A3B8">100% Job Success</text>
+  </g>
+
+  <!-- Stat 2: 80+ Projects -->
+  <g transform="translate(960, 232)">
+    <!-- Geometric marker: stacked rectangles -->
+    <rect x="0" y="2" width="22" height="22" rx="3" fill="none" stroke="#F59E0B" stroke-width="2"/>
+    <rect x="6" y="8" width="22" height="22" rx="3" fill="none" stroke="#F59E0B" stroke-width="2" opacity="0.7"/>
+    <text x="44" y="22" class="sans" font-size="14" font-weight="700" letter-spacing="2" fill="#F59E0B">SHIPPED</text>
+    <text x="0" y="70" class="sans" font-size="42" font-weight="800" fill="#FFFFFF" letter-spacing="-1">80+</text>
+    <text x="78" y="70" class="sans" font-size="20" font-weight="500" fill="#94A3B8">projects</text>
+    <text x="0" y="100" class="sans" font-size="16" font-weight="500" fill="#94A3B8">$100K+ earned</text>
+  </g>
+
+  <!-- Decorative amber corner accent -->
+  <path d="M1584 396 L1584 320 L1508 396 Z" fill="#F59E0B" opacity="0.9"/>
+</svg>
