@@ -1,9 +1,4 @@
 // apps/web/app/routes/onboarding.solo._index.tsx
-// TODO (Slice D follow-up): S-U3 URL state persistence is half-implemented.
-// The step components (StepDistrict, StepCycleLength, StepFirstDuty, StepReminder)
-// do not accept onChange. Refreshing on an intermediate step currently wipes state.
-// Fix: add onChange?: (v: string | {k: string; v: string}) => void to each step
-// function signature and switch defaultChecked to controlled checked+onChange.
 
 //
 // Phase 1.2 of docs/superpowers/specs/2026-07-04-phase-1-solo.md — solo
@@ -155,17 +150,18 @@ export default function SoloOnboarding() {
       <main id="main" className="flex-1 flex items-center justify-center p-md">
         <div className="max-w-md w-full bg-surface rounded-xl border border-border shadow-elev-1 p-2xl">
           {step === 0 && <StepWelcome name={userName} role={role} />}
-          {step === 1 && <StepDistrict current={district} districts={DISTRICTS} />}
-          {step === 2 && <StepCycleLength current={cycleLen} />}
+          {step === 1 && <StepDistrict current={district} districts={DISTRICTS} onChange={(v) => setParam('district', v)} />}
+          {step === 2 && <StepCycleLength current={cycleLen} onChange={(v) => setParam('cycleLen', v)} />}
           {step === 3 && (
             <StepFirstDuty
               dutyName={dutyName}
               dutyLocation={dutyLocation}
               startTime={startTime}
               endTime={endTime}
+              onChange={(k, v) => setParam(k, v)}
             />
           )}
-          {step === 4 && <StepReminder current={reminderStyle} />}
+          {step === 4 && <StepReminder current={reminderStyle} onChange={(v) => setParam('reminderStyle', v)} />}
         </div>
       </main>
 
@@ -251,9 +247,11 @@ function StepWelcome({
 function StepDistrict({
   current,
   districts,
+  onChange,
 }: {
   current: string;
   districts: Array<{ id: string; label: string }>;
+  onChange?: (v: string) => void;
 }): React.ReactElement {
   return (
     <Step
@@ -276,7 +274,8 @@ function StepDistrict({
               type="radio"
               name="district"
               value={d.id}
-              defaultChecked={current === d.id}
+              checked={current === d.id}
+              onChange={(e) => onChange?.(e.target.value)}
               form="onboard-form-final"
               className="sr-only"
             />
@@ -301,7 +300,13 @@ function StepDistrict({
   );
 }
 
-function StepCycleLength({ current }: { current: string }): React.ReactElement {
+function StepCycleLength({
+  current,
+  onChange,
+}: {
+  current: string;
+  onChange?: (v: string) => void;
+}): React.ReactElement {
   return (
     <Step
       icon={<CalendarRange size={32} className="text-accent" aria-hidden />}
@@ -327,7 +332,8 @@ function StepCycleLength({ current }: { current: string }): React.ReactElement {
               type="radio"
               name="cycleLen"
               value={opt.id}
-              defaultChecked={current === opt.id}
+              checked={current === opt.id}
+              onChange={(e) => onChange?.(e.target.value)}
               form="onboard-form-final"
               className="sr-only"
             />
@@ -358,11 +364,13 @@ function StepFirstDuty({
   dutyLocation,
   startTime,
   endTime,
+  onChange,
 }: {
   dutyName: string;
   dutyLocation: string;
   startTime: string;
   endTime: string;
+  onChange?: (k: string, v: string) => void;
 }): React.ReactElement {
   return (
     <Step
@@ -377,6 +385,7 @@ function StepFirstDuty({
           defaultValue={dutyName}
           placeholder="Morning recess"
           maxLength={80}
+          onChange={(e) => onChange?.('dutyName', e.target.value)}
         />
         <Field
           label="Where is it?"
@@ -384,6 +393,7 @@ function StepFirstDuty({
           defaultValue={dutyLocation}
           placeholder="Front doors"
           maxLength={80}
+          onChange={(e) => onChange?.('dutyLocation', e.target.value)}
         />
         <div className="grid grid-cols-2 gap-sm">
           <Field
@@ -391,12 +401,14 @@ function StepFirstDuty({
             name="startTime"
             defaultValue={startTime}
             type="time"
+            onChange={(e) => onChange?.('startTime', e.target.value)}
           />
           <Field
             label="End time"
             name="endTime"
             defaultValue={endTime}
             type="time"
+            onChange={(e) => onChange?.('endTime', e.target.value)}
           />
         </div>
         <p className="text-footnote text-secondary">
@@ -408,7 +420,13 @@ function StepFirstDuty({
   );
 }
 
-function StepReminder({ current }: { current: string }): React.ReactElement {
+function StepReminder({
+  current,
+  onChange,
+}: {
+  current: string;
+  onChange?: (v: string) => void;
+}): React.ReactElement {
   return (
     <Step
       icon={<Bell size={32} className="text-accent" aria-hidden />}
@@ -446,7 +464,8 @@ function StepReminder({ current }: { current: string }): React.ReactElement {
               type="radio"
               name="reminderStyle"
               value={opt.id}
-              defaultChecked={current === opt.id}
+              checked={current === opt.id}
+              onChange={(e) => onChange?.(e.target.value)}
               form="onboard-form-final"
               className="sr-only"
             />
@@ -513,6 +532,7 @@ function Field({
   placeholder,
   maxLength,
   type = 'text',
+  onChange,
 }: {
   label: string;
   name: string;
@@ -520,6 +540,7 @@ function Field({
   placeholder?: string;
   maxLength?: number;
   type?: string;
+  onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void;
 }): React.ReactElement {
   return (
     <label className="block">
@@ -532,6 +553,7 @@ function Field({
         defaultValue={defaultValue}
         placeholder={placeholder}
         maxLength={maxLength}
+        onChange={onChange}
         form="onboard-form-final"
         className="w-full h-input px-md bg-surface border border-border rounded-md text-body text-primary focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition-colors duration-fast"
       />
