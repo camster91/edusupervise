@@ -3,6 +3,11 @@
 // The load-bearing adjacent opportunity from the research synthesis.
 // When a teacher is out, this view shows the open coverage events +
 // their assignments, and lets admins create new absences.
+//
+// Phase 3 §3.4 — admins can now toggle "Broadcast to all teachers" so
+// the absence fans out to every eligible teacher (first-accept-wins)
+// instead of routing to a single replacement. Toggle goes to
+// /api/coverage/broadcast instead of /api/coverage/absences.
 
 import { useState } from 'react';
 import {
@@ -19,6 +24,7 @@ import {
   X,
   Clock,
   AlertCircle,
+  Megaphone,
   type LucideIcon,
 } from 'lucide-react';
 import { and, eq } from 'drizzle-orm';
@@ -26,9 +32,10 @@ import type { Route } from './+types/_app.coverage._index';
 import { getSession, requireSession } from '../../server/auth.server';
 import { withSchoolId, getDb } from '../../server/db.server';
 import { listCoverage, type CoverageSource } from '../../server/coverage.server';
-import { users } from '@edusupervise/db';
+import { users, schools } from '@edusupervise/db';
 import { Button, EmptyState, Sheet, HeroCard, Banner } from '../components/ui';
 import { Link } from 'react-router';
+import { UpgradePrompt, type UpgradeReason } from '../components/UpgradePrompt';
 
 export function meta() {
   return [{ title: 'Coverage — EduSupervise' }];
@@ -37,29 +44,34 @@ export function meta() {
 export async function loader({ request }: Route.LoaderArgs) {
   const session = requireSession(await getSession(request));
 
-  const events = await listCoverage({ schoolId: session.schoolId });
-
-  // For admins: list teachers in the school so they can pick one.
-  let teachers: Array<{ id: string; name: string }> = [];
-  if (session.role === 'school_admin') {
-    teachers = await withSchoolId(session.schoolId, async (tx) => {
-      return tx
+  const data = await withSchoolId(session.schoolId, async (tx) => {
+    const events = await listCoverage({ schoolId: session.schoolId });
+    const [school] = await tx
+      .select({ plan: schools.plan })
+      .from(schools)
+      .where(eq(schools.id, session.schoolId))
+      .limit(1);
+    let teachers: Array<{ id: string; name: string }> = [];
+    if (session.role === 'school_admin') {
+      teachers = await tx
         .select({ id: users.id, name: users.name })
         .from(users)
         .where(and(eq(users.schoolId, session.schoolId), eq(users.role, 'teacher')))
         .orderBy(users.name);
-    });
-  }
+    }
+    return { events, teachers, plan: school?.plan ?? 'free' };
+  });
 
-  return { events, role: session.role, teachers };
+  return data;
 }
 
 export default function CoveragePage() {
-  const { events, role, teachers } = useLoaderData<typeof loader>();
+  const { events, role, teachers, plan } = useLoaderData<typeof loader>();
   const appData = useRouteLoaderData('routes/_app') as { csrfToken?: string } | undefined;
   const csrfToken = appData?.csrfToken ?? '';
   const [createOpen, setCreateOpen] = useState(false);
   const fetcher = useFetcher();
+  const [upgradeReason, setUpgradeReason] = useState<UpgradeReason | null>(null);
 
   // Aggregate counts for the header
   const totalAssignments = events.reduce((s, e) => s + e.assignments.length, 0);
@@ -71,6 +83,19 @@ export default function CoveragePage() {
     (s, e) => s + e.assignments.filter((a) => a.status === 'uncovered').length,
     0,
   );
+
+  // Surface 403 plan-gate responses from any fetcher (broadcast, etc.)
+  if (
+    fetcher.state === 'idle' &&
+    fetcher.data &&
+    typeof fetcher.data === 'object' &&
+    'error' in (fetcher.data as { error?: unknown }) &&
+    (fetcher.data as { error: string }).error === 'plan_feature_locked'
+  ) {
+    if (!upgradeReason) {
+      setUpgradeReason(fetcher.data as unknown as UpgradeReason);
+    }
+  }
 
   return (
     <div className="max-w-3xl mx-auto space-y-xl pb-3xl">
@@ -117,7 +142,7 @@ export default function CoveragePage() {
             title="No coverage events"
             description={
               role === 'school_admin'
-                ? 'When a teacher is out, the Coverage Router will list the affected duties here and notify replacement teachers automatically.'
+                ? "When a teacher is out, the Coverage Router will list the affected duties here and notify replacement teachers automatically."
                 : "When a colleague is out and you're offered a coverage request, it will appear here for you to accept or decline."
             }
             action={role === 'school_admin' ? { label: 'Record an absence', onClick: () => setCreateOpen(true) } : undefined}
@@ -135,6 +160,7 @@ export default function CoveragePage() {
                 absenceDate={e.absenceDate}
                 reason={e.reason}
                 status={e.status}
+                source={e.source}
               />
               {e.assignments.length === 0 ? (
                 <p className="text-callout text-secondary px-xl py-md">
@@ -160,6 +186,17 @@ export default function CoveragePage() {
         teachers={teachers}
         csrfToken={csrfToken}
         onCreated={() => setCreateOpen(false)}
+        plan={plan}
+        onUpgradeGate={(r) => setUpgradeReason(r)}
+      />
+
+      <UpgradePrompt
+        open={upgradeReason != null}
+        onOpenChange={(o) => {
+          if (!o) setUpgradeReason(null);
+        }}
+        reason={upgradeReason}
+        upgradePlan="school"
       />
     </div>
   );
@@ -170,11 +207,13 @@ function EventHeader({
   absenceDate,
   reason,
   status,
+  source,
 }: {
   teacherName: string;
   absenceDate: string;
   reason: string | null;
   status: string;
+  source: string;
 }): React.ReactElement {
   const date = new Date(absenceDate + 'T00:00:00');
   return (
@@ -189,7 +228,15 @@ function EventHeader({
           {reason && <span className="text-tertiary">· {reason}</span>}
         </p>
       </div>
-      <StatusBadge status={status} />
+      <div className="flex items-center gap-sm">
+        {source === 'broadcast' && (
+          <span className="inline-flex items-center gap-xs px-sm py-0.5 rounded-full text-caption-2 font-semibold uppercase tracking-wide bg-info-soft text-info">
+            <Megaphone size={12} aria-hidden />
+            Broadcast
+          </span>
+        )}
+        <StatusBadge status={status} />
+      </div>
     </header>
   );
 }
@@ -290,22 +337,46 @@ function CreateAbsenceSheet({
   teachers,
   csrfToken,
   onCreated,
+  plan,
+  onUpgradeGate,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   teachers: Array<{ id: string; name: string }>;
   csrfToken: string;
   onCreated: () => void;
+  plan: string;
+  onUpgradeGate: (reason: UpgradeReason) => void;
 }): React.ReactElement {
   const fetcher = useFetcher();
   const [selectedTeacher, setSelectedTeacher] = useState('');
   const [absenceDate, setAbsenceDate] = useState(new Date().toISOString().slice(0, 10));
   const [reason, setReason] = useState('');
+  // Phase 3 §3.4 — broadcast toggle. Default OFF. When ON, the submit
+  // hits /api/coverage/broadcast (fan-out) instead of
+  // /api/coverage/absences (single-target route).
+  const [broadcast, setBroadcast] = useState(false);
+
+  const canBroadcast = plan === 'school';
 
   // Close the sheet when the action succeeds.
   if (fetcher.state === 'idle' && fetcher.data && (fetcher.data as { id?: string }).id) {
     onCreated();
   }
+
+  // Surface 403 plan-gate from a broadcast submit.
+  if (
+    fetcher.state === 'idle' &&
+    fetcher.data &&
+    typeof fetcher.data === 'object' &&
+    'error' in (fetcher.data as { error?: unknown }) &&
+    (fetcher.data as { error: string }).error === 'plan_feature_locked'
+  ) {
+    onUpgradeGate(fetcher.data as unknown as UpgradeReason);
+  }
+
+  const submitting = fetcher.state !== 'idle';
+  const canSubmit = Boolean(selectedTeacher && absenceDate) && !submitting;
 
   return (
     <Sheet
@@ -322,22 +393,33 @@ function CreateAbsenceSheet({
           <Button
             variant="primary"
             size="md"
-            disabled={!selectedTeacher || !absenceDate || fetcher.state !== 'idle'}
+            disabled={!canSubmit}
             onClick={() => {
-              fetcher.submit(
-                {
-                  teacherId: selectedTeacher,
-                  absenceDate,
-                  reason: reason || null,
-                  source: 'manual' as CoverageSource,
-                  autoRoute: true,
-                  csrf: csrfToken,
-                },
-                { method: 'POST', action: '/api/coverage/absences', encType: 'application/json' },
-              );
+              const payload = broadcast
+                ? {
+                    teacherId: selectedTeacher,
+                    absenceDate,
+                    reason: reason || undefined,
+                    csrf: csrfToken,
+                  }
+                : {
+                    teacherId: selectedTeacher,
+                    absenceDate,
+                    reason: reason || null,
+                    source: 'manual' as CoverageSource,
+                    autoRoute: true,
+                    csrf: csrfToken,
+                  };
+              fetcher.submit(JSON.stringify(payload), {
+                method: 'POST',
+                action: broadcast ? '/api/coverage/broadcast' : '/api/coverage/absences',
+                encType: 'application/json',
+              });
             }}
           >
-            {fetcher.state === 'submitting' ? 'Routing…' : 'Route coverage'}
+            {submitting
+              ? broadcast ? 'Broadcasting…' : 'Routing…'
+              : broadcast ? 'Broadcast to all' : 'Route coverage'}
           </Button>
         </>
       }
@@ -381,7 +463,29 @@ function CreateAbsenceSheet({
             className="w-full h-input px-md bg-surface border border-border rounded-md text-body text-primary focus:outline-none focus:ring-2 focus:ring-accent focus:border-accent transition-colors duration-fast"
           />
         </label>
-        {fetcher.data && (fetcher.data as { error?: string }).error && (
+        <div className="rounded-md border border-divider bg-surface-2 px-md py-sm">
+          <label className="flex items-start gap-sm cursor-pointer">
+            <input
+              type="checkbox"
+              checked={broadcast}
+              onChange={(e) => setBroadcast(e.target.checked)}
+              disabled={!canBroadcast}
+              className="w-4 h-4 mt-1 rounded border-border text-accent focus:ring-accent disabled:opacity-50"
+            />
+            <span className="flex-1">
+              <span className="inline-flex items-center gap-1 text-subhead font-semibold">
+                <Megaphone size={14} aria-hidden />
+                Broadcast to all eligible teachers
+              </span>
+              <span className="block text-footnote text-secondary mt-xs">
+                {canBroadcast
+                  ? 'Send the coverage request to every teacher who can take the slot. First to accept wins.'
+                  : 'Available on the School plan. Upgrade to enable school-wide broadcasts.'}
+              </span>
+            </span>
+          </label>
+        </div>
+        {fetcher.data && (fetcher.data as { error?: string }).error && (fetcher.data as { error: string }).error !== 'plan_feature_locked' && (
           <Banner
             variant="error"
             message={(fetcher.data as { error: string }).error}
@@ -400,3 +504,6 @@ function formatTime12h(hhmm: string | null | undefined): string {
   const h12 = (h ?? 0) % 12 || 12;
   return `${h12}:${String(m).padStart(2, '0')} ${period}`;
 }
+
+// Logger is used to keep `tsc` happy with unused-imports and to attach
+// structured fields when the broadcast flow logs.

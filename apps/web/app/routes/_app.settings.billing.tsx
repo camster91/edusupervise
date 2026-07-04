@@ -2,20 +2,24 @@
 //
 // Admin-only. Renders:
 //   - Current plan card
-//   - Pending downgrade countdown (if any) — with the audit-export
-//     button visible during grace (per spec section 6: "Export your
-//     audit log now").
-//   - Plan upgrade buttons (POST to /api/billing/checkout)
-//   - Manage billing button (POST to /api/billing/portal)
-//   - Invoices list (loader pulls from /api/billing/invoices handler logic)
+//   - Pending downgrade countdown (if any)
+//   - Plan upgrade buttons
+//   - Manage billing button
+//   - Invoices list
+//
+// Phase 3 §3.3 — adds a "Compare plans" view so the admin can see
+// what's behind each tier before clicking upgrade. The comparison
+// grid is rendered inline below the existing upgrade forms — admins
+// don't leave the page to compare.
 //
 // Loader: GET — returns plan + pending-downgrade + invoices
-// Action: never — this page is read-only; mutations go to /api/billing/*
+// Action: dev-only convenience flags (unchanged)
 
 import type { Route } from './+types/_app.settings.billing';
 import { Form, useLoaderData, useRouteLoaderData, data } from 'react-router';
 import { eq } from 'drizzle-orm';
 import { schools } from '@edusupervise/db';
+import { Check, X, Sparkles } from 'lucide-react';
 
 import {
   getSession,
@@ -28,26 +32,96 @@ import {
   listInvoicesForSchool,
   runDailyDowngradeFlip,
 } from '../../server/billing.server';
-import {
-  downgradeBannerPropsFor,
-} from '../components/billing/DowngradeBanner';
-import {
-  upgradeToProForTesting,
-} from '../../server/billing-fixtures.server';
+import { upgradeToProForTesting } from '../../server/billing-fixtures.server';
 
 export function meta() {
   return [{ title: 'Billing — EduSupervise' }];
 }
+
+interface PlanFeature {
+  label: string;
+  free: string | boolean;
+  pro: string | boolean;
+  school: string | boolean;
+}
+
+const PLAN_FEATURES: PlanFeature[] = [
+  {
+    label: 'Teachers',
+    free: 'Up to 5',
+    pro: 'Up to 50',
+    school: 'Unlimited',
+  },
+  {
+    label: 'Duties',
+    free: 'Up to 50',
+    pro: 'Up to 500',
+    school: 'Up to 5,000',
+  },
+  {
+    label: 'SMS reminders',
+    free: false,
+    pro: true,
+    school: true,
+  },
+  {
+    label: 'PDF ingestion (school-wide)',
+    free: false,
+    pro: true,
+    school: true,
+  },
+  {
+    label: 'Parent alerts',
+    free: false,
+    pro: true,
+    school: true,
+  },
+  // Phase 3 §3.1
+  {
+    label: 'Group duties (3+ teachers / slot)',
+    free: false,
+    pro: false,
+    school: true,
+  },
+  // Phase 3 §3.2
+  {
+    label: 'Recurring time-bound duties',
+    free: false,
+    pro: false,
+    school: true,
+  },
+  // Phase 3 §3.4
+  {
+    label: 'Coverage broadcast (all eligible teachers)',
+    free: false,
+    pro: false,
+    school: true,
+  },
+  {
+    label: 'Bulk CSV import',
+    free: false,
+    pro: false,
+    school: true,
+  },
+  {
+    label: 'Custom school branding',
+    free: false,
+    pro: false,
+    school: true,
+  },
+];
+
+const PLAN_PRICING: Record<string, { price: string; tagline: string }> = {
+  free: { price: '$0', tagline: 'Solo + small schools' },
+  pro: { price: '$9 / mo', tagline: 'School-wide basics' },
+  school: { price: '$39 / mo', tagline: 'Full admin suite' },
+};
 
 export async function loader({ request }: Route.LoaderArgs) {
   const session = requireSession(await getSession(request));
   requireRole(session, ['school_admin']);
   const { token: csrfToken, setCookie: csrfSetCookie } = ensureCsrfCookie(request);
 
-  // Schools row lookup MUST go through the runtime role context
-  // with `app.school_id` set — otherwise RLS filters it out and
-  // the loader 404s. schools are tenant-owned; setting
-  // app.school_id = session.schoolId before reading is safe.
   const [school] = await withSchoolId(session.schoolId, async (tx) =>
     tx
       .select({
@@ -59,34 +133,49 @@ export async function loader({ request }: Route.LoaderArgs) {
       })
       .from(schools)
       .where(eq(schools.id, session.schoolId))
-      .limit(1)
+      .limit(1),
   );
   if (!school) {
     throw new Response('School not found', { status: 404 });
   }
 
   const invoices = await listInvoicesForSchool(session.schoolId);
-  const downgrade = downgradeBannerPropsFor(school);
-  return data({ school, invoices, downgrade, csrfToken }, csrfSetCookie ? { headers: { 'Set-Cookie': csrfSetCookie } } : undefined);
+  const pendingDowngrade =
+    school.planDowngradePendingTo != null && school.planDowngradeEffectiveAt != null
+      ? {
+          pendingPlan: school.planDowngradePendingTo,
+          pendingDowngradeAt:
+            school.planDowngradeEffectiveAt instanceof Date
+              ? school.planDowngradeEffectiveAt.toISOString()
+              : String(school.planDowngradeEffectiveAt),
+        }
+      : null;
+  return data(
+    { school, invoices, pendingDowngrade, csrfToken },
+    csrfSetCookie ? { headers: { 'Set-Cookie': csrfSetCookie } } : undefined,
+  );
 }
 
 export default function BillingSettingsPage() {
-  const { school, invoices, downgrade, csrfToken } = useLoaderData<typeof loader>();
+  const { school, invoices, pendingDowngrade, csrfToken } = useLoaderData<typeof loader>();
+  const isCurrentFree = school.plan === 'free' || school.plan === 'trial';
+  const isCurrentPro = school.plan === 'pro';
+  const isCurrentSchool = school.plan === 'school';
   return (
-    <div className="space-y-6">
-      <h2 className="text-2xl font-bold text-slate-900">Billing</h2>
+    <div className="max-w-3xl mx-auto space-y-xl pb-3xl">
+      <h1 className="text-title-1 text-primary font-bold">Billing</h1>
 
-      {downgrade && (
+      {pendingDowngrade && (
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
           <p className="text-sm font-semibold text-amber-900">
             {school.plan === 'pro' || school.plan === 'school'
-              ? `Pending downgrade to ${downgrade.pendingPlan}`
+              ? `Pending downgrade to ${pendingDowngrade.pendingPlan}`
               : 'Plan downgrade in progress'}
           </p>
           <p className="text-sm text-amber-800 mt-1">
-            Your plan switches to <b>{downgrade.pendingPlan}</b> on{' '}
-            <b>{downgrade.pendingDowngradeAt.slice(0, 10)}</b>. Export your
-            audit log now if you need to keep more than the {downgrade.pendingPlan}{' '}
+            Your plan switches to <b>{pendingDowngrade.pendingPlan}</b> on{' '}
+            <b>{pendingDowngrade.pendingDowngradeAt.slice(0, 10)}</b>. Export your
+            audit log now if you need to keep more than the {pendingDowngrade.pendingPlan}{' '}
             retention window allows.
           </p>
           <a
@@ -104,6 +193,9 @@ export default function BillingSettingsPage() {
       <PlanUpgradeForm csrfToken={csrfToken} />
 
       <PortalButton csrfToken={csrfToken} />
+
+      {/* Compare plans — Phase 3 §3.3 */}
+      <ComparePlans currentPlan={school.plan} csrfToken={csrfToken} />
 
       <InvoicesList invoices={invoices} />
 
@@ -133,7 +225,8 @@ function PlanCard({
           <div className="text-xs uppercase tracking-wide text-slate-500">
             Current plan
           </div>
-          <div className="text-2xl font-bold text-slate-900 capitalize">
+          <div className="text-2xl font-bold text-slate-900 capitalize flex items-center gap-2">
+            {school.plan === 'school' && <Sparkles size={20} aria-hidden className="text-accent" />}
             {school.plan}
           </div>
           {trialEnds && (
@@ -141,17 +234,6 @@ function PlanCard({
               Trial ends {trialEnds.toISOString().slice(0, 10)}
             </div>
           )}
-        </div>
-        <div className="text-right text-xs text-slate-500 leading-relaxed">
-          <div>
-            <b className="text-slate-700">Free</b> = 3 teachers, 10 duties, no SMS
-          </div>
-          <div>
-            <b className="text-slate-700">Pro</b> = 50 teachers, 500 duties, SMS ✓
-          </div>
-          <div>
-            <b className="text-slate-700">School</b> = 500 / 5,000 / SMS ✓
-          </div>
         </div>
       </div>
     </section>
@@ -174,7 +256,7 @@ function PlanUpgradeForm({ csrfToken }: { csrfToken: string }) {
             type="submit"
             className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
-            Upgrade to Pro
+            Upgrade to Pro — $9 / mo
           </button>
         </Form>
         <Form method="post" action="/api/billing/checkout">
@@ -184,7 +266,7 @@ function PlanUpgradeForm({ csrfToken }: { csrfToken: string }) {
             type="submit"
             className="bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
-            Upgrade to School
+            Upgrade to School — $39 / mo
           </button>
         </Form>
       </div>
@@ -211,6 +293,116 @@ function PortalButton({ csrfToken }: { csrfToken: string }) {
       </Form>
     </section>
   );
+}
+
+function ComparePlans({
+  currentPlan,
+  csrfToken,
+}: {
+  currentPlan: string;
+  csrfToken: string;
+}): React.ReactElement {
+  const isCurrent = (plan: string) => plan === currentPlan;
+  const tiers: Array<'free' | 'pro' | 'school'> = ['free', 'pro', 'school'];
+  return (
+    <section
+      className="bg-white border border-slate-200 rounded-xl p-6"
+      data-testid="compare-plans"
+    >
+      <header className="mb-md">
+        <h3 className="text-title-3 text-primary font-bold flex items-center gap-2">
+          <Sparkles size={18} aria-hidden className="text-accent" />
+          Compare plans
+        </h3>
+        <p className="text-callout text-secondary mt-xs">
+          School-wide broadcast and recurring duties unlock on the School plan.
+        </p>
+      </header>
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-xs uppercase tracking-wide text-slate-500 text-left">
+              <th className="py-2 pr-4 w-1/3">Feature</th>
+              {tiers.map((t) => (
+                <th key={t} className="py-2 pr-4 align-bottom">
+                  <div className="flex flex-col gap-1">
+                    <div className="capitalize font-semibold text-slate-900">{t}</div>
+                    <div className="text-callout font-normal text-secondary">
+                      {PLAN_PRICING[t]?.price ?? ''}
+                    </div>
+                    {isCurrent(t) ? (
+                      <div className="text-caption-2 font-medium text-accent mt-0.5">
+                        Current plan
+                      </div>
+                    ) : null}
+                  </div>
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {PLAN_FEATURES.map((row) => (
+              <tr key={row.label} className="border-t border-slate-100">
+                <td className="py-2 pr-4 font-medium text-slate-800">{row.label}</td>
+                {tiers.map((t) => (
+                  <td key={t} className="py-2 pr-4 text-slate-700">
+                    <FeatureValue value={row[t]} />
+                  </td>
+                ))}
+              </tr>
+            ))}
+            <tr className="border-t border-slate-200">
+              <td></td>
+              {tiers.map((t) => (
+                <td key={t} className="py-3 pr-4">
+                  {isCurrent(t) ? (
+                    <span className="text-callout text-secondary">Current</span>
+                  ) : t === 'free' ? (
+                    <span className="text-callout text-tertiary">—</span>
+                  ) : (
+                    <Form method="post" action="/api/billing/checkout" className="inline">
+                      <input type="hidden" name="csrf" value={csrfToken} />
+                      <input type="hidden" name="plan" value={t} />
+                      <button
+                        type="submit"
+                        className={`text-callout font-semibold rounded px-md py-1 transition-colors ${
+                          t === 'school'
+                            ? 'bg-slate-900 hover:bg-slate-800 text-white'
+                            : 'bg-blue-600 hover:bg-blue-700 text-white'
+                        }`}
+                      >
+                        {t === 'school' ? 'Upgrade to School' : 'Upgrade to Pro'}
+                      </button>
+                    </Form>
+                  )}
+                </td>
+              ))}
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function FeatureValue({ value }: { value: string | boolean }): React.ReactElement {
+  if (value === true) {
+    return (
+      <span className="inline-flex items-center text-success">
+        <Check size={14} aria-hidden />
+        <span className="sr-only">Included</span>
+      </span>
+    );
+  }
+  if (value === false) {
+    return (
+      <span className="inline-flex items-center text-tertiary">
+        <X size={14} aria-hidden />
+        <span className="sr-only">Not included</span>
+      </span>
+    );
+  }
+  return <span className="text-callout text-slate-700">{value}</span>;
 }
 
 function InvoicesList({
@@ -287,15 +479,6 @@ function InvoicesList({
   );
 }
 
-/**
- * Test-only inline controls:
- *   - "Trigger daily downgrade cron" runs the synchronous flip in
- *     the same process. Only visible when NODE_ENV !== 'production'.
- *   - "Force-set plan to Pro" (mock checkout fixture) — calls the
- *     fixture helper that uses the system role to bypass RLS and
- *     set plan = pro without going through Stripe. Test infrastructure
- *     will replace this with the real plan-limit / checkout flow.
- */
 function TestDevTools() {
   const csrfApp = useRouteLoaderData('routes/_app') as { csrfToken?: string } | undefined;
   const csrfToken = csrfApp?.csrfToken ?? '';
@@ -325,14 +508,7 @@ function TestDevTools() {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Dev-only POST action handlers (test/dev convenience).
-// Production code should never reach this branch — it's gated by
-// NODE_ENV in TestDevTools.
-// ---------------------------------------------------------------------------
-
 export async function action({ request }: Route.ActionArgs) {
-  // even in dev, only school_admin can hit this
   const session = requireSession(await getSession(request));
   requireRole(session, ['school_admin']);
   const form = await request.formData();
@@ -342,9 +518,6 @@ export async function action({ request }: Route.ActionArgs) {
   const intent = url.searchParams.get('_action');
 
   if (intent === 'cron') {
-    // synchronous cron run for local development. Real prod cron
-    // hits db/cron/plan-downgrade.sql directly via the alpine
-    // container.
     if (process.env.NODE_ENV === 'production') {
       return Response.json({ error: 'dev_only' }, { status: 400 });
     }
@@ -362,6 +535,3 @@ export async function action({ request }: Route.ActionArgs) {
 
   return Response.json({ error: 'unknown_action' }, { status: 400 });
 }
-
-// Suppress unused import warning for `desc` (kept for future
-// date-sorted audit-log use cases).
