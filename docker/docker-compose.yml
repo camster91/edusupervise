@@ -107,7 +107,15 @@ services:
       # audit slice-5 R-18: enable gzip/brotli compression on the proxy.
       # The middleware is defined in /etc/traefik/dynamic/middlewares.yml.
       - "traefik.http.routers.edusupervise.middlewares=compress-everything@file"
-
+    # Defense-in-depth (audit #14 MEDIUM): drop capabilities, mark
+    # root filesystem read-only, deny new privileges. tmpfs mounts
+    # for /tmp + /var/tmp where Node + bundlers expect to write.
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp
+      - /var/tmp
   worker:
     build:
       context: ..
@@ -141,7 +149,15 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
-
+    # Defense-in-depth (audit #14 MEDIUM): drop capabilities, mark
+    # root filesystem read-only, deny new privileges. tmpfs mounts
+    # for /tmp + /var/tmp where Node + bundlers expect to write.
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp
+      - /var/tmp
   cron:
     image: alpine:3.20
     restart: unless-stopped
@@ -178,3 +194,12 @@ services:
       timeout: 5s
       retries: 3
       start_period: 60s
+    # Defense-in-depth (audit #14 MEDIUM): drop capabilities, mark
+    # root filesystem read-only, deny new privileges. tmpfs mounts
+    # for /tmp + /var/tmp where Node + bundlers expect to write.
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp
+      - /var/tmp
