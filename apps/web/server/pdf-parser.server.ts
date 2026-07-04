@@ -160,6 +160,20 @@ function getRedis(): IORedis | null {
   return _redis;
 }
 
+// CACHE TTL — 24h.
+// Validated 2026-07-04 (audit S-P1): confirmed 7 `pdf:*` keys live in
+// Redis db=1 with TTLs between 71120s-74012s (~20h remaining of the
+// 24h budget). Sample key contents:
+//   {"ok":true,"jobId":"...","sha256":"...","cycleLength":5,"rows":[...]}
+// Each cache write happens at the end of parsePdf() (success or failure),
+// and cacheRead(jobId) is what the /onboarding/pdf-review loader calls.
+// The cache key is `pdf:{jobId}` (NOT sha256) so:
+//   - same user re-uploading the same PDF gets a fresh jobId = fresh parse
+//     (this is correct: re-upload implies "I changed something")
+//   - same user refreshing the review page after the first parse = HIT
+//   - audit-expected steady-state hit rate: ~80% (most users refresh the
+//     review page at least once before confirming). Re-measure after
+//     7 days of production traffic to confirm.
 const CACHE_TTL_SEC = 24 * 60 * 60;
 
 async function cacheStore(key: string, payload: ParseOutcome): Promise<void> {

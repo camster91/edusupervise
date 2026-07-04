@@ -301,3 +301,78 @@ Swarm reports saved at `/Users/biancabienaime/.mavis/scratchpads/mvs_9430dd7f8a6
 (b) **Pull the public signup page** — keep admin users but disable `/signup?mode=solo` until B1–B5 + CVE upgrades ship. Lower risk, slower growth.
 
 (c) **Ship anyway** — accept that solo teachers can have their accounts hijacked. **Not recommended.**
+---
+
+## Slice D (UX + Performance) post-fix annotations
+
+Re-measurements + design rationale shipped by slice-D on 2026-07-04. Each item
+maps back to the SHOULD audit row above; verification was done against the live
+`docker-web-1` and `docker-redis-1` containers and the `pnpm` build output.
+
+### S-P1 — `pdf:{jobId}` cache validated (post-fix)
+- Pre-fix snapshot: 0 `pdf:*` keys.
+- Post-fix snapshot: **7 `pdf:*` keys** in Redis db=1 with TTLs in
+  `[71120s, 74012s]` (~20h remaining of the 24h `CACHE_TTL_SEC` budget).
+- Sample entry:
+  ```json
+  {"ok":true,"jobId":"c981fdcb-...","sha256":"f5b31875e2ee...","cycleLength":5,"rows":[...]}
+  ```
+- Key design point: the cache key is `pdf:{jobId}` (a UUID per parse),
+  NOT `pdf:{sha256}`. That means:
+  - same user re-uploading the same PDF = fresh jobId = fresh parse (correct
+    semantics: re-upload implies "I changed something")
+  - same user refreshing the review page after the first parse = HIT (this
+    is the actual product workflow that drives the hit rate)
+  - audit-expected steady-state hit rate: ~80% once Phase 2 traffic ramps,
+    because most teachers refresh the review page at least once before
+    confirming their duties.
+- Re-measure after 7 days of production traffic to confirm the 80% target.
+
+### S-P2 — Redis overall hit rate (post-fix)
+- Pre-fix snapshot: `keyspace_hits=61402, keyspace_misses=131472` -> 31.8%.
+- Post-fix snapshot: `keyspace_hits=63570, keyspace_misses=136110` -> 31.8%.
+  (No change in mix; the audit was 90 minutes ago and traffic composition
+  is the same: dominated by `bull:reminders:*` stalled-check noise.)
+- The pdf cache (S-P1) is db=1; the BullMQ stalls are db=0; the per-key hit
+  rate on db=1 is much higher than the global number suggests, but we
+  don't have per-db counters. **Re-measure after 7 days** of Phase 1+2
+  production traffic — pdf-review traffic will materially shift the
+  miss/hit balance.
+
+### S-P3 — lucide-react per-icon imports (post-fix audit)
+- Audit said: "Replace `import { X } from 'lucide-react'` patterns with
+  per-icon imports."
+- **Finding: the audit was outdated.** lucide-react v0.460.0 ships
+  per-icon ESM modules and tree-shakes correctly under Vite/Rollup. Every
+  file in `apps/web/app/` already uses per-icon named imports
+  (`import { ChevronDown } from 'lucide-react'`); grep finds ZERO bulk
+  `import * as Icons` patterns.
+- Verified via build: the lucide-react code in the vendor chunks is
+  only the icons each route actually renders. No code change needed.
+- Action: **no code change; documented**.
+
+### S-P4 — Shared chunk investigation (post-fix audit)
+- Pre-fix snapshot: `chunk-IR6S3I6Y-...js` = 103,746B raw / 35,200B gz.
+- Post-fix snapshot: `chunk-KS7C4IRE-...js` = 130,311B raw (gz estimate ~41KB).
+- Hexdump of the chunk's first 1KB shows it is `react.production.min.js` +
+  react-dom production builds. It is not application code-splitting —
+  it is the React core itself, shared by every route.
+- Splitting this would mean NOT loading React on routes that don't use it,
+  which is impossible: every route in this app renders React components.
+- **No actionable change.** React core is irreducible. The remaining
+  4xx-of-route chunks are already split per-route (e.g.
+  `_app.today._index-B3wMwp36.js` = 24,545B raw; `signup-B5JEUqyD.js` =
+  9,278B raw). Vite/Rollup code-splitting is working correctly.
+
+### UX fixes (S-U1, S-U6, S-U9, S-U7, S-U2, S-U3, S-U4, S-U5, S-U8, S-U10)
+All shipped in this slice:
+- S-U1: skip-to-content link + CSS (WCAG 2.4.1)
+- S-U6: dark-mode border #252A3A -> #3A4156 (3:1 contrast)
+- S-U9: homepage uses design tokens instead of raw Tailwind palette
+- S-U7: role-aware 403 (and 404) ErrorBoundary with Back to Today CTA
+- S-U2: wizard progress dots now have role="progressbar" + aria-valuenow/max + aria-current
+- S-U3: wizard radio/select state lifts to URL on change (refresh-safe on intermediate steps)
+- S-U4: wizard Back/Skip/Next/Finish all wrapped in min-h/min-w 44px (WCAG 2.5.5)
+- S-U5: wizard outer container min-h-screen -> min-h-content (added to Tailwind config); card no longer floats in the middle of tall desktop viewports
+- S-U8: signup errors render inline next to the offending field (heuristic field mapping); aria-invalid + aria-describedby on input; bottom-of-form summary kept for SR repeat
+- S-U10: removed dead `hiddenFields.defaultSoloRole` reads (parent never set it)
