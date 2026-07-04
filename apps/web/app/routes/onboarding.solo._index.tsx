@@ -235,7 +235,7 @@ function StepDistrict({
     <Step
       icon={<MapPin size={32} className="text-accent" aria-hidden />}
       title="Where is your school?"
-      description="Pick your province or board. We don't share it \u2014 it helps us suggest patterns when other teachers from the same board sign up."
+      description="Pick your province or board. We don't share it — it helps us suggest patterns when other teachers from the same board sign up."
     >
       <div className="space-y-sm">
         {districts.map((d) => (
@@ -344,7 +344,7 @@ function StepFirstDuty({
     <Step
       icon={<ClipboardList size={32} className="text-accent" aria-hidden />}
       title="Add your first duty"
-      description="Just one \u2014 you can add more later from the Today screen."
+      description="Just one — you can add more later from the Today screen."
     >
       <div className="space-y-md">
         <Field
