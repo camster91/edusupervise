@@ -18,7 +18,7 @@
 // This module only owns CRUD + list-for-display. The worker owns
 // dispatch.
 
-import { and, eq, desc } from 'drizzle-orm';
+import { and, eq, desc, inArray } from 'drizzle-orm';
 import { reminders, dutyAssignments, duties, users, getSystemClient } from '@edusupervise/db';
 import { logger } from './logger.server';
 
@@ -111,6 +111,88 @@ export async function listRemindersForDuty(
       customMessage: r.customMessage,
       createdAt: r.createdAt.toISOString(),
     }));
+  } finally {
+    await close();
+  }
+}
+
+/**
+ * Batch version of {@link listRemindersForDuty}: load reminders for
+ * many duties in a single query (N+1 → 1).
+ *
+ * Performance: the /app/today loader used to call listRemindersForDuty
+ * in a for-loop, once per duty (up to 200 sequential round-trips on
+ * the hottest authenticated route, audit B7 2026-07-04). This
+ * single-call variant fixes the N+1 by filtering with
+ * `dutyAssignments.dutyId IN (...)` and grouping the result by
+ * dutyId in JS.
+ *
+ * Returns a Map<dutyId, ReminderRow[]>. Duties with no reminders
+ * map to []. Duty ids in `dutyIds` that don't exist or don't belong
+ * to `schoolId` are simply omitted from the result.
+ */
+export async function listRemindersForDuties(
+  schoolId: string,
+  dutyIds: string[],
+): Promise<Map<string, ReminderRow[]>> {
+  const out = new Map<string, ReminderRow[]>();
+  for (const id of dutyIds) out.set(id, []);
+  if (dutyIds.length === 0) return out;
+
+  const url = process.env.SYSTEM_DATABASE_URL ?? process.env.DATABASE_URL;
+  if (!url) return out;
+  const { db, close } = getSystemClient(url);
+  try {
+    const rows = await db
+      .select({
+        id: reminders.id,
+        schoolId: reminders.schoolId,
+        assignmentId: reminders.assignmentId,
+        minutesBefore: reminders.minutesBefore,
+        isEnabled: reminders.isEnabled,
+        notifyEmail: reminders.notifyEmail,
+        notifySms: reminders.notifySms,
+        customMessage: reminders.customMessage,
+        createdAt: reminders.createdAt,
+        userId: dutyAssignments.userId,
+        userName: users.name,
+        dutyLocation: duties.location,
+        dutyStartTime: duties.startTime,
+        // Carry dutyId through the join so the caller can group.
+        dutyId: dutyAssignments.dutyId,
+      })
+      .from(reminders)
+      .innerJoin(dutyAssignments, eq(dutyAssignments.id, reminders.assignmentId))
+      .innerJoin(duties, eq(duties.id, dutyAssignments.dutyId))
+      .leftJoin(users, eq(users.id, dutyAssignments.userId))
+      .where(
+        and(
+          eq(reminders.schoolId, schoolId),
+          inArray(dutyAssignments.dutyId, dutyIds),
+        ),
+      )
+      .orderBy(desc(reminders.createdAt));
+
+    for (const r of rows) {
+      const list = out.get(r.dutyId) ?? [];
+      list.push({
+        id: r.id,
+        schoolId: r.schoolId,
+        assignmentId: r.assignmentId,
+        userId: r.userId,
+        userName: r.userName,
+        dutyLocation: r.dutyLocation,
+        dutyStartTime: r.dutyStartTime ?? '',
+        minutesBefore: r.minutesBefore,
+        isEnabled: r.isEnabled,
+        notifyEmail: r.notifyEmail,
+        notifySms: r.notifySms,
+        customMessage: r.customMessage,
+        createdAt: r.createdAt,
+      });
+      out.set(r.dutyId, list);
+    }
+    return out;
   } finally {
     await close();
   }

@@ -53,7 +53,7 @@ import {
 import type { Route } from './+types/_app.today._index';
 import { getSession } from '../../server/auth.server.ts';
 import { withSchoolId } from '../../server/db.server.ts';
-import { listRemindersForDuty, type ReminderRow } from '../../server/reminders.server';
+import { listRemindersForDuties, type ReminderRow } from '../../server/reminders.server';
 import {
   HeroCard,
   EmptyState,
@@ -255,10 +255,17 @@ export async function loader({ request }: Route.LoaderArgs) {
   // the reminders table is tenant-scoped and we want to show ALL
   // reminders set up on each duty, regardless of who's currently
   // assigned (admins configure, not just teachers).
-  const reminderMap: Record<string, ReminderRow[]> = {};
-  for (const d of data.allDuties) {
-    reminderMap[d.id] = await listRemindersForDuty(d.id, session.schoolId);
-  }
+  //
+  // Single batch query — replaces the N+1 pattern that called
+  // listRemindersForDuty once per duty (up to 200 sequential
+  // round-trips per page load, audit B7 2026-07-04).
+  const reminderMapRaw = await listRemindersForDuties(
+    session.schoolId,
+    data.allDuties.map((d) => d.id),
+  );
+  const reminderMap: Record<string, ReminderRow[]> = Object.fromEntries(
+    reminderMapRaw,
+  );
 
   return { ...data, reminderMap };
 }
