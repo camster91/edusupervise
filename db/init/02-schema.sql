@@ -307,6 +307,16 @@ $$ LANGUAGE SQL STABLE;
 -- DO block: ENABLE + FORCE + POLICY for each tenant-owned table.
 -- FORCE is the multi-tenancy boundary: runtime role doesn't own tables,
 -- so without FORCE it would silently bypass RLS.
+--
+-- NOTE (audit S-S3, 2026-07-04): `auth_session` is intentionally NOT
+-- in this loop. It has no direct `school_id` column — the user it
+-- belongs to lives in `public.users` and we join through that for RLS.
+-- The shape of that policy is different (subquery, not direct column
+-- comparison), so it lives in migration 0011_auth_session_rls.sql.
+-- That migration runs after this init script on a fresh DB, and on
+-- existing deployments via `pnpm --filter @edusupervise/db migrate`.
+-- If you add a new tenant-owned table below, ALSO add an entry to
+-- migration 0012+ so RLS follows the data.
 
 DO $$
 DECLARE

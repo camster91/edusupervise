@@ -71,6 +71,13 @@
       "when": 1783010000000,
       "tag": "0010_recurring_duties",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783197575377,
+      "tag": "0011_auth_session_rls",
+      "breakpoints": true
     }
   ]
 }
