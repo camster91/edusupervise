@@ -364,7 +364,7 @@ async function runExtract(
         },
       },
       (err, stdout, _stderr) => {
-        const text = stdout?.toString('utf8') ?? '';
+        const text = (stdout as unknown as Buffer | null)?.toString('utf8') ?? '';
         if (!text.trim()) {
           resolve({
             ok: false,
