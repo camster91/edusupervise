@@ -89,6 +89,7 @@ export type SchoolPlan = (typeof schoolPlanEnum.enumValues)[number];
 export const userRoleEnum = pgEnum('user_role', [
   'school_admin',
   'teacher',
+  'educational_assistant',
   'substitute',
 ]);
 export type UserRole = (typeof userRoleEnum.enumValues)[number];
