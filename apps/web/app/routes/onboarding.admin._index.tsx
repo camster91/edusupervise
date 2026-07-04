@@ -211,6 +211,15 @@ export default function AdminOnboarding() {
                 they can sign up at <code>/signup</code>. You can always find it
                 again in Settings → School.
               </div>
+              <div className="mt-md bg-bg border border-border rounded-md p-md text-callout">
+                <strong>Not running this for your whole school?</strong>{' '}
+                If you only need to track your own supervision duties, the
+                solo teacher path is faster — no school setup, no admin role.
+                {' '}
+                <a href="/signup?mode=solo" className="text-accent font-semibold hover:underline">
+                  Try solo instead →
+                </a>
+              </div>
             </Step>
           )}
         </div>
