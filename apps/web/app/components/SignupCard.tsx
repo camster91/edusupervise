@@ -122,6 +122,75 @@ export function SignupCard(props: SignupCardProps): React.ReactElement {
             />
             <PasswordField />
 
+            {props.id === 'solo' && (
+              <fieldset>
+                <legend className="block text-subhead text-secondary font-semibold mb-xs">
+                  I'm signing up as a
+                </legend>
+                <div className="space-y-xs">
+                  {[
+                    {
+                      id: 'teacher',
+                      name: 'Teacher',
+                      desc: 'Run your own supervision schedule',
+                    },
+                    {
+                      id: 'educational_assistant',
+                      name: 'Educational assistant',
+                      desc: "Cover specific slots in someone else's rotation",
+                    },
+                    {
+                      id: 'school_admin',
+                      name: 'School admin',
+                      desc: 'Set up duties for the whole school',
+                    },
+                  ].map((r) => (
+                    <label
+                      key={r.id}
+                      className={
+                        'flex items-start gap-sm p-sm rounded-md border cursor-pointer transition-colors duration-fast ' +
+                        ((props.hiddenFields?.defaultSoloRole ?? '') === r.id ||
+                         (r.id === 'teacher' && !props.hiddenFields?.defaultSoloRole)
+                          ? 'border-accent bg-accent-soft'
+                          : 'border-border hover:bg-surface-2')
+                      }
+                    >
+                      <input
+                        type="radio"
+                        name="role"
+                        value={r.id}
+                        defaultChecked={
+                          (props.hiddenFields?.defaultSoloRole ?? 'teacher') === r.id
+                        }
+                        className="sr-only"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="text-callout text-primary font-semibold">
+                          {r.name}
+                        </div>
+                        <div className="text-footnote text-secondary mt-xs">
+                          {r.desc}
+                        </div>
+                      </div>
+                      <div
+                        aria-hidden
+                        className={
+                          'w-4 h-4 rounded-full border-2 grid place-items-center shrink-0 mt-xs ' +
+                          ((props.hiddenFields?.defaultSoloRole ?? 'teacher') === r.id
+                            ? 'border-accent'
+                            : 'border-border-strong')
+                        }
+                      >
+                        {(props.hiddenFields?.defaultSoloRole ?? 'teacher') === r.id && (
+                          <span className="w-2 h-2 rounded-full bg-accent" />
+                        )}
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            )}
+
             {props.modeSpecific}
 
             {error && (
