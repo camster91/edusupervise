@@ -40,7 +40,14 @@ export interface SeedSpec {
   teachers: Array<{
     name: string;
     email: string;
-    role: 'teacher' | 'school_admin';
+    /**
+     * Phase 1.5 — add 'educational_assistant' to the seed role union
+     * so the Sunrise Elementary demo school ships with at least one
+     * EA. The CHECK constraint on users.role already allows the value
+     * (Migration 0007); this just declares the type so the seed
+     * spec remains the source of truth.
+     */
+    role: 'teacher' | 'educational_assistant' | 'school_admin';
   }>;
   dutySlots: Array<{
     cycleDay: number;
@@ -68,6 +75,11 @@ const ELEMENTARY: SeedSpec = {
     { name: 'Mrs. Patel', email: 'patel@sunrise-elem.example', role: 'teacher' },
     { name: 'Mr. Okafor', email: 'okafor@sunrise-elem.example', role: 'teacher' },
     { name: 'Ms. Rivera', email: 'rivera@sunrise-elem.example', role: 'teacher' },
+    // Phase 1.5 — add one Educational Assistant so the demo Today view
+    // shows the EA Covering badge. Named "Ms. Cyriac" per Jason's real
+    // duty roster (2026-07-04). Email collision-safe (subdomain pattern
+    // shared with the teachers).
+    { name: 'Ms. Cyriac', email: 'cyriac@sunrise-elem.example', role: 'educational_assistant' },
   ],
   dutySlots: [
     // Day 1 — cafeteria + recess + bus (anchor day)
@@ -128,9 +140,23 @@ const ELEMENTARY: SeedSpec = {
       endTime: '13:00',
       location: 'Recess (south playground)',
       description: 'Supervise K-3 recess on the south playground',
-      assignedToIdx: null,
+      // Phase 1.5 — assign to Ms. Cyriac (EA). EAs cover specific
+      // slots; the seed demonstrates the Covering badge with this row.
+      assignedToIdx: 5,
       requiresVest: true,
       requiresRadio: false,
+    },
+    {
+      // Phase 1.5 — give Ms. Cyriac a second slot so the EA Today view
+      // is non-trivially populated across the rotation.
+      cycleDay: 4,
+      startTime: '12:45',
+      endTime: '13:15',
+      location: 'Assembly supervision (south corridor)',
+      description: 'Walk K-3 classes from south wing to gym for grade-level assembly',
+      assignedToIdx: 5,
+      requiresVest: false,
+      requiresRadio: true,
     },
     // Day 3 — cafeteria + dismissal
     {
