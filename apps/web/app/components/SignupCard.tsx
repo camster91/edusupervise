@@ -196,7 +196,7 @@ export function SignupCard(props: SignupCardProps): React.ReactElement {
             {error && (
               <p
                 role="alert"
-                className="text-callout text-danger rounded-md bg-danger-soft px-md py-sm"
+                className="text-callout text-error rounded-md bg-error-soft px-md py-sm"
               >
                 {error}
               </p>
