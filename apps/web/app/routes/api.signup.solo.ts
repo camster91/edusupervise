@@ -37,7 +37,26 @@ export async function action({ request }: Route.ActionArgs) {
     return new Response('Method Not Allowed', { status: 405 });
   }
 
-  const form = await request.formData();
+  // Content-Type gate: form-encoded only. JSON bodies must use the
+  // x-csrf-token header path, not the form-body field. Returning 415
+  // (not 500) avoids leaking internal error details to curl probes.
+  const contentType = request.headers.get('content-type') ?? '';
+  if (!contentType.toLowerCase().includes('application/x-www-form-urlencoded')
+      && !contentType.toLowerCase().includes('multipart/form-data')) {
+    return Response.json(
+      { error: 'unsupported_media_type', detail: 'Use form-encoded body or x-csrf-token header.' },
+      { status: 415 },
+    );
+  }
+  let form: FormData;
+  try {
+    form = await request.formData();
+  } catch {
+    return Response.json(
+      { error: 'malformed_form_body' },
+      { status: 400 },
+    );
+  }
   const csrf = validateCsrfWithFormToken(request, form);
   if (!csrf.ok) return csrf.response;
   const name = String(form.get('name') ?? '').trim();
