@@ -263,7 +263,11 @@ export const cycleCalendar = pgTable(
     date: date('date').notNull(),
     cycleDay: integer('cycle_day'),
     isSchoolDay: boolean('is_school_day').notNull().default(true),
-    note: text('note'),
+    // Migration 0013: new columns for PDF calendar import.
+    // isInstructional is the operational truth ("should I send a duty reminder
+    // today?"). isSchoolDay is legacy / kept for backwards-compat.
+    isInstructional: boolean('is_instructional').notNull().default(true),
+    holidayCode: text('holiday_code'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
