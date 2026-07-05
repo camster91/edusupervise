@@ -22,9 +22,8 @@ UPDATE schools
        plan_downgrade_pending_to = NULL,
        plan_downgrade_effective_at = NULL,
        updated_at = now()
- WHERE plan = 'pro'
-    OR plan = 'school'
-    OR plan_downgrade_pending_to IS NOT NULL
+ WHERE plan IN ('pro', 'school')
+   AND plan_downgrade_pending_to IS NOT NULL
    AND plan_downgrade_effective_at IS NOT NULL
    AND plan_downgrade_effective_at <= now();
 
