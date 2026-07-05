@@ -139,6 +139,10 @@ export async function runSchedulerTick(opts: SchedulerOpts): Promise<{
         .select({
           date: cycleCalendar.date,
           cycleDay: cycleCalendar.cycleDay,
+          // Migration 0013: skip reminders on non-instructional days
+          // (PD days, holidays, board breaks). Duty assignments still
+          // exist on those dates — they just shouldn't fire reminders.
+          isInstructional: cycleCalendar.isInstructional,
         })
         .from(cycleCalendar)
         .where(gte(cycleCalendar.date, formatDateOnly(now)))
@@ -148,6 +152,8 @@ export async function runSchedulerTick(opts: SchedulerOpts): Promise<{
       let nextDutyAt: Date | null = null;
       for (const c of candidateDates) {
         if (c.cycleDay !== duty.cycleDay) continue;
+        // Migration 0013: skip on non-instructional days.
+        if (c.isInstructional === false) continue;
         // Combine date + startTime
         const [hh, mm] = (duty.startTime as string).split(':').map((s) => Number(s));
         const dutyAt = new Date(`${c.date}T${String(hh ?? 0).padStart(2, '0')}:${String(mm ?? 0).padStart(2, '0')}:00Z`);
