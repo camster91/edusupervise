@@ -200,6 +200,12 @@ services:
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
+    # Alpine `apk add` at boot needs write to /var/cache/apk, /etc/apk,
+    # /lib/apk. Mount all four as tmpfs so the cron container can install
+    # postgresql-client once and run psql afterwards.
     tmpfs:
       - /tmp
       - /var/tmp
+      - /var/cache/apk
+      - /etc/apk
+      - /lib/apk
