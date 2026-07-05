@@ -37,7 +37,7 @@ import { renderToPipeableStream } from 'react-dom/server';
 import { randomUUID } from 'node:crypto';
 
 import { logger } from '../server/logger.server';
-import { recordHttpRequest, routePatternFor, setDbPoolCount } from '../server/metrics.server';
+import { recordHttpRequest, routePatternFor, await setDbPoolCount } from '../server/metrics.server';
 
 // RR7 requires `streamTimeout` for the response stream. Five minutes is
 // the canonical default — long enough that very slow SSR (e.g. on a cold
@@ -161,8 +161,18 @@ export default async function handleRequest(
   // db.server.ts#getDb); the system client only opens on the
   // worker container. Recording a 0 for 'system' here makes the
   // label set complete on the first scrape (audit B10).
-  setDbPoolCount('runtime', 1);
-  setDbPoolCount('system', 0);
+  await setDbPoolCount('runtime', async () => {
+      const db = getDb();
+      const r = await db.execute(sql`SELECT COUNT(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND usename = current_user`);
+      const rows = Array.isArray(r) ? r : (r as any).rows ?? [];
+      return Number(rows[0]?.n ?? 0);
+    });
+  await setDbPoolCount('system', async () => {
+      const db = getDb();
+      const r = await db.execute(sql`SELECT COUNT(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND usename = current_user`);
+      const rows = Array.isArray(r) ? r : (r as any).rows ?? [];
+      return Number(rows[0]?.n ?? 0);
+    });
 
   // Forward the request id back to the client so log correlation works
   // even when the request starts at a CDN or proxy.
