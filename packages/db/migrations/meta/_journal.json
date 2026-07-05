@@ -78,6 +78,13 @@
       "when": 1783197575377,
       "tag": "0011_auth_session_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783224000000,
+      "tag": "0012_drop_redundant_indexes",
+      "breakpoints": true
     }
   ]
 }
