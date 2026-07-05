@@ -51,7 +51,7 @@ export function meta() {
  */
 export async function loader({ request }: Route.LoaderArgs) {
   const session = await getSession(request);
-  if (!session) throw redirect('/login');
+  if (!session) throw redirect(`/login?next=${encodeURIComponent("/onboarding/solo" + (typeof location !== "undefined" ? location.search : ""))}`);
   if (session.role === 'school_admin') throw redirect('/onboarding/admin');
   if (session.role === 'substitute') throw redirect('/app/today');
   // Mint a CSRF cookie here so the wizard's final POST
