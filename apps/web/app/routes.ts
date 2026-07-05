@@ -111,4 +111,9 @@ export default [
   route('api/coverage/parent-alerts', 'routes/api.coverage.parent-alerts.ts'),
   route('api/coverage/parent-alerts/send', 'routes/api.coverage.parent-alerts.send.ts'),
   route('api/coverage/parent-alerts/cancel', 'routes/api.coverage.parent-alerts.cancel.ts'),
+
+  // Phase 3 — PDF calendar import (admin-only).
+  route('admin/calendar', 'routes/admin.calendar._index.tsx'),
+  route('api/admin/calendar/import', 'routes/api.admin.calendar.import.ts'),
+  route('api/admin/calendar/commit', 'routes/api.admin.calendar.commit.ts'),
 ] satisfies RouteConfig;
