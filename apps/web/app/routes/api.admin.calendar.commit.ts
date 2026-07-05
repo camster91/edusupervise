@@ -8,6 +8,11 @@
 //   - Auto-committing an admin upload risks bad data going live
 //     before the admin sees it. Review-then-commit mirrors the
 //     onboarding.pdf-review flow.
+//
+// Verifier feedback (2026-07-05): the commit body is wrapped in
+// try/catch so any throw inside upsertCalendarDays writes a
+// calendar_import.commit_failed audit row before bubbling the 500.
+// This closes the "partial commit / no audit trail" gap.
 
 import { z } from 'zod';
 import type { Route } from './+types/api.admin.calendar.commit';
@@ -76,38 +81,74 @@ export async function action({ request }: Route.ActionArgs) {
     );
   }
 
-  const result = await upsertCalendarDays({
-    schoolId: session.schoolId,
-    days: cached.days,
-    importedBy: session.userId,
-    jobId: cached.jobId,
-  });
-
-  await recordAuditFromRequest(request, {
-    action: 'calendar_import.committed',
-    schoolId: session.schoolId,
-    userId: session.userId,
-    metadata: {
+  try {
+    const result = await upsertCalendarDays({
+      schoolId: session.schoolId,
+      days: cached.days,
+      importedBy: session.userId,
       jobId: cached.jobId,
-      result,
-      sha256: cached.sha256,
-    },
-  });
+    });
 
-  logger.info(
-    {
+    await recordAuditFromRequest(request, {
+      action: 'calendar_import.committed',
       schoolId: session.schoolId,
       userId: session.userId,
+      metadata: {
+        jobId: cached.jobId,
+        result,
+        sha256: cached.sha256,
+      },
+    });
+
+    logger.info(
+      {
+        schoolId: session.schoolId,
+        userId: session.userId,
+        jobId: cached.jobId,
+        result,
+      },
+      'calendar import: committed',
+    );
+
+    return Response.json({
       jobId: cached.jobId,
       result,
-    },
-    'calendar import: committed',
-  );
-
-  return Response.json({
-    jobId: cached.jobId,
-    result,
-    calendarTitle: cached.calendarTitle,
-    schoolYear: cached.schoolYear,
-  });
+      calendarTitle: cached.calendarTitle,
+      schoolYear: cached.schoolYear,
+    });
+  } catch (err) {
+    // Verifier feedback (HIGH): partial commit / no audit trail was a
+    // gap. Always write a calendar_import.commit_failed row before
+    // bubbling the 500 so the operator can see what was attempted
+    // and what went wrong.
+    const errMsg = err instanceof Error ? err.message : String(err);
+    await recordAuditFromRequest(request, {
+      action: 'calendar_import.commit_failed',
+      schoolId: session.schoolId,
+      userId: session.userId,
+      metadata: {
+        jobId: cached.jobId,
+        error: errMsg,
+        attemptedDays: cached.days.length,
+        sha256: cached.sha256,
+      },
+    });
+    logger.error(
+      {
+        err,
+        schoolId: session.schoolId,
+        userId: session.userId,
+        jobId: cached.jobId,
+      },
+      'calendar import: commit failed',
+    );
+    return Response.json(
+      {
+        error: 'commit_failed',
+        message:
+          'Calendar commit failed mid-transaction. The database may have partial rows; check cycle_calendar and the audit_log for details.',
+      },
+      { status: 500 },
+    );
+  }
 }
