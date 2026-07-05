@@ -268,6 +268,9 @@ export const cycleCalendar = pgTable(
     // today?"). isSchoolDay is legacy / kept for backwards-compat.
     isInstructional: boolean('is_instructional').notNull().default(true),
     holidayCode: text('holiday_code'),
+    // Pre-existing in migration 0000 + CHECK 'cycle_calendar_note_length';
+    // missing from this schema until now (drift fixed 2026-07-05).
+    note: text('note'),
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
