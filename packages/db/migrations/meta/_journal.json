@@ -85,6 +85,13 @@
       "when": 1783224000000,
       "tag": "0012_drop_redundant_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1783227600000,
+      "tag": "0013_cycle_calendar_columns",
+      "breakpoints": true
     }
   ]
 }
