@@ -139,15 +139,15 @@ export default function ForgotPage() {
 
   if (data?.ok) {
     return (
-      <main className="min-h-screen grid place-items-center bg-slate-50 px-4">
-        <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-          <h1 className="text-2xl font-bold text-slate-900 mb-1">Check your email</h1>
-          <p className="text-sm text-slate-600">
+      <main className="min-h-screen grid place-items-center bg-bg px-4">
+        <div className="w-full max-w-sm bg-surface rounded-2xl shadow-sm border border-border p-8">
+          <h1 className="text-2xl font-bold text-primary mb-1">Check your email</h1>
+          <p className="text-sm text-secondary">
             If we have an account on file for that address, you'll get a
             password-reset link in a few minutes. The link expires in 1 hour.
           </p>
-          <p className="text-sm text-slate-600 mt-6">
-            <a href="/login" className="text-blue-600 hover:underline">Back to sign in</a>
+          <p className="text-sm text-secondary mt-6">
+            <a href="/login" className="text-accent hover:underline">Back to sign in</a>
           </p>
         </div>
       </main>
@@ -155,22 +155,22 @@ export default function ForgotPage() {
   }
 
   return (
-    <main className="min-h-screen grid place-items-center bg-slate-50 px-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-        <h1 className="text-2xl font-bold text-slate-900 mb-1">Forgot password</h1>
-        <p className="text-sm text-slate-600 mb-6">
+    <main className="min-h-screen grid place-items-center bg-bg px-4">
+      <div className="w-full max-w-sm bg-surface rounded-2xl shadow-sm border border-border p-8">
+        <h1 className="text-2xl font-bold text-primary mb-1">Forgot password</h1>
+        <p className="text-sm text-secondary mb-6">
           Enter the email you signed up with. We'll send you a reset link.
         </p>
         <Form method="post" className="space-y-4">
           <input type="hidden" name="csrf" value={csrfToken} />
           <label className="block">
-            <span className="text-sm font-medium text-slate-700">Email</span>
+            <span className="text-sm font-medium text-primary">Email</span>
             <input
               name="email"
               type="email"
               required
               autoComplete="email"
-              className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
+              className="mt-1 block w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm focus:border-accent focus:ring-2 focus:ring-blue-200 outline-none"
             />
           </label>
           {data?.error && (
@@ -178,12 +178,12 @@ export default function ForgotPage() {
               {data.detail ?? data.error}
             </p>
           )}
-          <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+          <button type="submit" className="w-full bg-accent hover:bg-accent text-on-accent font-medium py-2 px-4 rounded-lg transition-colors">
             Send reset link
           </button>
         </Form>
-        <p className="text-sm text-slate-600 text-center mt-6">
-          <a href="/login" className="text-blue-600 hover:underline">Back to sign in</a>
+        <p className="text-sm text-secondary text-center mt-6">
+          <a href="/login" className="text-accent hover:underline">Back to sign in</a>
         </p>
       </div>
     </main>
