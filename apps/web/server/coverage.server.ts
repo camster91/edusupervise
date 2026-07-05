@@ -116,11 +116,18 @@ export async function findAffectedDuties(args: {
 }): Promise<Array<{ dutyId: string; dutyName: string; startTime: string; endTime: string; location: string | null }>> {
   return withSchoolId(args.schoolId, async (tx) => {
     const [cycle] = await tx
-      .select({ cycleDay: cycleCalendar.cycleDay })
+      .select({
+        cycleDay: cycleCalendar.cycleDay,
+        isInstructional: cycleCalendar.isInstructional,
+      })
       .from(cycleCalendar)
       .where(eq(cycleCalendar.date, args.absenceDate))
       .limit(1);
     if (!cycle) return [];
+    // Migration 0013: skip on non-instructional days. If the school
+    // calendar says classes aren't running today (PD day, holiday,
+    // board break), there are no duties to cover.
+    if (cycle.isInstructional === false) return [];
     const cycleDay: number = cycle.cycleDay ?? 0;
 
     const rows = await tx
@@ -176,11 +183,16 @@ export async function findReplacement(args: {
     if (!duty) return null;
 
     const [cycle] = await tx
-      .select({ cycleDay: cycleCalendar.cycleDay })
+      .select({
+        cycleDay: cycleCalendar.cycleDay,
+        isInstructional: cycleCalendar.isInstructional,
+      })
       .from(cycleCalendar)
       .where(eq(cycleCalendar.date, args.absenceDate))
       .limit(1);
     if (!cycle || cycle.cycleDay !== duty.cycleDay) return null;
+    // Migration 0013: skip on non-instructional days.
+    if (cycle.isInstructional === false) return null;
 
     const candidates = await tx
       .select({ id: users.id })
