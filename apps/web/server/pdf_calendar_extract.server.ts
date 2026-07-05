@@ -285,6 +285,10 @@ function validateShape(raw: unknown): ShapeOk | ShapeFail {
       cycleDay,
       isInstructional,
       holidayCode,
+      // Verifier feedback (MED-1, 2026-07-05): read note from the
+      // python dict so future parser revisions carrying annotations
+      // like 'exam day' / 'half day' flow through to cycle_calendar.
+      note: typeof o.note === 'string' ? o.note : null,
     });
   }
   if (out.length === 0) {
