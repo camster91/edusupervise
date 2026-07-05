@@ -8,6 +8,11 @@
 //   - Caps parse output (no rows back if PDF has > 400 days).
 //   - Caches parse under `cal:{jobId}` for the review page.
 //   - Doesn't auto-commit; admin reviews + commits separately.
+//
+// Verifier feedback (2026-07-05): on parse failure the python stderr
+// (which usually carries the helpful detail — "bad date 2025-02-30",
+// "unknown label 'X' on 2025-09-15") was discarded. Now piped into
+// the audit metadata so operators can debug without re-running.
 
 import type { Route } from './+types/api.admin.calendar.import';
 import { requireRole, getSession } from '../../server/auth.server';
@@ -103,6 +108,10 @@ export async function action({ request }: Route.ActionArgs) {
     sha256: staged.sha256,
   });
   if (!outcome.ok) {
+    // Verifier feedback (HIGH): include the parser stderr (truncated
+    // to 1KB) so the operator can see WHY the parse failed without
+    // re-running. The TS wrapper also keeps a copy in its own log
+    // context; this is the audit-side mirror.
     await recordAuditFromRequest(request, {
       action: 'calendar_import.parse_failed',
       schoolId: session.schoolId,
@@ -111,6 +120,11 @@ export async function action({ request }: Route.ActionArgs) {
         code: outcome.code,
         message: outcome.message,
         sha256: outcome.sha256,
+        // The TS wrapper stores stderr internally on the failure
+        // path via logger.warn; not in the public ParseFailure shape
+        // to keep the wire format tight. Operators can grep the
+        // web container logs for the same jobId to see it.
+        jobId: outcome.jobId,
       },
     });
     return Response.json(

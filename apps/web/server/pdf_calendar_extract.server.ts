@@ -32,6 +32,9 @@ export interface CalendarDay {
   cycleDay: number | null;
   isInstructional: boolean;
   holidayCode: HolidayCode;
+  /** Optional parser note ('exam day', 'half day'). Currently
+   *  unused but reserved for forward-compat. */
+  note?: string | null;
 }
 
 export interface CalendarSummary {

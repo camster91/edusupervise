@@ -12,15 +12,15 @@
 //   2. Returns an outcome object: counts of inserted / updated /
 //      skipped, plus the diff for the audit log.
 //
-// Why a dedicated module (not inline in the route):
-//   - Tests need to call upsertCalendar without booting the route.
-//   - Future Phase 4 features (custom rotations, multi-school) reuse it.
+// Verifier feedback (2026-07-05):
+//   - The note column on cycle_calendar was added in migration 0013
+//     (pre-existing in migration 0000 actually) but the helper was
+//     hard-coding note=null. Now passes through any note the parser
+//     eventually emits so we don't have to ship another fix when
+//     the parser grows a note field.
 
-import { and, eq, sql } from 'drizzle-orm';
-import {
-  cycleCalendar,
-} from '@edusupervise/db';
-import { getDb, withSchoolId } from './db.server';
+import { cycleCalendar } from '@edusupervise/db';
+import { withSchoolId } from './db.server';
 import { logger } from './logger.server';
 import type { CalendarDay } from './pdf_calendar_extract.server';
 
@@ -83,7 +83,11 @@ export async function upsertCalendarDays(
           isSchoolDay: d.isInstructional,
           isInstructional: d.isInstructional,
           holidayCode: d.holidayCode,
-          note: null,
+          // Forward any parser note (currently unused; defense for
+          // future parser changes that may emit annotations like
+          // "exam day", "half day", etc.). Defaults to null when
+          // the parser doesn't emit one.
+          note: d.note ?? null,
         })
         .onConflictDoUpdate({
           target: [cycleCalendar.schoolId, cycleCalendar.date],
@@ -92,6 +96,7 @@ export async function upsertCalendarDays(
             isSchoolDay: d.isInstructional,
             isInstructional: d.isInstructional,
             holidayCode: d.holidayCode,
+            note: d.note ?? null,
           },
         });
       written += 1;
@@ -108,10 +113,6 @@ export async function upsertCalendarDays(
     },
     'calendar import: committed',
   );
-
-  // Touch getDb() so the import is side-effect-free at module load
-  // (avoids the cold-start cost when the route is hit).
-  void getDb();
 
   return {
     ok: skipped.length === 0,
