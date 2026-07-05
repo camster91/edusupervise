@@ -290,6 +290,26 @@ export async function signupSolo(
     const schoolYearEnd = addDaysUtc(schoolYearStart, 305);
     const trialEndsAt = new Date(Date.now() + 30 * 86_400_000);
 
+    // Pre-check global email uniqueness before creating a new school.
+    // Without this, two solo signups with the same email each create a
+    // new school + new user (the (schoolId, email) unique constraint only
+    // protects against duplicates within the same school). Result: the
+    // second signup silently succeeds, locking out the original owner
+    // when they try to log in on a fresh device.
+    const existing = await db
+      .select({ id: users.id })
+      .from(users)
+      .where(eqLower(users.email, input.email.toLowerCase()))
+      .limit(1);
+    if (existing.length > 0) {
+      await logAttempt(input.email, ctx, 'solo', 'duplicate_email');
+      return {
+        ok: false,
+        error: 'An account with this email already exists. Sign in instead.',
+        code: 'duplicate_email',
+      };
+    }
+
     try {
       const result = await db.transaction(async (tx) => {
         const [school] = await tx
