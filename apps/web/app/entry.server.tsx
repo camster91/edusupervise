@@ -37,7 +37,7 @@ import { renderToPipeableStream } from 'react-dom/server';
 import { randomUUID } from 'node:crypto';
 
 import { logger } from '../server/logger.server';
-import { recordHttpRequest, routePatternFor, await setDbPoolCount } from '../server/metrics.server';
+import { recordHttpRequest, routePatternFor, setDbPoolCount } from '../server/metrics.server';
 
 // RR7 requires `streamTimeout` for the response stream. Five minutes is
 // the canonical default — long enough that very slow SSR (e.g. on a cold
