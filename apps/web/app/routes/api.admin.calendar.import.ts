@@ -11,8 +11,11 @@
 //
 // Verifier feedback (2026-07-05): on parse failure the python stderr
 // (which usually carries the helpful detail — "bad date 2025-02-30",
-// "unknown label 'X' on 2025-09-15") was discarded. Now piped into
-// the audit metadata so operators can debug without re-running.
+// "unknown label 'X' on 2025-09-15") is preserved in web container
+// logs via logger.warn({stderrSlice}) inside pdf_calendar_extract.
+// server.ts. The audit row carries jobId so operators correlate the
+// audit entry with the corresponding log line by jobId. Two surfaces,
+// same data.
 
 import type { Route } from './+types/api.admin.calendar.import';
 import { requireRole, getSession } from '../../server/auth.server';
@@ -108,10 +111,11 @@ export async function action({ request }: Route.ActionArgs) {
     sha256: staged.sha256,
   });
   if (!outcome.ok) {
-    // Verifier feedback (HIGH): include the parser stderr (truncated
-    // to 1KB) so the operator can see WHY the parse failed without
-    // re-running. The TS wrapper also keeps a copy in its own log
-    // context; this is the audit-side mirror.
+    // Verifier feedback (HIGH): include jobId so the operator can
+    // correlate the audit row with the parser stderr preserved in
+    // web container logs (logger.warn in pdf_calendar_extract.server.ts
+    // keeps a 200-char stderrSlice). Two surfaces, same data, single
+    // correlation key.
     await recordAuditFromRequest(request, {
       action: 'calendar_import.parse_failed',
       schoolId: session.schoolId,
