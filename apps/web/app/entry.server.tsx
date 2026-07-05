@@ -108,7 +108,7 @@ function applySecurityHeaders(headers: Headers, isProduction: boolean): void {
     [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline'",
-      "style-src 'self' 'unsafe-inline'",
+      ,
       "img-src 'self' data: https:",
       "font-src 'self' data: https://fonts.gstatic.com",
       "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
