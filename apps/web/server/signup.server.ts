@@ -299,7 +299,7 @@ export async function signupSolo(
     const existing = await db
       .select({ id: users.id })
       .from(users)
-      .where(eqLower(users.email, input.email.toLowerCase()))
+      .where(sql`lower(${users.email}) = lower(${input.email.toLowerCase()})`)
       .limit(1);
     if (existing.length > 0) {
       await logAttempt(input.email, ctx, 'solo', 'duplicate_email');
