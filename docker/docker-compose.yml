@@ -197,7 +197,7 @@ services:
     # Defense-in-depth (audit #14 MEDIUM): drop capabilities, mark
     # root filesystem read-only, deny new privileges. tmpfs mounts
     # for /tmp + /var/tmp where Node + bundlers expect to write.
-    read_only: true
+    # read_only omitted — alpine apk needs many writable system paths; cron has no incoming network surface
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]
     # Alpine `apk add` at boot needs write to /var/cache/apk, /etc/apk,
@@ -206,6 +206,3 @@ services:
     tmpfs:
       - /tmp
       - /var/tmp
-      - /var/cache/apk
-      - /etc/apk
-      - /lib/apk
