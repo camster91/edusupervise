@@ -15,7 +15,7 @@ services:
       EDUSUPERVISE_SYSTEM_PASSWORD: ${EDUSUPERVISE_SYSTEM_PASSWORD}
     volumes:
       - /data/postgres:/var/lib/postgresql/data
-      - ./db/init:/docker-entrypoint-initdb.d:ro
+      - ../db/init:/docker-entrypoint-initdb.d:ro
     mem_limit: 4g
     cpus: "2.0"
     healthcheck:
@@ -179,7 +179,7 @@ services:
     environment:
       DATABASE_URL: postgres://edusupervise_system:${EDUSUPERVISE_SYSTEM_PASSWORD}@postgres:5432/edusupervise
     volumes:
-      - ./db/cron:/sql:ro
+      - ../db/cron:/sql:ro
     depends_on:
       postgres:
         condition: service_healthy
