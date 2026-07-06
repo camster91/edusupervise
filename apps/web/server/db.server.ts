@@ -24,6 +24,7 @@
 import { eq } from 'drizzle-orm';
 import {
   getRuntimeClient,
+  getSystemClient,
   schools,
   users,
   withSchoolContext,
@@ -71,6 +72,42 @@ export function getDb(): Db {
  */
 export function setDb(db: Db): void {
   _db = db;
+}
+
+/**
+ * Lazily-built SYSTEM-role Drizzle client. The system role has
+ * BYPASSRLS — it is the only role permitted to read cross-tenant
+ * data (auth lookups, cron jobs, audit log writes). We hold one
+ * client per Node process for the same reason as getDb(): creating
+ * a fresh pool per call (the prior `getSystemClient(systemUrl)` +
+ * `close()` pattern) saturated postgres at 50 concurrent requests,
+ * with 10/10 runtime conns stuck `idle in transaction` for 12+
+ * minutes (QA swarm finding, 2026-07-05). Pool is drained at SIGTERM
+ * via the same handler as getDb().
+ *
+ * Falls back to DATABASE_URL if SYSTEM_DATABASE_URL is not set —
+ * useful for tests where the two roles share creds.
+ */
+let _systemDb: Db | null = null;
+export function getSystemDb(): Db {
+  if (_systemDb) return _systemDb;
+  const url = process.env.SYSTEM_DATABASE_URL ?? process.env.DATABASE_URL;
+  if (!url) {
+    throw new Error(
+      'db.server: SYSTEM_DATABASE_URL (or DATABASE_URL) is not set. ' +
+        'Export SYSTEM_DATABASE_URL=postgres://edusupervise_system:... and retry.',
+    );
+  }
+  _systemDb = getSystemClient(url).db;
+  return _systemDb;
+}
+
+/**
+ * Test seam: inject a pre-built SYSTEM-role Drizzle client. Symmetric
+ * to setDb() above; lets integration tests skip the env var resolution.
+ */
+export function setSystemDb(db: Db): void {
+  _systemDb = db;
 }
 
 /** Drop the cached client (test cleanup). */

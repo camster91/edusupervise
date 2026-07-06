@@ -12,7 +12,8 @@
 import { eq, and } from 'drizzle-orm';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import bcrypt from 'bcryptjs';
-import { users, getSystemClient } from '@edusupervise/db';
+import { users } from '@edusupervise/db';
+import { getSystemDb } from './db.server';
 import type { UserRole } from '@edusupervise/db';
 // Re-export so shell/* components can keep importing the Session's role type.
 export type { UserRole };
@@ -101,35 +102,37 @@ async function loadSessionFromDb(userId: string): Promise<Session | null> {
   // role's RLS policy on `users` (which requires
   // `school_id = current_school_id()`) would return zero rows.
   // See: devops-gotchas.md "Auth-server user lookup must use system role".
-  const systemUrl =
-    process.env.SYSTEM_DATABASE_URL ?? process.env.DATABASE_URL;
-  if (!systemUrl) return null;
-  const { db, close } = getSystemClient(systemUrl);
-  try {
-    const rows = await db
-      .select({
-        id: users.id,
-        schoolId: users.schoolId,
-        email: users.email,
-        role: users.role,
-        name: users.name,
-        isActive: users.isActive,
-      })
-      .from(users)
-      .where(and(eq(users.id, userId), eq(users.isActive, true)))
-      .limit(1);
-    const row = rows[0];
-    if (!row) return null;
-    return {
-      userId: row.id,
-      schoolId: row.schoolId,
-      email: row.email,
-      role: row.role,
-      name: row.name,
-    };
-  } finally {
-    await close();
-  }
+  //
+  // QA-swarm finding (2026-07-05): the prior implementation called
+  // getSystemClient(systemUrl) on EVERY session-validate, opening a
+  // fresh postgres pool per request and immediately closing it.
+  // Under 50 concurrent requests this saturated the 10-conn runtime
+  // pool limit and put 10/10 conns into `idle in transaction` for
+  // 12+ minutes. Fix: use the cached system-role singleton
+  // getSystemDb() (same lazy-build pattern as getDb() for the
+  // runtime role).
+  const db = getSystemDb();
+  const rows = await db
+    .select({
+      id: users.id,
+      schoolId: users.schoolId,
+      email: users.email,
+      role: users.role,
+      name: users.name,
+      isActive: users.isActive,
+    })
+    .from(users)
+    .where(and(eq(users.id, userId), eq(users.isActive, true)))
+    .limit(1);
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    userId: row.id,
+    schoolId: row.schoolId,
+    email: row.email,
+    role: row.role,
+    name: row.name,
+  };
 }
 
 export async function hashPassword(plain: string): Promise<string> {
