@@ -230,7 +230,7 @@ export default function MagicLinkPage() {
           <h1 className="text-2xl font-bold text-slate-900 mb-1">Check your email</h1>
           <p className="text-sm text-slate-600">
             If we have an account on file for that address, we just sent a
-            sign-in link. The link expires in 5 minutes.
+            sign-in link. The link expires in 60 minutes.
           </p>
         </div>
       </main>
