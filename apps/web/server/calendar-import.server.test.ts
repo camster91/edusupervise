@@ -3,12 +3,12 @@
 // Phase 3 — calendar-import.server regression coverage.
 //
 // What's guarded here:
-//   - CalendarUpsertError class shape: writtenCount, failedDate,
+//   - CalendarUpsertError class shape: attemptedRows, failedDate,
 //     originalError fields are populated correctly on construction.
 //   - validateCalendarDays (internal pre-validation) accepts valid
 //     instructional + holiday days, rejects malformed rows.
 //   - The shape contract: the UpsertResult type returns { result,
-//     writtenCount } — no other fields.
+//     attemptedRows } — no other fields.
 
 import { describe, it, expect } from 'vitest';
 import {
@@ -18,7 +18,7 @@ import {
 } from './calendar-import.server';
 
 describe('CalendarUpsertError', () => {
-  it('carries writtenCount + failedDate + originalError', () => {
+  it('carries attemptedRows + failedDate + originalError', () => {
     const cause = new Error('underlying drizzle error');
     const e = new CalendarUpsertError(
       'commit failed mid-loop',
@@ -30,14 +30,14 @@ describe('CalendarUpsertError', () => {
     expect(e).toBeInstanceOf(CalendarUpsertError);
     expect(e.name).toBe('CalendarUpsertError');
     expect(e.message).toBe('commit failed mid-loop');
-    expect(e.writtenCount).toBe(187);
+    expect(e.attemptedRows).toBe(187);
     expect(e.failedDate).toBe('2025-12-22');
     expect(e.originalError).toBe(cause);
   });
 
-  it('works with just message + writtenCount (no date or cause)', () => {
+  it('works with just message + attemptedRows (no date or cause)', () => {
     const e = new CalendarUpsertError('transaction poisoned', 50);
-    expect(e.writtenCount).toBe(50);
+    expect(e.attemptedRows).toBe(50);
     expect(e.failedDate).toBeUndefined();
     expect(e.originalError).toBeUndefined();
   });
@@ -50,7 +50,7 @@ describe('CalendarUpsertError', () => {
       expect(caught).toBeInstanceOf(Error);
       expect(caught).toBeInstanceOf(CalendarUpsertError);
       if (caught instanceof CalendarUpsertError) {
-        expect(caught.writtenCount).toBe(10);
+        expect(caught.attemptedRows).toBe(10);
         expect(caught.failedDate).toBe('2025-09-15');
       }
     }
@@ -58,7 +58,7 @@ describe('CalendarUpsertError', () => {
 });
 
 describe('UpsertResult type contract', () => {
-  it('has exactly { result, writtenCount }', () => {
+  it('has exactly { result, attemptedRows }', () => {
     const r: UpsertResult = {
       result: {
         ok: true,
@@ -67,10 +67,10 @@ describe('UpsertResult type contract', () => {
         skippedDates: [],
         message: 'Imported 215 days.',
       },
-      writtenCount: 215,
+      attemptedRows: 215,
     };
     expect(r.result.total).toBe(215);
-    expect(r.writtenCount).toBe(215);
+    expect(r.attemptedRows).toBe(215);
   });
 
   it('handles skipped days correctly', () => {

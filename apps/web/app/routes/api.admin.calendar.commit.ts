@@ -15,14 +15,14 @@
 //     audit row before bubbling the 500. Closes the partial-commit /
 //     no-audit-trail gap.
 //   - MED-2: the audit row now carries BOTH `attemptedDays` (parse-time
-//     total, e.g. 215) AND `writtenCount` (rows that landed before the
+//     total, e.g. 215) AND `attemptedRows` (rows that landed before the
 //     throw). Operators can reconstruct the partial cursor without
 //     querying cycle_calendar separately.
 
 import { z } from 'zod';
 import type { Route } from './+types/api.admin.calendar.commit';
 import { getSession, requireRole } from '../../server/auth.server';
-import { validateCsrfFromJson } from '../../server/csrf.server';
+import { validateCsrf } from '../../server/csrf.server';
 import { readCachedParse } from '../../server/pdf_calendar_extract.server';
 import {
   upsertCalendarDays,
@@ -56,7 +56,7 @@ export async function action({ request }: Route.ActionArgs) {
   } catch {
     return Response.json({ error: 'invalid_json' }, { status: 400 });
   }
-  const csrf = validateCsrfFromJson(request, body as Record<string, unknown>);
+  const csrf = validateCsrf(request);
   if (!csrf.ok) return csrf.response;
 
   const maybeSession = await getSession(request);
@@ -90,7 +90,7 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   try {
-    const { result, writtenCount } = await upsertCalendarDays({
+    const { result, attemptedRows } = await upsertCalendarDays({
       schoolId: session.schoolId,
       days: cached.days,
       importedBy: session.userId,
@@ -104,7 +104,7 @@ export async function action({ request }: Route.ActionArgs) {
       metadata: {
         jobId: cached.jobId,
         result,
-        writtenCount,
+        attemptedRows,
         sha256: cached.sha256,
       },
     });
@@ -115,7 +115,7 @@ export async function action({ request }: Route.ActionArgs) {
         userId: session.userId,
         jobId: cached.jobId,
         result,
-        writtenCount,
+        attemptedRows,
       },
       'calendar import: committed',
     );
@@ -123,19 +123,19 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({
       jobId: cached.jobId,
       result,
-      writtenCount,
+      attemptedRows,
       calendarTitle: cached.calendarTitle,
       schoolYear: cached.schoolYear,
     });
   } catch (err) {
     // Verifier feedback (HIGH + MED-2): partial commit / no audit
     // trail was a gap. The CalendarUpsertError class carries
-    // writtenCount so operators can see exactly how many rows
+    // attemptedRows so operators can see exactly how many rows
     // landed before the throw. Any other Error type falls back
-    // to attemptedDays with writtenCount=0.
+    // to attemptedDays with attemptedRows=0.
     const errMsg = err instanceof Error ? err.message : String(err);
-    const writtenCount =
-      err instanceof CalendarUpsertError ? err.writtenCount : 0;
+    const attemptedRows =
+      err instanceof CalendarUpsertError ? err.attemptedRows : 0;
     await recordAuditFromRequest(request, {
       action: 'calendar_import.commit_failed',
       schoolId: session.schoolId,
@@ -144,7 +144,7 @@ export async function action({ request }: Route.ActionArgs) {
         jobId: cached.jobId,
         error: errMsg,
         attemptedDays: cached.days.length,
-        writtenCount,
+        attemptedRows,
         sha256: cached.sha256,
       },
     });
@@ -154,7 +154,7 @@ export async function action({ request }: Route.ActionArgs) {
         schoolId: session.schoolId,
         userId: session.userId,
         jobId: cached.jobId,
-        writtenCount,
+        attemptedRows,
       },
       'calendar import: commit failed',
     );

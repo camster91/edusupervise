@@ -15,7 +15,7 @@
 // Verifier feedback (2026-07-05):
 //   - MED-2: per-row try/catch lets us count written rows BEFORE
 //     throwing, then attach that count to a CalendarUpsertError so
-//     the caller can audit both attemptedDays AND writtenCount.
+//     the caller can audit both attemptedDays AND attemptedRows.
 
 import { cycleCalendar } from '@edusupervise/db';
 import { withSchoolId } from './db.server';
@@ -47,17 +47,17 @@ export interface UpsertResult {
    *  throws, this is the count that landed in cycle_calendar; the
    *  operator reads this from the audit row to know how many rows
    *  survived the throw. */
-  writtenCount: number;
+  attemptedRows: number;
 }
 
 /** Thrown by upsertCalendarDays when a per-row write fails. Carries
- *  writtenCount so the caller can audit the partial cursor. */
+ *  attemptedRows so the caller can audit the partial cursor. */
 export class CalendarUpsertError extends Error {
   override readonly name = 'CalendarUpsertError';
   constructor(
     message: string,
     /** How many rows made it into cycle_calendar before this throw. */
-    public readonly writtenCount: number,
+    public readonly attemptedRows: number,
     /** The date that triggered the throw, if known. */
     public readonly failedDate?: string,
     /** The original cause (drizzle error, etc.). Renamed from
@@ -96,7 +96,7 @@ export async function upsertCalendarDays(
         skippedDates: skipped,
         message: 'No valid days to insert.',
       },
-      writtenCount: 0,
+      attemptedRows: 0,
     };
   }
 
@@ -182,6 +182,6 @@ export async function upsertCalendarDays(
           ? `Imported ${written} days.`
           : `Imported ${written} days; skipped ${skipped.length} invalid.`,
     },
-    writtenCount: written,
+    attemptedRows: written,
   };
 }
