@@ -23,6 +23,17 @@
 
 import { logger } from './logger.server';
 
+
+// PII redact helper: 12-char prefix gets logged as +1XXX****NN.
+// Defined inline (vs. logger.server) because it's the only consumer.
+function redactPhone(phone: string): string {
+  if (!phone) return '';
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length < 4) return '+1****';
+  const tail = digits.slice(-2);
+  return `+1****${tail}`;
+}
+
 const IS_PRODUCTION = process.env.NODE_ENV === 'production';
 
 /**
@@ -86,7 +97,7 @@ export async function sendVerificationCode(phone: string): Promise<boolean> {
   //   if (!res.ok) throw new Error(`twilio verify send failed: ${res.status}`);
   //   return true;
 
-  logger.warn({ phone }, 'verify-phone: not implemented in Tier 1');
+  logger.warn({ phone: redactPhone(phone) }, 'verify-phone: not implemented in Tier 1');
   return true;
 }
 
@@ -110,6 +121,6 @@ export async function verifyCode(phone: string, code: string): Promise<boolean> 
   }
 
   // TODO(tier-2): wire Twilio Verify API call.
-  logger.warn({ phone }, 'verify-phone: not implemented in Tier 1');
+  logger.warn({ phone: redactPhone(phone) }, 'verify-phone: not implemented in Tier 1');
   return false;
 }
