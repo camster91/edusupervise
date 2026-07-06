@@ -1,5 +1,3 @@
-import * as React from 'react';
-
 // apps/web/app/routes/admin.calendar._index.tsx —
 // Phase 3 admin UI for uploading + reviewing + committing a school
 // calendar PDF. Two-step flow:
@@ -14,6 +12,15 @@ import * as React from 'react';
 // Auth: requires school_admin role. Loader enforces this; UI shows
 // "no access" if the role check fails (defense-in-depth; the API
 // also requires school_admin).
+//
+// QA-swarm fixes (2026-07-05):
+//   - S-U8 regression closed: error messages now use role="alert"
+//     so screen readers announce them.
+//   - B8 design-token drift closed: text-red-700 raw class swapped
+//     for text-error token.
+//   - H-cluster-2 BLOCKERs: added Confirm modal before commit
+//     (destructive action), Cancel button to abandon a parsed
+//     review, recent-commits panel showing last 5 audit_log rows.
 
 import { useState } from 'react';
 import {
@@ -29,11 +36,16 @@ import {
   ArrowLeft,
   CheckCircle2,
   CalendarDays,
+  History,
+  X,
 } from 'lucide-react';
 
 import type { Route } from './+types/admin.calendar._index';
 import { getSession, requireRole } from '../../server/auth.server';
 import { readCsrfCookie } from '../../server/csrf.server';
+import { getSystemDb } from '../../server/db.server';
+import { auditLog } from '@edusupervise/db';
+import { desc, eq } from 'drizzle-orm';
 import { Button } from '../components/ui';
 
 interface ParsedDay {
@@ -62,6 +74,13 @@ interface ImportResponse {
   durationMs: number;
 }
 
+interface RecentCommit {
+  id: string;
+  action: string;
+  createdAt: string;
+  metadata: Record<string, unknown> | null;
+}
+
 const MAX_BYTES = 10 * 1024 * 1024;
 
 export function meta() {
@@ -73,25 +92,61 @@ export async function loader({ request }: Route.LoaderArgs) {
   if (!session) {
     throw redirect('/login?next=' + encodeURIComponent('/admin/calendar'));
   }
-  // Defense-in-depth: even if the route is hit, requireRole throws a
-  // 403 Response if the user isn't a school_admin. Catch that and
-  // redirect to /app/today with a flash.
   try {
     requireRole(session, ['school_admin']);
   } catch {
     throw redirect('/app/today?denied=admin');
   }
-  return { csrfToken: readCsrfCookie(request) };
+
+  // Recent commits panel: last 5 calendar_import.* audit rows for this school.
+  let recentCommits: RecentCommit[] = [];
+  try {
+    const db = getSystemDb();
+    const rows = await db
+      .select({
+        id: auditLog.id,
+        action: auditLog.action,
+        createdAt: auditLog.createdAt,
+        metadata: auditLog.metadata,
+      })
+      .from(auditLog)
+      .where(eq(auditLog.schoolId, session.schoolId))
+      .orderBy(desc(auditLog.createdAt))
+      .limit(20);
+    recentCommits = rows
+      .filter((r) => r.action.startsWith('calendar_import.'))
+      .slice(0, 5)
+      .map((r) => ({
+        id: String(r.id),
+        action: r.action,
+        createdAt:
+          r.createdAt instanceof Date
+            ? r.createdAt.toISOString()
+            : String(r.createdAt),
+        metadata:
+          r.metadata && typeof r.metadata === 'object'
+            ? (r.metadata as Record<string, unknown>)
+            : null,
+      }));
+  } catch {
+    // Audit log fetch failed — non-fatal, just hide the panel.
+  }
+
+  return {
+    csrfToken: readCsrfCookie(request),
+    recentCommits,
+  };
 }
 
 export default function AdminCalendarPage() {
-  const { csrfToken } = useLoaderData<typeof loader>();
+  const { csrfToken, recentCommits } = useLoaderData<typeof loader>();
   const navigate = useNavigate();
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [parsed, setParsed] = useState<ImportResponse | null>(null);
   const [committing, setCommitting] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [committed, setCommitted] = useState<{
     inserted: number;
     skipped: number;
@@ -145,14 +200,22 @@ export default function AdminCalendarPage() {
         body: JSON.stringify({ jobId: parsed.jobId, confirm: true }),
       });
       const body = (await r.json()) as Record<string, unknown> & {
-        result?: { inserted: number; skipped: number; message: string };
+        result?: { total: number; skipped: number; message: string };
       };
       if (!r.ok) {
         setError(String(body.message ?? body.error ?? 'Commit failed'));
         return;
       }
-      setCommitted(body.result ?? null);
-      // Refresh the page after a moment so the user can do another import.
+      setCommitted(
+        body.result
+          ? {
+              inserted: body.result.total,
+              skipped: body.result.skipped,
+              message: body.result.message,
+            }
+          : null
+      );
+      setShowConfirm(false);
       setTimeout(() => navigate('/admin/calendar'), 1500);
     } catch (err) {
       setError('Network error — try again');
@@ -160,6 +223,14 @@ export default function AdminCalendarPage() {
     } finally {
       setCommitting(false);
     }
+  }
+
+  function cancelReview(): void {
+    // Abandon the parsed review without committing. Backs the user out
+    // to the upload screen.
+    setParsed(null);
+    setError(null);
+    setCommitted(null);
   }
 
   return (
@@ -216,7 +287,10 @@ export default function AdminCalendarPage() {
             </p>
           )}
           {error && (
-            <p className="mt-3 text-sm text-red-700">
+            <p
+              role="alert"
+              className="mt-3 text-sm text-error"
+            >
               <AlertTriangle className="inline h-4 w-4" /> {error}
             </p>
           )}
@@ -226,8 +300,69 @@ export default function AdminCalendarPage() {
           parsed={parsed}
           committing={committing}
           error={error}
-          onCommit={commit}
+          onCommit={() => setShowConfirm(true)}
+          onCancel={cancelReview}
         />
+      )}
+
+      {recentCommits.length > 0 && !parsed && !committed && (
+        <section className="mt-8 rounded-lg border border-border bg-card">
+          <header className="border-b border-border px-5 py-3 flex items-center gap-2">
+            <History className="h-4 w-4 text-muted-foreground" />
+            <h2 className="font-medium">Recent calendar imports</h2>
+          </header>
+          <ul className="divide-y divide-border">
+            {recentCommits.map((r) => (
+              <li key={r.id} className="px-5 py-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs">
+                    {r.action.replace('calendar_import.', '')}
+                  </span>
+                  <time className="text-xs text-muted-foreground">
+                    {new Date(r.createdAt).toLocaleString()}
+                  </time>
+                </div>
+                {r.metadata && (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {summarizeMetadata(r.metadata)}
+                  </p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      {showConfirm && parsed && (
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="confirm-title"
+          className="fixed inset-0 z-50 grid place-items-center bg-black/50"
+        >
+          <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl">
+            <h2 id="confirm-title" className="text-lg font-semibold">
+              Commit calendar to cycle_calendar?
+            </h2>
+            <p className="mt-2 text-sm text-muted-foreground">
+              This will upsert {parsed.summary.totalDays} days into the
+              school's calendar. Existing rows on the same dates will be
+              updated. The action is reversible only by re-uploading.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <Button
+                variant="secondary"
+                onClick={() => setShowConfirm(false)}
+                disabled={committing}
+              >
+                Cancel
+              </Button>
+              <Button onClick={() => void commit()} disabled={committing}>
+                {committing ? 'Committing...' : 'Commit'}
+              </Button>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );
@@ -238,12 +373,14 @@ function ReviewSection({
   committing,
   error,
   onCommit,
+  onCancel,
 }: {
   parsed: ImportResponse;
   committing: boolean;
   error: string | null;
   onCommit: () => void;
-}): React.ReactElement {
+  onCancel: () => void;
+}): JSX.Element {
   const { summary, days, calendarTitle, schoolYear, durationMs } = parsed;
   return (
     <div className="space-y-6">
@@ -331,10 +468,17 @@ function ReviewSection({
 
       <div className="flex items-center justify-end gap-3">
         {error && (
-          <p className="text-sm text-red-700">
+          <p role="alert" className="text-sm text-error">
             <AlertTriangle className="inline h-4 w-4" /> {error}
           </p>
         )}
+        <Button
+          variant="secondary"
+          onClick={onCancel}
+          disabled={committing}
+        >
+          <X className="inline h-4 w-4" /> Cancel
+        </Button>
         <Button onClick={onCommit} disabled={committing}>
           {committing ? 'Committing...' : 'Commit to cycle_calendar'}
         </Button>
@@ -351,7 +495,7 @@ function Stat({
   label: string;
   value: number;
   tone?: 'green' | 'amber' | 'red';
-}): React.ReactElement {
+}): JSX.Element {
   const toneClass =
     tone === 'green'
       ? 'text-green-700'
@@ -370,4 +514,21 @@ function Stat({
       </dd>
     </div>
   );
+}
+
+function summarizeMetadata(metadata: Record<string, unknown>): string {
+  const parts: string[] = [];
+  if (typeof metadata.total === 'number') {
+    parts.push(`${metadata.total} days`);
+  }
+  if (typeof metadata.attemptedRows === 'number' && metadata.attemptedRows > 0) {
+    parts.push(`${metadata.attemptedRows} attempted`);
+  }
+  if (typeof metadata.error === 'string') {
+    parts.push(`error: ${metadata.error.slice(0, 60)}`);
+  }
+  if (typeof metadata.durationMs === 'number') {
+    parts.push(`${metadata.durationMs}ms`);
+  }
+  return parts.join(' • ');
 }

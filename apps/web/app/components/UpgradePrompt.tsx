@@ -94,7 +94,7 @@ export function UpgradePrompt({
     ? (reason.featureLabel ?? 'This feature')
     : `You've hit the ${reason.limit ?? 'plan'} limit`;
   const subhead = isFeatureGate
-    ? (reason.cta ?? `Upgrade to ${reason.minimumPlan ?? 'school'} to unlock this.`)
+    ? (reason.cta ?? `Upgrade to ${reason.minimumPlan ?? 'school'} to access this.`)
     : `Your plan allows up to ${reason.max ?? '?'} ${reason.limit ?? ''}. Upgrade to add more.`;
 
   return (

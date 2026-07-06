@@ -315,7 +315,7 @@ function ComparePlans({
           Compare plans
         </h3>
         <p className="text-callout text-secondary mt-xs">
-          School-wide broadcast and recurring duties unlock on the School plan.
+          School-wide broadcast and recurring duties are available on the School plan.
         </p>
       </header>
       <div className="overflow-x-auto">
