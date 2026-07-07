@@ -160,12 +160,12 @@ export default function AdminCalendarPage() {
     setCommitted(null);
     const fd = new FormData();
     fd.append('file', f);
-    if (csrfToken) fd.append('csrfToken', csrfToken);
     try {
       const r = await fetch('/api/admin/calendar/import', {
         method: 'POST',
         body: fd,
         credentials: 'same-origin',
+        headers: { 'x-csrf-token': csrfToken ?? '' },
       });
       const body = (await r.json()) as Record<string, unknown> & {
         days?: ParsedDay[];

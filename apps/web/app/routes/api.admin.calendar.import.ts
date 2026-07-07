@@ -19,7 +19,7 @@
 
 import type { Route } from './+types/api.admin.calendar.import';
 import { requireRole, getSession } from '../../server/auth.server';
-import { validateCsrfFromJson } from '../../server/csrf.server';
+import { validateCsrf } from '../../server/csrf.server';
 import { check } from '../../server/rate-limit.server';
 import {
   stagePdfUpload,
@@ -50,7 +50,7 @@ export async function action({ request }: Route.ActionArgs) {
     return Response.json({ error: 'unauthorized' }, { status: 401 });
   }
   const session = requireRole(maybeSession, ['school_admin']);
-  const csrf = validateCsrfFromJson(request, {});
+  const csrf = validateCsrf(request);
   if (!csrf.ok) return csrf.response;
 
   const rl = check({
