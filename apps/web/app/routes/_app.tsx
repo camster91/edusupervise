@@ -12,6 +12,7 @@
 //   - When `schools.plan='demo_expired'`, render <ExpiredDemo />
 //     instead of the Outlet — the school is read-only until reset.
 
+import { useEffect } from 'react';
 import { Outlet, data, useLoaderData } from 'react-router';
 import { eq } from 'drizzle-orm';
 import { schools, notifications } from '@edusupervise/db';
@@ -23,6 +24,7 @@ import { Sidebar, Topbar, TabBar } from '../components/shell';
 import { ThemeStyle } from '../components/ThemeStyle';
 import { DemoBanner } from '../components/DemoBanner';
 import { ExpiredDemo } from '../components/ExpiredDemo';
+import { registerWebPush, getCapacitor } from '../lib/push';
 
 export async function loader({ request }: Route.LoaderArgs) {
   const session = await getSession(request);
@@ -96,6 +98,16 @@ export default function AppShell(): React.ReactElement {
   const { school, user, unreadCount, csrfToken } = useLoaderData<typeof loader>();
   const isDemo = school?.plan === 'demo';
   const isExpired = school?.plan === 'demo_expired';
+
+  // Push subscription registration. Runs once after mount on every
+  // authenticated page. iOS Capacitor users skip Web Push (their
+  // registerIosPush() runs separately via the @capacitor/push-notifications
+  // plugin). On unsupported browsers this is a silent no-op.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (getCapacitor()) return; // iOS app takes the APNs path
+    void registerWebPush();
+  }, []);
 
   return (
     <ThemeStyle accent={school?.accentColor ?? '#3b82f6'}>

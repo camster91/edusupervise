@@ -706,25 +706,56 @@ export const pushSubscriptions = pgTable(
     userId: uuid('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
-    endpoint: text('endpoint').notNull(),
-    p256dh: text('p256dh').notNull(),
-    auth: text('auth').notNull(),
+
+    // ---- Web Push fields (platform = 'web') ----
+    // endpoint is the push service URL (e.g. https://fcm.googleapis.com/...).
+    // p256dh + auth are the ECDH public key + auth secret the client
+    // generated when subscribing — needed to encrypt the payload.
+    endpoint: text('endpoint'),
+    p256dh: text('p256dh'),
+    auth: text('auth'),
     userAgent: text('user_agent'),
+
+    // ---- APNs fields (platform = 'ios') ----
+    // apnsToken is the hex device token returned by `registerForRemoteNotifications`
+    // on the iOS device. 64-char hex string for current iOS releases.
+    // appBundleId is captured at registration so we can route to the right
+    // APNs topic header later (also a safety check for split staging builds).
+    // appVersion is for filtering dead tokens after a major app upgrade.
+    apnsToken: text('apns_token'),
+    apnsBundleId: text('apns_bundle_id'),
+    apnsAppVersion: text('apns_app_version'),
+
+    // 'web' (default for legacy rows) or 'ios'.
+    // NOT a CHECK-constrained pgEnum — the live DB uses a plain CHECK
+    // constraint (see packages/db/src/schema.ts comment + migration 0015).
+    platform: text('platform').notNull().default('web'),
+
     createdAt: timestamp('created_at', { withTimezone: true })
       .notNull()
       .defaultNow(),
     lastUsedAt: timestamp('last_used_at', { withTimezone: true }),
   },
   (t) => [
-    // Idempotency on subscribe — duplicate subscribe refreshes last_used_at
-    // instead of erroring. See apps/web/server/push.server.ts.
-    uniqueIndex('push_subscriptions_school_user_endpoint_unique').on(
+    // Idempotency on Web Push subscribe — duplicate subscribe refreshes
+    // last_used_at instead of erroring.
+    uniqueIndex('push_subscriptions_web_unique').on(
       t.schoolId,
       t.userId,
       t.endpoint,
     ),
+    // Idempotency on iOS APNs register — one device token per user per
+    // bundle. Re-registering with the same token is a no-op; a new device
+    // on the same account upserts.
+    uniqueIndex('push_subscriptions_ios_unique').on(
+      t.schoolId,
+      t.userId,
+      t.apnsToken,
+    ),
     // Lookup is "give me all subs for this user" (send push to one user).
     index('idx_push_subscriptions_user').on(t.schoolId, t.userId),
+    // Lookup is "give me all subs on this platform" (debug + cleanup).
+    index('idx_push_subscriptions_platform').on(t.platform),
   ],
 );
 export type PushSubscription = typeof pushSubscriptions.$inferSelect;
