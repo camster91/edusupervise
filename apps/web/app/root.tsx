@@ -39,6 +39,15 @@ export const links: Route.LinksFunction = () => [
     rel: 'stylesheet',
     href: 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap',
   },
+  // PWA / iOS home-screen install hooks. The Capacitor iOS shell also
+  // pulls the apple-touch-icon via this link so Safari bookmarks and
+  // home-screen installs resolve correctly during web fallback mode.
+  { rel: 'manifest', href: '/manifest.json' },
+  { rel: 'apple-touch-icon', href: '/apple-touch-icon-180.png', sizes: '180x180' },
+  { rel: 'apple-touch-icon', href: '/apple-touch-icon-152.png', sizes: '152x152' },
+  { rel: 'apple-touch-icon', href: '/apple-touch-icon-120.png', sizes: '120x120' },
+  { rel: 'icon', type: 'image/png', href: '/icon-192.png', sizes: '192x192' },
+  { rel: 'icon', type: 'image/png', href: '/icon-512.png', sizes: '512x512' },
 ];
 
 /**
