@@ -91,18 +91,29 @@ export async function action({ request }: Route.ActionArgs) {
 
   const targetUserId = body.userId ?? session.userId;
 
-  // school_admin can only target themselves — targeting another
-  // user in the same tenant could be a social-engineering vector.
-  // If we ever need to broadcast test pushes for QA, scope that to a
-  // separate elevated endpoint with a stronger audit trail.
+  // When targeting a different user, verify they exist in the
+  // caller's school. This prevents admins from spamming arbitrary
+  // userIds (the FK on notifications would error out, but the
+  // 404 here is a cleaner signal + cheaper than a transaction
+  // abort).
   if (targetUserId !== session.userId) {
-    return Response.json(
-      {
-        error: 'forbidden',
-        detail: 'Admins can only fire test pushes on themselves. Omit userId or log in as the target user.',
-      },
-      { status: 403 },
-    );
+    const { users: usersTable } = await import('@edusupervise/db');
+    const { eq, and } = await import('drizzle-orm');
+    const { getSystemDb } = await import('../../server/db.server');
+    const sysDb = getSystemDb();
+    const [found] = await sysDb
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(
+        and(eq(usersTable.id, targetUserId), eq(usersTable.schoolId, session.schoolId)),
+      )
+      .limit(1);
+    if (!found) {
+      return Response.json(
+        { error: 'not_found', detail: 'Target user not found in this school.' },
+        { status: 404 },
+      );
+    }
   }
 
   try {

@@ -149,6 +149,7 @@ export default function AdminCalendarPage() {
   const [showConfirm, setShowConfirm] = useState(false);
   const [testBusy, setTestBusy] = useState(false);
   const [testResult, setTestResult] = useState<{ ok: boolean; detail: string } | null>(null);
+  const [testTargetUserId, setTestTargetUserId] = useState('');
   const [committed, setCommitted] = useState<{
     inserted: number;
     skipped: number;
@@ -235,7 +236,7 @@ export default function AdminCalendarPage() {
     setCommitted(null);
   }
 
-  async function fireTestPush(): Promise<void> {
+  async function fireTestPush(targetUserId?: string): Promise<void> {
     setTestBusy(true);
     setTestResult(null);
     try {
@@ -247,6 +248,7 @@ export default function AdminCalendarPage() {
           'x-csrf-token': csrfToken ?? '',
         },
         body: JSON.stringify({
+          ...(targetUserId ? { userId: targetUserId } : {}),
           title: 'Test push notification',
           body: 'If you see this, the dispatcher fanned out successfully (Web Push + APNs paths exercised).',
           linkUrl: '/app/today',
@@ -257,6 +259,7 @@ export default function AdminCalendarPage() {
         ok?: boolean;
         error?: string;
         targetUserId?: string;
+        detail?: string;
       };
       if (r.ok && body.ok) {
         setTestResult({
@@ -264,7 +267,10 @@ export default function AdminCalendarPage() {
           detail: `Fired to ${body.targetUserId?.slice(0, 8) ?? '?'}...`,
         });
       } else {
-        setTestResult({ ok: false, detail: body.error ?? `HTTP ${r.status}` });
+        setTestResult({
+          ok: false,
+          detail: body.detail ?? body.error ?? `HTTP ${r.status}`,
+        });
       }
     } catch (err) {
       setTestResult({
@@ -286,15 +292,17 @@ export default function AdminCalendarPage() {
           >
             <ArrowLeft className="inline h-4 w-4" /> Back to today
           </Link>
-          <button
-            type="button"
-            onClick={() => void fireTestPush()}
-            disabled={testBusy}
-            data-testid="fire-test-push"
-            className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-primary hover:bg-surface-2 disabled:opacity-60"
-          >
-            {testBusy ? 'Firing...' : 'Fire test push'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void fireTestPush()}
+              disabled={testBusy}
+              data-testid="fire-test-push"
+              className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-primary hover:bg-surface-2 disabled:opacity-60"
+            >
+              {testBusy ? 'Firing...' : 'Fire test push'}
+            </button>
+          </div>
         </div>
         {testResult && (
           <p
@@ -310,6 +318,38 @@ export default function AdminCalendarPage() {
             {testResult.detail}
           </p>
         )}
+        <details className="mt-2 text-xs text-secondary">
+          <summary className="cursor-pointer hover:text-primary">
+            Test on another user (admin only)
+          </summary>
+          <div className="mt-1 flex items-center gap-2">
+            <input
+              type="text"
+              inputMode="email"
+              placeholder="user UUID (paste from admin → users)"
+              value={testTargetUserId}
+              onChange={(e) => setTestTargetUserId(e.target.value)}
+              data-testid="fire-test-push-target-input"
+              className="flex-1 rounded-md border border-border bg-card px-2 py-1 font-mono text-footnote text-primary placeholder:text-secondary"
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const id = testTargetUserId.trim();
+                if (!id) return;
+                void fireTestPush(id);
+              }}
+              disabled={testBusy || !testTargetUserId.trim()}
+              data-testid="fire-test-push-target"
+              className="rounded-md border border-border bg-card px-2 py-1 font-medium text-primary hover:bg-surface-2 disabled:opacity-60"
+            >
+              Fire
+            </button>
+          </div>
+          <p className="mt-1 text-footnote text-secondary">
+            The target user must belong to your school. Cross-school targeting returns 404.
+          </p>
+        </details>
       </div>
 
       <header className="mb-8">
