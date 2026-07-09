@@ -650,7 +650,7 @@ function ReviewSection({
           <X className="inline h-4 w-4" /> Cancel
         </Button>
         <Button onClick={onCommit} disabled={committing}>
-          {committing ? 'Committing...' : 'Commit to cycle_calendar'}
+          {committing ? 'Saving...' : 'Save to school calendar'}
         </Button>
       </div>
     </div>
