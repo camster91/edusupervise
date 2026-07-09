@@ -34,6 +34,40 @@ const MAX_COMMITS = 50;
 const FIELD_SEP = '\x01';
 const RECORD_SEP = '\x01\n';
 
+// Cap commit bodies at this length before redaction. Long bodies
+// are noise on the public /changelog page; the first ~200 chars always
+// contain the headline. Truncation happens BEFORE redaction so the
+// "..." suffix doesn't accidentally count toward a redaction match.
+const MAX_BODY_CHARS = 200;
+
+// Redact patterns applied to the truncated body. Order matters: run
+// the more specific patterns first (emails, then IPs, then hostnames).
+// Unicode-aware — accepts both ASCII apostrophe (U+0027) and curly
+// apostrophe (U+2019) in free-form prose.
+const REDACT_PATTERNS: ReadonlyArray<readonly [RegExp, string]> = [
+  // RFC-ish emails: local@domain.tld
+  [/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, '[email]'],
+  // IPv4 (excludes trailing dots / CIDR)
+  [/\b(?:\d{1,3}\.){3}\d{1,3}\b/g, '[ip]'],
+  // IPv6 (compressed form, rough)
+  [/\b(?:[0-9a-fA-F]{1,4}:){2,7}[0-9a-fA-F]{1,4}\b/g, '[ip]'],
+  // Infra hostnames: ashbi.ca, edusupervise.ashbi.ca, plus subdomains
+  [/\b(?:[a-z0-9-]+\.)*edusupervise\.ashbi\.ca\b/gi, '[host]'],
+  [/\b(?:[a-z0-9-]+\.)*ashbi\.ca\b/gi, '[host]'],
+  // /root/<path> leak — internal filesystem hints
+  [/\B\/root\/[a-zA-Z0-9._/-]+/g, '[/path]'],
+  // Bearer tokens (sk-, ghp_, gho_, AIza, AKIA prefixes)
+  [/\b(?:sk-|ghp_|gho_|AIza|AKIA)[A-Za-z0-9_-]{16,}\b/g, '[token]'],
+];
+
+function redactBody(raw: string): string {
+  const truncated = raw.length > MAX_BODY_CHARS ? raw.slice(0, MAX_BODY_CHARS) + '\u2026' : raw;
+  return REDACT_PATTERNS.reduce(
+    (acc, [pattern, replacement]) => acc.replace(pattern, replacement),
+    truncated,
+  );
+}
+
 function parseLog(raw: string): Commit[] {
   const records = raw
     .split(RECORD_SEP)
@@ -44,7 +78,7 @@ function parseLog(raw: string): Commit[] {
     const hash = (parts[0] ?? '').trim();
     const date = (parts[1] ?? '').trim();
     const subject = (parts[2] ?? '').trim();
-    const body = (parts.slice(3).join(FIELD_SEP)).trim();
+    const body = redactBody(parts.slice(3).join(FIELD_SEP).trim());
     return { hash, shortHash: hash.slice(0, 7), date, subject, body };
   });
 }
