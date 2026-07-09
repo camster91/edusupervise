@@ -9,11 +9,14 @@
 --   1. Add `platform` column (default 'web' for existing rows).
 --   2. Add APNs columns: apns_token, apns_bundle_id, apns_app_version.
 --   3. Make VAPID columns nullable (only 'web' rows need them).
---   4. Replace the old unique-on-endpoint index with two partial uniques
---      (one per platform) — iOS users can have one web sub + one iOS
---      sub simultaneously.
---   5. Drop the old idx_push_subscriptions_user; replace with a partial
---      index covering both web + ios lookups (we send to all of them).
+--   4. Replace the old unique-on-endpoint index with two non-partial
+--      uniques (one per platform). Non-partial because Drizzle's
+--      onConflictDoUpdate(target: [col,col,col]) emits
+--      ON CONFLICT (cols) which doesn't match a partial unique index
+--      (WHERE clause). The cross-platform invariant is enforced by the
+--      field-required CHECK constraints below (web rows must have
+--      endpoint+p256dh+auth; iOS rows must have apns_token).
+--   5. Add a per-platform lookup index for cleanup / debug.
 --
 -- Forward-compat: when Apple ships native iOS Live Activities or other
 -- APNs features, add columns here rather than ALTER TYPE. Don't introduce
@@ -82,25 +85,18 @@ ALTER TABLE push_subscriptions
   );
 
 -- ---------------------------------------------------------------------------
--- 3. Replace unique indexes. The old one keyed on (school_id, user_id,
---    endpoint) which is NULL for iOS rows — two iOS rows with NULL endpoint
---    would NOT conflict on that index, which is wrong.
+-- 3. Replace unique indexes. Non-partial on (school, user, endpoint_or_token)
+--    to match Drizzle's onConflictDoUpdate target-array form. Cross-platform
+--    collisions are prevented by the field-required CHECK constraints above.
 -- ---------------------------------------------------------------------------
 
 DROP INDEX IF EXISTS push_subscriptions_school_user_endpoint_unique;
 
--- One web subscription per (school, user, endpoint). NULL endpoint rows
--- (iOS) are excluded by the WHERE clause.
 CREATE UNIQUE INDEX IF NOT EXISTS push_subscriptions_web_unique
-  ON push_subscriptions (school_id, user_id, endpoint)
-  WHERE platform = 'web';
+  ON push_subscriptions (school_id, user_id, endpoint);
 
--- One iOS subscription per (school, user, apns_token). A user can have
--- at most one iOS device token per bundle ID — re-registering with the
--- same token upserts; a new device replaces.
 CREATE UNIQUE INDEX IF NOT EXISTS push_subscriptions_ios_unique
-  ON push_subscriptions (school_id, user_id, apns_token)
-  WHERE platform = 'ios';
+  ON push_subscriptions (school_id, user_id, apns_token);
 
 -- ---------------------------------------------------------------------------
 -- 4. Add a platform-keyed lookup index for cleanup / debug.
