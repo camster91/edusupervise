@@ -121,6 +121,8 @@ export default [
   // Public legal pages (App Store Connect URLs).
   route('privacy', 'routes/privacy.tsx'),
   route('support', 'routes/support.tsx'),
+  // Public release timeline (prebuilt from git log on every build).
+  route('changelog', 'routes/changelog.tsx'),
   // Phase 2 — push notification subscription registration (web + iOS).
   route('api/push/register', 'routes/api.push.register.ts'),
   route('api/push/vapid-public-key', 'routes/api.push.vapid-public-key.ts'),

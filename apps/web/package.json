@@ -7,6 +7,7 @@
   "sideEffects": false,
   "scripts": {
     "dev": "react-router dev",
+    "prebuild": "node --experimental-strip-types scripts/build-changelog.ts",
     "build": "react-router build",
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc -p tsconfig.json --noEmit",

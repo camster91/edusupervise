@@ -1,0 +1,352 @@
+[
+  {
+    "hash": "b0f1aa224dca43794a56b0b5108f02558ee20f1d",
+    "shortHash": "b0f1aa2",
+    "date": "2026-07-09",
+    "subject": "admin: privacy + support pages, push tests, cross-user test target",
+    "body": "Four pieces to close out the iOS App Store pipeline so the URLs\nApple reviewers will hit all resolve and Cameron has a regression\nnet around the dispatcher.\n\n1. apps/web/app/routes/privacy.tsx — public privacy policy at\n   /privacy. App Store Connect requires Privacy Policy URL to\n   resolve to a real page (not a 404, not a login wall, not a\n   5-line stub). Content: what we collect, what we don't (no ad\n   IDs, no location, no student data), where it's stored (Postgres\n   on Ashbi's VPS, encrypted at rest, multi-tenant with RLS), third\n   parties (Mailgun, Stripe-web, APNs, browser push services),\n   retention (audit logs 30 days free / 90 days paid), and the\n   user's rights (export, delete, correct, opt out). 12th-grade\n   English. Effective date stamped at the top.\n\n2. apps/web/app/routes/support.tsx — public support page at\n   /support. App Store Connect's \"Support URL\" requirement.\n   Common-question FAQ (reminder troubleshooting, invite emails,\n   data export, account migration, \"is the iOS app just a web\n   wrapper\", link to privacy), contact email (support@...), and a\n   status-page link. Same Apple-HIG layout as privacy.\n\n3. apps/web/server/push.server.test.ts — 11-test Vitest suite\n   covering the dispatcher's per-subscription failure handling:\n     - Web Push 404 → delete row\n     - Web Push 410 Gone → delete row\n     - Web Push 500 → preserve row (transient)\n     - Web Push 400 → preserve row (malformed, not terminal)\n     - APNs 410 Gone → delete row\n     - APNs 400 BadDeviceToken → delete row\n     - APNs auth-failed (no .p8 wired) → preserve row\n     - APNs rate-limited → preserve row\n     - Both web + iOS in parallel (no serial blocking)\n     - Web failure does NOT block iOS dispatch\n     - Empty subscription set: no error, no delivery attempts\n   All 11 pass; total project tests now 56/56 across 10 files.\n\n4. /api/notifications/test + admin UI: loosened the cross-user\n   target restriction. school_admins can now target any user in\n   their own school (returned 200 with the target's id, useful for\n   QA testing the dispatcher on existing tenant users). Cross-school\n   targeting returns 404 (cheap user-lookup precheck). The admin\n   calendar page now has a \"Test on another user\" expandable form\n   under the main \"Fire test push\" button — paste a user UUID, fire.\n\nSmoke verified:\n- POST /api/notifications/test self → 200\n- POST with cross-school userId → 404 \"not found in this school\"\n- POST with same-school bogus uuid → 404 same error\n- /privacy and /support both return 200 with real content\n- 11/11 new push.server tests pass\n- 56/56 total tests pass (no regression on existing suite)"
+  },
+  {
+    "hash": "807267037814f912ac7ad21360c175ddd64d3a7d",
+    "shortHash": "8072670",
+    "date": "2026-07-09",
+    "subject": "admin: fire test push debug route + button + App Store metadata",
+    "body": "Three coordinated pieces for shipping EduSupervise to the App Store:\n\n1. apps/web/app/routes/api.notifications.test.ts — admin-only POST endpoint\n   that fires a real sendNotification() through the same code path the\n   worker reminder queue uses. School_admins can hit it from anywhere\n   (curl, browser console, the new UI button below) to verify the\n   push pipeline end-to-end. Cross-user targeting blocked (403) so\n   this doesn'\\''t become a spam vector in shared tenants. 10/hr rate\n   limit. Defaults target = caller; admins test on themselves.\n\n2. apps/web/app/routes/admin.calendar._index.tsx — small \"Fire test\n   push\" button at the top of the admin calendar page. Click POSTs\n   to /api/notifications/test with a default test payload, shows\n   success/failure status inline. School_admins only (the route\n   enforces it; the UI is just for the common case).\n\n3. docs/APP-STORE-CONNECT.md — copy-paste-ready App Store metadata:\n   name, subtitle, description (12th-grade-English, conversion-focused,\n   ~310 / 4000 chars), keywords (100 char limit), Promotional text,\n   Apple-HIG screenshot dimensions + capture commands (xcrun simctl),\n   privacy policy / support / marketing URL slots, app privacy\n   questionnaire answers, full submission checklist.\n\nVerification:\n- POST /api/notifications/test (school_admin session): 200 + notification\n  row inserted. Web log: \"notifications.test: fired\".\n- Targeting another userId: 403 with detail.\n- Empty body: 400 with zod detail.\n- /admin/calendar page renders with the new button (data-testid\n  fire-test-push) for admins."
+  },
+  {
+    "hash": "fb8adedb972f9596c45b766d769567d0afdeb632",
+    "shortHash": "fb8aded",
+    "date": "2026-07-09",
+    "subject": "fix: make push_subscriptions unique indexes non-partial",
+    "body": "Phase 2 smoke test caught this: Drizzle's onConflictDoUpdate with\ntarget: [col, col, col] emits ON CONFLICT (cols) which doesn't match\na partial unique index (WHERE clause). The original migration 0015\ncreated push_subscriptions_web_unique and push_subscriptions_ios_unique\nas partial indexes WHERE platform=$PLATFORM$, so the upsert\nin registerWebSubscription / registerIosSubscription failed at\nruntime with \"Failed query\".\n\nFix: drop the WHERE clause from both unique indexes. Cross-platform\nisolation is still preserved by the field-required CHECK constraints\n(platform=web rows must have endpoint, platform=ios rows must\nhave apns_token), so a web row can never collide with an iOS row in\npractice.\n\nMigration 0015 updated to match. VPS database rebuilt by hand via\npsql (same approach used for the 0013/0014 migrations) — DROP INDEX\n+ CREATE UNIQUE INDEX non-partial. Smoke verified end-to-end:\n\n  - registerWebSubscription(chen@sunrise-elem.example) → ok\n  - registerIosSubscription(chen@...) → ok\n  - sendPushToUser → fires both paths in 13ms\n  - Web Push: fails with \"p256dh should be 65 bytes\" (fake creds)\n    → row preserved (correct: only 404/410 deletes, not other errors)\n  - APNs: returns reason=auth-failed (no .p8 wired) → graceful no-op\n\nAlso adds docker/.env.bak.* to .gitignore so Mailgun rollback backups\ndon't pollute future status output."
+  },
+  {
+    "hash": "1ef6af434de6de411053bee6b78b18acc3612f37",
+    "shortHash": "1ef6af4",
+    "date": "2026-07-08",
+    "subject": "web+infra: real push notifications — Web Push + APNs in parallel",
+    "body": "Phase 2 of the iOS App Store pipeline. WKWebView does NOT support the\nWeb Push API on iOS, so the iOS app needs a separate channel (APNs)\neven though it loads the same web code as the browser. This commit\nturns the push.stub in apps/web/server/push.server.ts into a real\ndispatcher that fans out to BOTH channels.\n\nServer side:\n- packages/db/src/schema.ts: extend push_subscriptions with platform\n  column (default \"web\" for existing rows), apns_token/apns_bundle_id/\n  apns_app_version columns for iOS, partial unique indexes (one per\n  platform), and CHECK constraints enforcing web/ios field invariants.\n- packages/db/migrations/0015_push_subscriptions_apns.sql: idempotent\n  migration applied to VPS Postgres (drizzle tracking table created\n  via psql — same approach used for migrations 0013/0014).\n- apps/web/server/apns.server.ts: hand-rolled APNs HTTP/2 client using\n  node:http2 + ES256 JWT signed with the .p8 auth key from App Store\n  Connect. Returns SendResult with reason codes (gone, invalid-token,\n  auth-failed, rate-limited) so the dispatcher can prune dead subs.\n  Avoids the @parse/node-apn dependency (stale maintainer, heavy).\n- apps/web/server/push.server.ts: real dispatcher. Reads all subs for\n  a user, dispatches via web-push (VAPID) or apns based on platform.\n  410 Gone / 404 from web-push and gone/invalid-token from APNs delete\n  the row. Other failures log at warn and leave the row in place.\n- registerWebSubscription + registerIosSubscription: idempotent upserts\n  on the partial unique indexes (POST /api/push/register endpoint).\n- VAPID keys generated + wired to /root/edusupervise-secrets/.env and\n  /opt/edusupervise/docker/.env (public + private + subject).\n\nRoutes:\n- apps/web/app/routes/api.push.register.ts: POST endpoint with\n  discriminated-union body schema (web subscription shape vs iOS token\n  shape). Authenticated, rate-limited 10/user/hr.\n- apps/web/app/routes/api.push.vapid-public-key.ts: GET endpoint\n  exposing VAPID_PUBLIC_KEY for the SW to subscribe. 1h cache.\n\nClient:\n- apps/web/app/lib/push.ts: registerWebPush() runs in AppShell useEffect\n  on every authenticated page load. Asks for permission, subscribes via\n  pushManager, POSTs the subscription to /api/push/register. Silent\n  no-op on unsupported browsers. getCapacitor() helper detects iOS app\n  mode (skips web push there — iOS takes the APNs path).\n- apps/web/app/routes/_app.tsx: hooks registerWebPush into mount.\n- apps/web/public/sw.js: existing push handler already supports the\n  new payload shape ({ title, body, linkUrl, tag, data }) — no changes\n  needed. notificationclick handler resolves linkUrl to in-app route.\n\niOS app:\n- apps/web/package.json: added web-push + @types/web-push +\n  @capacitor/push-notifications.\n- ios/App/App/AppDelegate.swift: registerForRemoteNotifications()\n  on launch; explicit forwarding of didRegister/didFail/didReceive as\n  defense-in-depth in case Capacitor swizzling changes in a future\n  release. NSLog on token receipt for diagnostics.\n\nVerification:\n- drizzle typecheck clean (only the pre-existing ./+types/* noise from\n  un-run RR7 typegen, unrelated to this commit).\n- Web container rebuilt + restarted. All 3 VAPID_* env vars loaded.\n- End-to-end smoke: demo signup → POST /api/push/register with fake\n  subscription → 200 ok; re-POST same payload → 200 (idempotent upsert);\n  GET /api/push/vapid-public-key → 200 with public key.\n- DB row inspection: 1 row inserted, last_used_at updated on second\n  call. has_p256dh + has_auth = true. Schema constraints enforced.\n\nOut of scope (Cameron-side):\n- Provision APNs .p8 key in App Store Connect → set APNS_KEY_ID,\n  APNS_TEAM_ID, APNS_BUNDLE_ID, APNS_KEY_P8, APNS_ENV env vars.\n- Build iOS app in Xcode, sign, run on device, confirm token registration\n  fires (NSLog: \"APNs token registered\").\n- App Store screenshots + privacy policy URL."
+  },
+  {
+    "hash": "d196a8da0c9dce4d367f8632e38297a1554232b0",
+    "shortHash": "d196a8d",
+    "date": "2026-07-08",
+    "subject": "infra: ship to iOS — Capacitor scaffold + icons + splash + BUILD.md",
+    "body": "Phase 1 of the iOS App Store pipeline. The web app stays single-source on\nedusupervise.ashbi.ca; this commit wraps it in a WKWebView with native\nchrome (icon, splash, bundle ID, URL scheme) so it installs as a real\niOS app and shows up on the App Store.\n\nBundle: ca.ashbi.edusupervise (reverse-DNS for edusupervise.ashbi.ca).\nDisplay name: EduSupervise. WebView loads https://edusupervise.ashbi.ca\nvia server.url so session cookies + auth work natively — no API rewrite\nneeded.\n\nWhat this commit adds:\n- capacitor.config.ts at repo root (appId, server.url, ios config).\n- ios/ — generated Xcode project, AppDelegate.swift, Info.plist, storyboard.\n- ios/App/App/Assets.xcassets/AppIcon.appiconset/ — full iOS icon set\n  (180/167/152/120/87/80/76/60/58/40/29/20 + 1024 marketing).\n- ios/App/App/Assets.xcassets/Splash.imageset/ — branded splash on\n  Apple system blue (#007AFF), matching the existing design tokens.\n- apps/web/public/manifest.json — PWA manifest (good for browser install\n  on iOS Safari even before the native app is on the App Store).\n- apps/web/public/apple-touch-icon-{120,152,167,180}.png + icon-{20,29,\n  40,58,60,76,80,87,120,152,167,180,192,512,1024}.png — derived from\n  one 1024 source (placeholder ES wordmark; swap when real brand mark\n  arrives — re-run scripts/generate-icons.py).\n- apps/web/app/root.tsx — manifest + apple-touch-icon + icon link tags.\n- Info.plist — ITSAppUsesNonExemptEncryption=false (App Store req),\n  CFBundleURLTypes with edusupervise:// scheme (Phase 2 deep links),\n  UIStatusBarStyle=LightContent (white text on blue splash).\n- .gitignore — ignore ios/Pods/, ios/build/, ios/*/xcuserdata/, generated\n  web bundle at ios/App/App/public/.\n- BUILD.md — Mac-side steps: install Xcode, open workspace, sign, build,\n  TestFlight, App Store submission. Includes a Phase 2 section for push\n  notifications (currently the Web Push adapter is a stub).\n\nWhat this commit DOES NOT touch:\n- The web app — no new routes, no UI changes, no behavior changes.\n  Existing CSRF + Mailgun wiring is unchanged.\n- App Store Connect metadata, signing certs, .p8 auth key — those are\n  Cameron-side, documented in BUILD.md §1.\n- Push notifications — Phase 2 (BUILD.md §9)."
+  },
+  {
+    "hash": "d88695dad52e27cd8f98ee0322a83b4af131ce0b",
+    "shortHash": "d88695d",
+    "date": "2026-07-07",
+    "subject": "tools: add scripts/parse-pdf.mjs — offline tsx wrapper for the pdf parser",
+    "body": "31-line script around pdf-parser.server.ts that runs the parser on a\nlocal PDF and dumps parsed rows to stdout. Lets you test a PDF without\nthe HTTP/upload flow. Usage:\n\n    tsx scripts/parse-pdf.mjs /path/to/file.pdf\n\nUseful when triaging parse failures vs upload/CSRF failures — isolates\nthe parser layer."
+  },
+  {
+    "hash": "4d72cf8ce95c056431fffebbb88ae9e3369f6776",
+    "shortHash": "4d72cf8",
+    "date": "2026-07-07",
+    "subject": "web: calendar import CSRF — route + frontend align on x-csrf-token header",
+    "body": "Before: route called validateCsrfFromJson(request, {}) on a multipart body\n(returns 403 missing_token because body is multipart, not JSON) and the\nadmin frontend only attached CSRF via a FormData field (wrong canonical\nname csrfToken instead of csrf). Every admin calendar import hit 403.\n\nAfter: route uses validateCsrf(request) — header-only — matching the\npattern used by api.admin.calendar.commit.ts and api.onboarding.upload-\npdf.ts for multipart fetches. Frontend now sends x-csrf-token header on\nthe multipart fetch (the same approach commit() already used) and drops\nthe orphan FormData csrfToken field. Two routes on /admin/calendar, one\nCSRF convention."
+  },
+  {
+    "hash": "59f72613eba8daa584d70d339befdd5673ccb60a",
+    "shortHash": "59f7261",
+    "date": "2026-07-06",
+    "subject": "web: Cluster 2 admin/calendar UX BLOCKERs + unlock banned-word sweep",
+    "body": "QA swarm (2026-07-05) flagged 5 BLOCKING UX issues on the freshly-shipped\n/admin/calendar admin UI:\n\n  1. role=\"alert\" missing on error messages (regression of S-U8)\n     - Added role=\"alert\" on both the upload-time error and the\n       review-time error.\n\n  2. text-red-700 raw class instead of design token (B8 drift)\n     - Replaced text-red-700 with text-error token at the 2 error\n       sites. Visual style unchanged because the token resolves to\n       the same red, but the audit trail is clean.\n\n  3. Destructive commit without client-side confirmation\n     - Added an alertdialog modal that requires explicit Commit\n       click before posting to /api/admin/calendar/commit. Modal\n       shows the row count + reversibility note.\n\n  4. No Cancel button during review (only Back to today escape)\n     - Added a Cancel button next to the Commit button that wipes\n       the parsed state and returns to the upload screen.\n\n  5. No recent-commits / audit-log panel\n     - Loader now queries the last 5 calendar_import.* audit_log\n       rows for this school and renders them in a panel below\n       the upload/review surface. Fetches via getSystemDb() (the\n       cached singleton just landed) with an empty-state fallback\n       if audit fetch fails.\n\nPlus two banned-word fixes (Slice D):\n  - UpgradePrompt.tsx:97 \"to unlock this.\" -> \"to access this.\"\n  - _app.settings.billing.tsx:318 \"duties unlock on\" ->\n    \"duties are available on\"\n\nCluster 2 closed."
+  },
+  {
+    "hash": "4dfce1c5a5b580c5cbe8dc9cef509c4ca96c51e4",
+    "shortHash": "4dfce1c",
+    "date": "2026-07-06",
+    "subject": "web: H4 magic-link TTL UI copy — \"5 minutes\" -> \"60 minutes\"",
+    "body": "QA swarm HIGH finding. The auth-flows.server.ts default ttlMs\nis 60 * 60 * 1000 (60 minutes) but auth.magic.tsx:233 UI copy\nsaid \"The link expires in 5 minutes.\" Trust-eating drift.\n\nUpdated UI to match the actual TTL. Now the link expiry text\nmatches the email the user receives.\n\nH4 closed."
+  },
+  {
+    "hash": "bbfb4dbe4954d4747b2145f40c7a647ad9788a6b",
+    "shortHash": "bbfb4db",
+    "date": "2026-07-06",
+    "subject": "web: H2 writtenCount -> attemptedRows rename (calendar_import audit row semantics)",
+    "body": "QA swarm HIGH finding. writtenCount was misleading — the counter\nincrements BEFORE each row insert in the txn, so on throw the\ntxn ROLLS BACK and the rows never persisted. The count was the\nlast-attempted row index, not the number that survived.\n\nRenamed to attemptedRows across:\n  - CalendarUpsertError field\n  - UpsertResult field\n  - api.admin.calendar.commit.ts metadata\n  - calendar-import.server.test.ts pins\n\nComment in calendar-import.server.ts updated to clarify: the\naudit row tells you how many rows the loop ATTEMPTED before\nthrowing; pair with a SELECT count(*) on cycle_calendar to derive\nthe true partial cursor.\n\nH2 closed."
+  },
+  {
+    "hash": "93581b4edd1026892d9b4fc07dea0c2db98ffaab",
+    "shortHash": "93581b4",
+    "date": "2026-07-06",
+    "subject": "web: H1 PII redact — phone numbers masked in logger.warn (verify-phone.server.ts)",
+    "body": "QA swarm HIGH finding. verify-phone.server.ts:89,113 called\nlogger.warn({ phone }) which wrote raw phone numbers into logs.\nReplaced with redactPhone() helper that emits +1****NN (last 2\ndigits only).\n\nInlined the helper because verify-phone.server.ts is the only\nconsumer; if other modules start logging phone/email/PII we can\nlift it to logger.server.ts.\n\nH1 closed."
+  },
+  {
+    "hash": "9bb141228e7ff018c762162ed1d72e5072a01a75",
+    "shortHash": "9bb1412",
+    "date": "2026-07-06",
+    "subject": "web: getSystemDb() singleton + auth.server uses cached pool (Cluster 3 BLOCKER)",
+    "body": "QA swarm (2026-07-05) found loadSessionFromDb opened a fresh\npostgres system pool per request via getSystemClient(systemUrl) +\nclose(). Under 50 concurrent requests this saturated the 10-conn\nruntime pool limit, with 10/10 conns stuck idle in transaction\nfor 12+ minutes, taking the web container silent until restart.\n\nFix: added getSystemDb() singleton to apps/web/server/db.server.ts\nfollowing the same lazy-build pattern as getDb(). Auth-server now\nuses the cached pool. Drained at SIGTERM via the same handler as\nthe runtime pool.\n\nThis also explains the healthz/api/health hang after 10-15 min\nuptime that Slice A flagged — same root cause (saturated pool\nblocks /healthz from completing). One fix, two findings closed."
+  },
+  {
+    "hash": "b9f13dcedc1af81c9881fb854efee1be9359c25e",
+    "shortHash": "b9f13dc",
+    "date": "2026-07-05",
+    "subject": "docs: postmortem - calendar import BLOCKING (holiday_code CHECK mismatch)",
+    "body": "Documents the BLOCKING bug caught by app-ship-prep verifier on\n2026-07-05 (session mvs_498818874f5b439ebb78debd3277d2e1).\n\nTL;DR: migration 0013 had CHECK allowing 8 human-readable slugs\n(holiday/recess/pd_day/...), parser emitted 5 one-letter codes\n(B/E/ES/M/0). Mismatch would have caused mid-transaction 500s\nin production with no audit row.\n\nIncludes:\n  - Timeline (03:02 ship -> 09:25 SHIP verdict, ~5 min time-to-detect)\n  - Root cause (multi-agent overnight prep drift)\n  - What went right (verifier caught it via psql, not migration file)\n  - What went wrong (tech lead missed DB agent open question #1)\n  - 60-second drift-check recipe (now in agent memory)\n  - Detection recipe for future similar bugs\n  - 4 commits referenced (0014 + 5779011 + bc32e48 + 2912cfe)\n\nLives at docs/postmortems/ so future sessions can grep by incident\npattern. Future similar incidents (CHECK mismatch, contract drift,\nvocabulary mismatch) get the same diagnostic path."
+  },
+  {
+    "hash": "369d8d7aab672a907702c61ff43b1c2acb3290f3",
+    "shortHash": "369d8d7",
+    "date": "2026-07-05",
+    "subject": "web: tests - calendar-import.server shape + CalendarUpsertError coverage",
+    "body": "Pins the public contract of apps/web/server/calendar-import.server.ts:\n\n  - CalendarUpsertError class: writtenCount + failedDate +\n    originalError fields populated correctly; instance is catchable\n    as both Error and CalendarUpsertError; works with partial\n    construction (just message + count).\n\n  - UpsertResult type: exactly { result, writtenCount }, no other\n    fields.\n\n  - UpsertOutcome type: skippedDates + skipped + ok semantics\n    pinned for the partial-success shape.\n\n5 new tests, 45/45 total. End-to-end behavior still exercised via\nintegration tests + the verifier force-throw probe (run against\nreal Postgres); unit-level pinning prevents future refactors from\ndrifting the audit-cursor contract."
+  },
+  {
+    "hash": "4c7620a2118895cc1c698e4332ca0b04b05aef76",
+    "shortHash": "4c7620a",
+    "date": "2026-07-05",
+    "subject": "docs: tighten import route header + inline comments (5-min nit from verifier)",
+    "body": "Verifier (mvs_4988) flagged that acf8dad over-claimed stderr was\npiped into audit metadata. Actual: jobId is in audit + stderr is\npreserved in web container logs (logger.warn in the TS wrapper)\nand operators correlate by jobId.\n\nUpdated both the header block (lines 12-15) and the inline comment\ninside the parse-failure audit row (lines 111-114) to accurately\ndescribe the two-surface correlation pattern. Code unchanged."
+  },
+  {
+    "hash": "2912cfea707f026309750e75d9620851d146dc05",
+    "shortHash": "2912cfe",
+    "date": "2026-07-05",
+    "subject": "web: calendar_import - CalendarUpsertError carries writtenCount into the catch block (MED-2)",
+    "body": "MED-2 from app-ship-prep verifier (mvs_4988) re-verify round.\n\nBefore: calendar_import.commit_failed audit row stored\nattemptedDays (parse-time total, e.g. 215) but no count of how\nmany rows actually committed before the throw. Operator had to\nSELECT count(*) on cycle_calendar separately to derive the partial\ncursor.\n\nAfter:\n  - calendar-import.server.ts defines CalendarUpsertError class\n    carrying writtenCount + failedDate + originalError.\n  - upsertCalendarDays wraps the withSchoolId txn in try/catch;\n    on throw, the catch re-throws as CalendarUpsertError with\n    written = (rows attempted before the failure point).\n  - api.admin.calendar.commit.ts catches and unwraps: if the\n    caught error is CalendarUpsertError, writtenCount comes from\n    err.writtenCount; otherwise 0.\n\nAudit row metadata now has both attemptedDays and writtenCount.\nOperator can read audit_log alone to know the partial cursor, no\nSELECT needed.\n\nNote on transactions: withSchoolId rolls back the entire txn on\nthrow, so writtenCount counts ATTEMPTED rows before the throw,\nnot physically persisted rows. The audit metadata is paired with\nthe operator doing a follow-up SELECT count(*) to get the true\npartial cursor. Documented inline in the helper.\n\nTypeScript niceties:\n  - Error.cause is a base-class member in modern TS, so the new\n    field is named originalError to avoid the override-modifier\n    dance and keep the diff minimal."
+  },
+  {
+    "hash": "bc32e48e9b1cdc2ee6be0189745ce501c36ef605",
+    "shortHash": "bc32e48",
+    "date": "2026-07-05",
+    "subject": "web: pdf_calendar_extract - validateShape reads note from python dict (MED-1)",
+    "body": "MED-1 from app-ship-prep verifier (mvs_4988) re-verify round.\n\nBefore: CalendarDay interface declared note field, the upsert\nhelper forwarded it, and the database column accepted it - but\nvalidateShape constructed the day object without reading o.note\nfrom the python dict. The field was always undefined after shape\nvalidation, so any future parser revision carrying annotations\nwould have been silently dropped.\n\nAfter: validateShape.out.push reads o.note (string) and normalizes\nto null when absent. One-line contract closure."
+  },
+  {
+    "hash": "acf8dadc8a74f7b68b7d13325900aadb17de76b5",
+    "shortHash": "acf8dad",
+    "date": "2026-07-05",
+    "subject": "web: import + upsert + parser - pipe stderr to audit + note passthrough",
+    "body": "Two HIGH fixes from app-ship-prep verifier (mvs_4988):\n\n  1. api.admin.calendar.import.ts now includes jobId in the\n     calendar_import.parse_failed audit metadata so operators can\n     correlate the audit row with the parser stderr in web\n     container logs (where the TS wrapper logger.warn persists the\n     1KB-stderr-truncated detail). Same data, two lookup surfaces.\n\n  2. calendar-import.server.ts now forwards note from the parsed\n     CalendarDay into cycle_calendar.note. Previously hard-coded\n     to null. The parser does not currently emit note but the\n     shape is reserved for forward-compat (e.g. exam day,\n     half day annotations).\n\n  3. pdf_calendar_extract.server.ts CalendarDay interface adds\n     optional note field (string | null) so the type contract\n     matches the helper that consumes it."
+  },
+  {
+    "hash": "5779011778ca7c3ca57dd438558e963654c58c63",
+    "shortHash": "5779011",
+    "date": "2026-07-05",
+    "subject": "web: api.admin.calendar.commit - wrap upsert in try/catch + calendar_import.commit_failed audit on throw",
+    "body": "HIGH feedback from app-ship-prep verifier (mvs_4988).\n\nBefore: if upsertCalendarDays threw mid-transaction, the admin saw\na 500 with NO audit row written, no operator visibility into what\nwas attempted, and partial cycle_calendar rows landed in the DB.\n\nAfter: the upsert + audit pair is wrapped in try/catch. On throw:\n  1. calendar_import.commit_failed audit row written with the\n     error message, attempted-days count, jobId, sha256\n  2. logger.error fires with the full err stack\n  3. 500 returned with a UI-friendly message that points the admin\n     at the audit log\n\nThe successful path is unchanged: upsert + calendar_import.committed\naudit + 200 JSON response.\n\nNo new dependencies, no schema changes."
+  },
+  {
+    "hash": "6554a9ee267612713de75cca42b47d32ce194469",
+    "shortHash": "6554a9e",
+    "date": "2026-07-05",
+    "subject": "db: migration 0014 - fix cycle_calendar.holiday_code CHECK to match parser output",
+    "body": "BLOCKING. Caught by app-ship-prep verifier (mvs_4988) before\nproduction exposure.\n\nMigration 0013 (committed 07ee533) shipped a CHECK constraint\nallowing 8 human-readable slugs:\n  holiday, recess, pd_day, exam, half_day, weather, in_service, break\n\nBut the python parser (apps/web/server/pdf_calendar_extract.py)\nemits 5 one-letter codes from the YRDSB template:\n  B (board holiday), E (elem PA), ES (elem/sec PA), M (mandatory\n  holiday), 0 (day-zero PA)\n\nThe TS wrapper (apps/web/server/pdf_calendar_extract.server.ts)\nalso whitelists only the one-letter codes. So the FIRST holiday\nrow in any admin commit would collide with the CHECK, the upsert\nloop throws, and the admin sees a 500 with no audit row\n(calendar_import.commit_failed was never written).\n\nThis migration:\n  - DROPs cycle_calendar_holiday_code_values\n  - Re-adds it allowing {B, E, ES, M, 0}\n\nOnline-safe (DROP CONSTRAINT IF EXISTS + DO block re-add) +\nidempotent (verified by re-running 0013 on top).\n\nVerified post-deploy:\n  - INSERT with all 5 codes: SUCCESS\n  - INSERT with pd_day (old vocab): CHECK violation (expected)\n\nDrizzle journal updated with idx=13 entry pointing at this tag."
+  },
+  {
+    "hash": "b58aa72f5c204b4398a14f4af2512231d130676e",
+    "shortHash": "b58aa72",
+    "date": "2026-07-05",
+    "subject": "web: admin calendar import routes + UI (/admin/calendar)",
+    "body": "Three new routes wired through RR7 explicit registration\n(apps/web/app/routes.ts):\n\n  GET  /admin/calendar                 admin.calendar._index.tsx\n       - School-admin-only loader (defense-in-depth via requireRole).\n       - Two-step UI: upload PDF, review parsed days, commit.\n       - Per-day table shows date / weekday / cycleDay / status\n         (Instructional vs Off with holiday code chip).\n       - Summary cards: total / instructional / PA / mandatory.\n\n  POST /api/admin/calendar/import      api.admin.calendar.import.ts\n       - Multipart upload (max 10MB).\n       - Staged via stagePdfUpload, parsed via parseCalendarPdf,\n         cached in Redis under cal:{jobId}.\n       - Rate limit: 10/hour/user. CSRF-gated. Returns 422 for\n         parse errors, 415 for scanned PDFs, 429 for rate limit.\n\n  POST /api/admin/calendar/commit      api.admin.calendar.commit.ts\n       - JSON body: { jobId, confirm: true } (latter required).\n       - Reads the cached parse, calls upsertCalendarDays, writes\n         audit_log row (calendar_import.committed).\n       - Returns { result: { total, skipped, message } }.\n\nAll three return 401 for unauth, 403 (well, 302 to /login) for\nnon-admin. Smoke-tested post-deploy: GET /admin/calendar returns\n302 redirect to /login when unauthenticated (correct).\n\napps/web/app/routes.ts: appended the three route() entries after\nthe existing parent-alerts block."
+  },
+  {
+    "hash": "dc6f9210d91ad2620015f4e7124ffe569124fc4f",
+    "shortHash": "dc6f921",
+    "date": "2026-07-05",
+    "subject": "web: calendar-import.server.ts - upsert helper for cycle_calendar",
+    "body": "apps/web/server/calendar-import.server.ts is the persistence layer\nfor the admin calendar-import flow. Two-phase operation:\n\n  1. Pre-validate: drop days with malformed dates (not ISO 8601) or\n     with both cycleDay=null and holidayCode=null. Counts bad rows.\n  2. Upsert in a withSchoolId transaction: for each valid day,\n     INSERT ... ON CONFLICT (school_id, date) DO UPDATE setting\n     cycleDay, isSchoolDay, isInstructional, holidayCode from\n     EXCLUDED.\n\nReturns { ok, total, skipped, skippedDates, message } for the\nadmin UI + audit log.\n\nThe UNIQUE(school_id, date) constraint on cycle_calendar makes\nre-imports safe — the second import updates cycleDay/holidayCode\nwithout duplicating rows.\n\nSame RLS discipline as coverage.server.ts: defensively sets\napp.school_id via withSchoolId so behavior is identical to the\nruntime path."
+  },
+  {
+    "hash": "b63df8a2904593a5ec9488bdf3aefb6f23dd2ebe",
+    "shortHash": "b63df8a",
+    "date": "2026-07-05",
+    "subject": "web: pdf_calendar_extract TS wrapper (shells to python + shape validation + redis cache)",
+    "body": "apps/web/server/pdf_calendar_extract.server.ts wraps the python\nscript written by the DevOps overnight agent. It:\n\n  1. Shells out to apps/web/server/pdf_calendar_extract.py with an\n     8s timeout. Captures stdout + stderr.\n  2. Maps python error codes onto a typed ParseFailure shape with\n     UI-friendly messages (scanned_pdf, no_usable_calendar, etc.).\n  3. Re-validates the JSON shape on the Node side as defense-in-\n     depth: clamps cycleDay into [1, 10], normalizes holidayCode\n     to {B, E, ES, M, 0, null}, drops malformed days.\n  4. Caches successful parses in Redis under cal:{jobId} for 24h\n     so the review page can poll without re-running the parser.\n  5. Returns a ParseOutcome discriminated union\n     ({ ok: true, days, summary, durationMs } | { ok: false, code,\n     message }) — never throws to the caller.\n\nPublic exports:\n  - parseCalendarPdf({ filePath, sha256 }) -> Promise<ParseOutcome>\n  - readCachedParse(jobId) -> Promise<ParseSuccess | null>\n  - KNOWN_HOLIDAY_CODES / HolidayCode / CalendarDay / CalendarSummary\n    types\n\nTest file: pdf_calendar_extract.server.test.ts pins the typed\ncontract + module shape (40/40 tests pass in apps/web).\n\nPython script unchanged; same fixture produces the same JSON."
+  },
+  {
+    "hash": "8723a5f671265bc6aeaf1a3bbabf3dae16ee8e13",
+    "shortHash": "8723a5f",
+    "date": "2026-07-05",
+    "subject": "worker: reminder-scheduler skips non-instructional days (0013)",
+    "body": "apps/worker/src/jobs/reminder-scheduler.ts now selects\nisInstructional from cycle_calendar and skips candidate dates where\nthe cycle row marks the day non-instructional (PD day, holiday,\nboard break). The window scan continues to look 14 days forward;\nnon-instructional days are filtered inside the loop.\n\nWhy this matters: without the skip, the scheduler would compute a\nfire-time for \"Mr. Smith cafeteria duty on Dec 22\" (a board break)\nand enqueue an outbox row. The processor would then send an email\nor SMS to a teacher who is not at work. Now those reminders never\nget scheduled.\n\nWorker pipeline unchanged: outbox -> BullMQ -> reminder.dispatch\nprocessor. The processor itself does not need a guard because it\nnever sees the now-skipped reminders in the first place.\n\nSpec section 2 / 10 cross-ref: aligns with the cycle_calendar\nisInstructional semantic introduced in migration 0013."
+  },
+  {
+    "hash": "7a298e786eec63a264c311bf6c79294f86c6dcb8",
+    "shortHash": "7a298e7",
+    "date": "2026-07-05",
+    "subject": "coverage: skip non-instructional days (migration 0013)",
+    "body": "Three query sites in apps/web/server/coverage.server.ts now read\nisInstructional from cycle_calendar and short-circuit return [] /\nnull when the day is marked non-instructional:\n\n  - findAffectedDuties: empty list (no duties to cover on a holiday)\n  - findConflict / findReplacement pair: null (no slot to fill)\n  - query helper in availability check (line ~228): column selected\n    so callers can read it (no early-return; that path is data-only)\n\nBefore this patch, on a board-break day or PD day, the system would\nlook up cycleDay=NULL and attempt to find duties assigned to that\ncycle day — yielding nothing or, worse, returning stray rows when\nduty.cycleDay was 0. The new column is the source of truth for\n\"should the duty machinery act on this date?\".\n\nSpec section 3.4 cross-ref: this aligns with the cycle_calendar\ntable semantic where isSchoolDay remained the legacy boolean and\nisInstructional is the operational truth for duty dispatch."
+  },
+  {
+    "hash": "830d3b5403ec16b3c7f20d446c7c8716e0524e38",
+    "shortHash": "830d3b5",
+    "date": "2026-07-05",
+    "subject": "db: schema.ts - add missing note column + 0013 isInstructional/holidayCode",
+    "body": "Two drift fixes on packages/db/src/schema.ts:\n\n  1. Migration 0013 (committed earlier as 07ee533) added the\n     isInstructional boolean + holidayCode text columns. Drizzle\n     schema now mirrors them so drizzle-kit generate stays consistent\n     and TypeScript consumers see the new columns.\n\n  2. Pre-existing drift: migration 0000 added a note text column on\n     cycle_calendar plus a CHECK cycle_calendar_note_length that\n     references it, but the column was never declared in the Drizzle\n     schema. The CHECK constraint worked at the DB level (against the\n     actual column), but TypeScript compilation failed with TS2339\n     on the schema itself. Closed the gap.\n\ncycleCalendar columns now: id, schoolId, date, cycleDay, isSchoolDay,\nisInstructional, holidayCode, note, createdAt. All CHECKs and indexes\nunchanged.\n\nVerified: pnpm --filter @edusupervise/db build succeeds; web app\ntypecheck clean."
+  },
+  {
+    "hash": "8de06a4a1f0cbffb747da3fef2e117babaf4a73a",
+    "shortHash": "8de06a4",
+    "date": "2026-07-05",
+    "subject": "devops: pdf_calendar_extract.py + parser + import-deployment runbooks + sample output",
+    "body": "PDF calendar parser written by the overnight devops engineer. Extracts a\nYRDSB-style 5-day cycle calendar PDF into JSON shaped for direct insertion\ninto cycle_calendar. Verified against the fixture at\ndocs/fixtures/2025-2026-5Day-Cycle-Calendar.pdf:\n  - exit 0, 186ms wall-clock\n  - 215 days emitted (Aug 2025 - Jun 2026)\n  - holiday codes mapped: B (break), E (exam), ES (exam-study), M (meeting),\n    0 (non-instructional)\n  - deterministic: cycleDay assignment is day-of-year % 5 + 1\n\n  apps/web/server/pdf_calendar_extract.py   276 lines\n  docs/runbooks/calendar-parser.md          usage + YRDSB holiday-code map\n  docs/runbooks/calendar-import-deployment.md\n                                            step-by-step import procedure\n                                            (copy file in, run extract,\n                                             review JSON, COMMIT via app)\n  docs/fixtures/sample-calendar-output.json 28KB reference output\n\nReuses existing pdftotext + python stdlib (re, json, datetime) - no new\ndeps."
+  },
+  {
+    "hash": "9c9468aadec15d07c1bd87ebdded3df89991fddd",
+    "shortHash": "9c9468a",
+    "date": "2026-07-05",
+    "subject": "docs: cycle_calendar import spec (DB agent orientation + RLS check + journal splice notes)",
+    "body": "Three companion docs from the database engineer overnight:\n\n  cycle-calendar-readme.md\n    - orientation: where 0013 lives in the migration lineage, how the\n      new columns fit existing tenant_isolation RLS policy, what the\n      PDF importer will write and why these two columns instead of just\n      is_school_day.\n\n  cycle-calendar-journal-update.md\n    - describes how the drizzle _journal.json entry should be appended\n      so drizzle-kit migrate picks up 0013 cleanly.\n\n  cycle-calendar-rls-check.md\n    - explicit verification that the existing tenant_isolation RLS\n      policy covers is_instructional and holiday_code without needing\n      a new policy. Lists the pg_policies query to run after migration\n      apply to confirm."
+  },
+  {
+    "hash": "6bad8ffd4e4291cd548b4762db13a7918fd9d60c",
+    "shortHash": "6bad8ff",
+    "date": "2026-07-05",
+    "subject": "db: schema.ts - add isInstructional + holidayCode to cycle_calendar",
+    "body": "Drizzle mirror of migration 0013. Defaults match SQL defaults so the schema\nstays the canonical source-of-truth that drizzle-kit generates against.\n\n  isInstructional: boolean NOT NULL DEFAULT true\n  holidayCode:     text (nullable)\n\nSurgical edit only - did not regenerate or rewrite the file."
+  },
+  {
+    "hash": "07ee5338ce66050eef5180d3f7ea7b072e031c7e",
+    "shortHash": "07ee533",
+    "date": "2026-07-05",
+    "subject": "db: migration 0013 - cycle_calendar is_instructional + holiday_code columns",
+    "body": "Context: PDF calendar importer populates cycle_calendar with one row per date.\nExisting is_school_day captures in-session vs out-of-session at coarse level;\nimporter needs two finer-grained fields.\n\n  is_instructional  boolean NOT NULL DEFAULT true\n                      - classes running and duties active on this date?\n                      - PDF calendars often distinguish school-in-session\n                        (PD day, exam day) from regular instructional day.\n\n  holiday_code      text (nullable)\n                      - short slug from importer for non-instructional dates\n                        (winter-recess, pd-day, exam-day, etc.) so UI can\n                        render names without a second lookup table.\n\nMigration is online-safe (ADD COLUMN ... DEFAULT true is metadata-only since\nPG11), idempotent (IF NOT EXISTS, DO blocks), and RLS-safe (existing\ntenant_isolation policy covers the new columns automatically).\n\nOnline-safe backfill sets is_instructional = is_school_day for legacy rows,\nshort-circuited with IS DISTINCT FROM so re-runs are no-ops.\n\nSource-of-truth: docs/specs/cycle-calendar-journal-update.md (DB agent)"
+  },
+  {
+    "hash": "57318ddedcda6f91ecb23dcf8f3a2b05152b3c1a",
+    "shortHash": "57318dd",
+    "date": "2026-07-05",
+    "subject": "docs(specs): PDF calendar import feature spec (2026-07-05)",
+    "body": ""
+  },
+  {
+    "hash": "fd00d14738063d1653650f87a872e6796729e105",
+    "shortHash": "fd00d14",
+    "date": "2026-07-05",
+    "subject": "chore(scripts): reminder pipeline end-to-end smoke test (H-4)",
+    "body": ""
+  },
+  {
+    "hash": "4312ba8c9031b7f6d91b7f21754124c53b7f9635",
+    "shortHash": "4312ba8",
+    "date": "2026-07-05",
+    "subject": "chore(scripts): reminder pipeline end-to-end smoke test (H-4)",
+    "body": ""
+  },
+  {
+    "hash": "9134c4c7de3ff9234fdf65d59573ec1aa7fbe63e",
+    "shortHash": "9134c4c",
+    "date": "2026-07-05",
+    "subject": "chore(scripts): reminder pipeline end-to-end smoke test (H-4)",
+    "body": ""
+  },
+  {
+    "hash": "5e37d6f42b9458bfc8de6996be783285c79a0a3f",
+    "shortHash": "5e37d6f",
+    "date": "2026-07-05",
+    "subject": "chore(scripts): errorHandler shape + 4xx smoke test (H-3)",
+    "body": ""
+  },
+  {
+    "hash": "ac3c4a0424c4f77eb6e88ea800cbb14074677725",
+    "shortHash": "ac3c4a0",
+    "date": "2026-07-05",
+    "subject": "docs: investigate H-1 postgres user probe — external scanner, not internal bug",
+    "body": ""
+  },
+  {
+    "hash": "19d3b0bac3f0feea85b49c200ee1197c0e628928",
+    "shortHash": "19d3b0b",
+    "date": "2026-07-05",
+    "subject": "style(forgot): port to design tokens (H3)",
+    "body": ""
+  },
+  {
+    "hash": "d98f3390487a577d523166be1aab9fecadfcb9d6",
+    "shortHash": "d98f339",
+    "date": "2026-07-05",
+    "subject": "style(login): port to design tokens (H3)",
+    "body": ""
+  },
+  {
+    "hash": "2a10851fc4cd6235a2f0c700efaec550e8c4135b",
+    "shortHash": "2a10851",
+    "date": "2026-07-05",
+    "subject": "db: drop redundant non-unique indexes idx_schools_slug + idx_cycle_calendar_school_date (H-DB-4)",
+    "body": ""
+  },
+  {
+    "hash": "4173bd3f87fa64a9f15d94f783217caede0ef56a",
+    "shortHash": "4173bd3",
+    "date": "2026-07-05",
+    "subject": "chore(cron): wire heartbeat-cleanup.sql into nightly loop (L-DB-4)",
+    "body": ""
+  },
+  {
+    "hash": "fd8d6e470fc8ea0ce66622a93c31c1fc1959e2f3",
+    "shortHash": "fd8d6e4",
+    "date": "2026-07-05",
+    "subject": "chore(cron): nightly worker_heartbeats cleanup (L-DB-4)",
+    "body": ""
+  },
+  {
+    "hash": "842ced767576a1184205349a33d9b894d22cc589",
+    "shortHash": "842ced7",
+    "date": "2026-07-05",
+    "subject": "db: add pg_stat_statements extension to init scripts (H-DB-1)",
+    "body": ""
+  },
+  {
+    "hash": "6adfca91e023f211d715c8a7c6dc86258fa0922d",
+    "shortHash": "6adfca9",
+    "date": "2026-07-05",
+    "subject": "fix(entry): await db_pool_connections gauge updates (H-DB-2 follow-up)",
+    "body": ""
+  },
+  {
+    "hash": "8138e0c685260e2bd7d1216d53c5560d39d0f523",
+    "shortHash": "8138e0c",
+    "date": "2026-07-05",
+    "subject": "perf(today): parallelize 3 sequential reads in /app/today loader (H-DB-5)",
+    "body": ""
+  },
+  {
+    "hash": "b2ed48ded015a8248810e84a78efe463838b2382",
+    "shortHash": "b2ed48d",
+    "date": "2026-07-05",
+    "subject": "fix(health): /api/health checks worker_heartbeats freshness (H-DB-3)",
+    "body": ""
+  },
+  {
+    "hash": "fc5e63bb483ae87197193d4036b8cc50e71c224b",
+    "shortHash": "fc5e63b",
+    "date": "2026-07-05",
+    "subject": "fix(security): CSP — remove duplicate style-src directive (H1 follow-up)",
+    "body": ""
+  },
+  {
+    "hash": "8edb338cf79816050b48e5276d3745ecc4506004",
+    "shortHash": "8edb338",
+    "date": "2026-07-05",
+    "subject": "fix(security): use sql template for case-insensitive email check (eqLower undefined)",
+    "body": ""
+  },
+  {
+    "hash": "566dc2a4a301fb3cfcdda2c533c2e5c97a11bad6",
+    "shortHash": "566dc2a",
+    "date": "2026-07-05",
+    "subject": "fix(ux): dark-mode border contrast ≥ 3:1 WCAG 2.1 AA (H4)",
+    "body": ""
+  },
+  {
+    "hash": "93e9dcfa8fdeed1afd329db57d017ff90b4b1b20",
+    "shortHash": "93e9dcf",
+    "date": "2026-07-05",
+    "subject": "fix(ux): /onboarding/solo redirect preserves ?next= (H2)",
+    "body": ""
+  },
+  {
+    "hash": "5305de67cf47bc76bf78a9b78548b219cbbd61d3",
+    "shortHash": "5305de6",
+    "date": "2026-07-05",
+    "subject": "fix(security): CSP — allow Google Fonts (Inter from fonts.googleapis.com)",
+    "body": ""
+  }
+]
