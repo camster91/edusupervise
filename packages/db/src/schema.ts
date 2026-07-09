@@ -753,7 +753,7 @@ export const pushSubscriptions = pgTable(
       t.apnsToken,
     ),
     // Lookup is "give me all subs for this user" (send push to one user).
-    index('idx_push_subscriptions_user').on(t.schoolId, t.userId),
+    index('idx_push_subscriptions_user_all').on(t.schoolId, t.userId),
     // Lookup is "give me all subs on this platform" (debug + cleanup).
     index('idx_push_subscriptions_platform').on(t.platform),
   ],
