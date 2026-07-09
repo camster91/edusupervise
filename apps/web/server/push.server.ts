@@ -35,7 +35,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { pushSubscriptions, withUserContext } from '@edusupervise/db';
 import { getDb } from './db.server';
 import { logger } from './logger.server';
-import { sendApnsPush } from './apns.server';
+import { sendApnsPush, getApnsConfig } from './apns.server';
 
 export interface PushPayload {
   title: string;
@@ -48,6 +48,13 @@ export interface PushPayload {
 interface Subscription {
   id: string;
   platform: 'web' | 'ios';
+  // Carried so deleteSubscription can pass school_id + user_id to
+  // withUserContext and satisfy the FORCE RLS policy on
+  // push_subscriptions. Without these, the DELETE was silently denied
+  // (RLS policy evaluated `school_id = NULL` → FALSE) and dead tokens
+  // accumulated forever. Audited 2026-07-09.
+  schoolId: string;
+  userId: string;
   // web fields
   endpoint?: string | null;
   p256dh?: string | null;
@@ -86,6 +93,8 @@ export async function sendPushToUser(
     return tx
       .select({
         id: pushSubscriptions.id,
+        schoolId: pushSubscriptions.schoolId,
+        userId: pushSubscriptions.userId,
         platform: pushSubscriptions.platform,
         endpoint: pushSubscriptions.endpoint,
         p256dh: pushSubscriptions.p256dh,
@@ -111,27 +120,32 @@ export async function sendPushToUser(
     return;
   }
 
-  const jsonPayload = JSON.stringify({
-    title: payload.title,
-    body: payload.body,
-    linkUrl: payload.linkUrl,
-    tag: payload.tag,
-    data: payload.data,
-  });
-
   // Fan out in parallel — independent failures shouldn't block each other.
-  await Promise.allSettled(
-    subs.map((sub) => dispatchOne(sub as Subscription, jsonPayload)),
+  // Pass the structured PushPayload directly; previously each dispatch
+  // round-tripped through JSON.stringify + JSON.parse (audit #5 — wasted
+  // parse + unsafe cast). Promise.allSettled rejections are now logged
+  // with an explicit "cleanup.delete failed" tag so operators can grep
+  // cleanup failures distinct from delivery failures.
+  const results = await Promise.allSettled(
+    subs.map((sub) => dispatchOne(sub as Subscription, payload)),
   );
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') {
+      logger.warn(
+        { subId: subs[i]?.id, err: r.reason instanceof Error ? r.reason.message : String(r.reason) },
+        'push.dispatch: cleanup.delete failed',
+      );
+    }
+  });
 }
 
-async function dispatchOne(sub: Subscription, jsonPayload: string): Promise<void> {
-  if (sub.platform === 'web') return dispatchWeb(sub, jsonPayload);
-  if (sub.platform === 'ios') return dispatchIos(sub, jsonPayload);
+async function dispatchOne(sub: Subscription, payload: PushPayload): Promise<void> {
+  if (sub.platform === 'web') return dispatchWeb(sub, payload);
+  if (sub.platform === 'ios') return dispatchIos(sub, payload);
   logger.warn({ subId: sub.id }, 'push.dispatch: unknown platform');
 }
 
-async function dispatchWeb(sub: Subscription, jsonPayload: string): Promise<void> {
+async function dispatchWeb(sub: Subscription, payload: PushPayload): Promise<void> {
   if (!sub.endpoint || !sub.p256dh || !sub.auth) {
     logger.warn({ subId: sub.id }, 'push.dispatch: web row missing VAPID fields');
     return;
@@ -144,12 +158,21 @@ async function dispatchWeb(sub: Subscription, jsonPayload: string): Promise<void
     return;
   }
   try {
+    // web-push accepts JSON-stringified payload. Build the wire format
+    // here (was previously done in sendPushToUser + reparsed per recipient).
+    const wireJson = JSON.stringify({
+      title: payload.title,
+      body: payload.body,
+      linkUrl: payload.linkUrl,
+      tag: payload.tag,
+      data: payload.data,
+    });
     await webpush.sendNotification(
       {
         endpoint: sub.endpoint,
         keys: { p256dh: sub.p256dh, auth: sub.auth },
       },
-      jsonPayload,
+      wireJson,
       { TTL: 60 * 60 }, // 1h — matches Apple's APNs default
     );
     logger.info({ subId: sub.id }, 'push.web: delivered');
@@ -163,7 +186,7 @@ async function dispatchWeb(sub: Subscription, jsonPayload: string): Promise<void
         { subId: sub.id, statusCode },
         'push.web: endpoint gone, deleting subscription',
       );
-      await deleteSubscription(sub.id);
+      await deleteSubscription(sub.id, sub.schoolId, sub.userId);
       return;
     }
     logger.warn(
@@ -173,19 +196,35 @@ async function dispatchWeb(sub: Subscription, jsonPayload: string): Promise<void
   }
 }
 
-async function dispatchIos(sub: Subscription, jsonPayload: string): Promise<void> {
+async function dispatchIos(sub: Subscription, payload: PushPayload): Promise<void> {
   if (!sub.apnsToken) {
     logger.warn({ subId: sub.id }, 'push.dispatch: ios row missing apns_token');
     return;
   }
-  const parsed = JSON.parse(jsonPayload) as PushPayload;
+  // Validate the registered bundle ID matches what the server is configured
+  // to send. A token registered for a different bundle (stale row from
+  // re-install or bundle-id change) would silently misroute. Drop a
+  // logger.warn and skip the send; the stale row will be cleaned up on
+  // the next dispatch that returns 'gone' or 'invalid-token'.
+  const cfg = getApnsConfig();
+  if (cfg && sub.apnsBundleId && sub.apnsBundleId !== cfg.bundleId) {
+    logger.warn(
+      {
+        subId: sub.id,
+        registeredBundle: sub.apnsBundleId,
+        serverBundle: cfg.bundleId,
+      },
+      'push.ios: bundle mismatch, skipping stale subscription',
+    );
+    return;
+  }
   const result = await sendApnsPush(sub.apnsToken, {
-    title: parsed.title,
-    body: parsed.body,
+    title: payload.title,
+    body: payload.body,
     data: {
-      ...parsed.data,
-      linkUrl: parsed.linkUrl,
-      tag: parsed.tag,
+      ...payload.data,
+      linkUrl: payload.linkUrl,
+      tag: payload.tag,
     },
   });
   if (result.ok) {
@@ -197,7 +236,7 @@ async function dispatchIos(sub: Subscription, jsonPayload: string): Promise<void
       { subId: sub.id, reason: result.reason, status: result.status },
       'push.ios: token dead, deleting subscription',
     );
-    await deleteSubscription(sub.id);
+    await deleteSubscription(sub.id, sub.schoolId, sub.userId);
     return;
   }
   logger.warn(
@@ -206,11 +245,24 @@ async function dispatchIos(sub: Subscription, jsonPayload: string): Promise<void
   );
 }
 
-async function deleteSubscription(id: string): Promise<void> {
-  const db = getDb();
-  // The runtime role can delete via withUserContext — pass school_id via
-  // a join since we only have id. Cheaper: use a system-role brief here.
-  await db.execute(sql`DELETE FROM push_subscriptions WHERE id = ${id}`);
+/**
+ * Delete a single push subscription row.
+ *
+ * MUST be called with the row's schoolId + userId so we can wrap the
+ * DELETE in withUserContext — without that, FORCE RLS on
+ * push_subscriptions evaluates `school_id = current_school_id()` (NULL
+ * on a fresh pool connection) → FALSE and the DELETE silently matches
+ * zero rows. Dead tokens then accumulate indefinitely and the
+ * dispatcher keeps retrying them. Audited 2026-07-09.
+ */
+async function deleteSubscription(
+  id: string,
+  schoolId: string,
+  userId: string,
+): Promise<void> {
+  await withUserContext(getDb(), schoolId, userId, async (tx) => {
+    await tx.execute(sql`DELETE FROM push_subscriptions WHERE id = ${id}`);
+  });
 }
 
 /**
@@ -297,15 +349,3 @@ export async function registerIosSubscription(input: {
   });
 }
 
-export function isVapidReady(): boolean {
-  return ensureVapidConfigured();
-}
-
-export function isApnsReady(): boolean {
-  return Boolean(
-    process.env.APNS_KEY_ID &&
-      process.env.APNS_TEAM_ID &&
-      process.env.APNS_BUNDLE_ID &&
-      process.env.APNS_KEY_P8,
-  );
-}
