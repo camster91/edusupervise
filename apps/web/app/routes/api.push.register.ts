@@ -23,6 +23,7 @@ import {
   registerWebSubscription,
 } from '../../server/push.server';
 import { logger } from '../../server/logger.server';
+import { validateCsrfFromJson } from '../../server/csrf.server';
 
 const webSchema = z.object({
   platform: z.literal('web'),
@@ -39,7 +40,16 @@ const webSchema = z.object({
 const iosSchema = z.object({
   platform: z.literal('ios'),
   apnsToken: z.string().regex(/^[0-9a-fA-F]{64}$/, 'apnsToken must be 64-char hex'),
-  apnsBundleId: z.string().min(1).max(200),
+  apnsBundleId: z
+    .string()
+    .min(1)
+    .max(200)
+    // Reverse-DNS-ish: letters, digits, dot, hyphen. Rejects injection
+    // vectors (whitespace, slashes, quotes). Server still uses the env-
+    // configured APNS_BUNDLE_ID in the apns-topic header, never this
+    // user-supplied value, but the value is logged and validated for
+    // hygiene.
+    .regex(/^[a-zA-Z0-9.-]+$/, 'apnsBundleId must be reverse-DNS-ish'),
   apnsAppVersion: z.string().max(50).optional(),
 });
 
@@ -80,6 +90,13 @@ export async function action({ request }: Route.ActionArgs) {
       { error: 'invalid_request', detail: err instanceof Error ? err.message : String(err) },
       { status: 400 },
     );
+  }
+
+  // CSRF AFTER parse (so we can validate the body field) and BEFORE
+  // any state-mutating work. Mirrors api.mobile.push.subscribe.ts:106-107.
+  const csrf = validateCsrfFromJson(request, parsed);
+  if (!csrf.ok) {
+    return csrf.response;
   }
 
   try {
