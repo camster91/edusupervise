@@ -116,6 +116,8 @@ export default [
   route('admin/calendar', 'routes/admin.calendar._index.tsx'),
   route('api/admin/calendar/import', 'routes/api.admin.calendar.import.ts'),
   route('api/admin/calendar/commit', 'routes/api.admin.calendar.commit.ts'),
+  // Phase 2 — admin-only debug route for firing test notifications.
+  route('api/notifications/test', 'routes/api.notifications.test.ts'),
   // Phase 2 — push notification subscription registration (web + iOS).
   route('api/push/register', 'routes/api.push.register.ts'),
   route('api/push/vapid-public-key', 'routes/api.push.vapid-public-key.ts'),

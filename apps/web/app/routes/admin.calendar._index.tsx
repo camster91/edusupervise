@@ -147,6 +147,8 @@ export default function AdminCalendarPage() {
   const [parsed, setParsed] = useState<ImportResponse | null>(null);
   const [committing, setCommitting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [testBusy, setTestBusy] = useState(false);
+  const [testResult, setTestResult] = useState<{ ok: boolean; detail: string } | null>(null);
   const [committed, setCommitted] = useState<{
     inserted: number;
     skipped: number;
@@ -233,15 +235,81 @@ export default function AdminCalendarPage() {
     setCommitted(null);
   }
 
+  async function fireTestPush(): Promise<void> {
+    setTestBusy(true);
+    setTestResult(null);
+    try {
+      const r = await fetch('/api/notifications/test', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-csrf-token': csrfToken ?? '',
+        },
+        body: JSON.stringify({
+          title: 'Test push notification',
+          body: 'If you see this, the dispatcher fanned out successfully (Web Push + APNs paths exercised).',
+          linkUrl: '/app/today',
+          kind: 'system.message',
+        }),
+      });
+      const body = (await r.json().catch(() => ({}))) as {
+        ok?: boolean;
+        error?: string;
+        targetUserId?: string;
+      };
+      if (r.ok && body.ok) {
+        setTestResult({
+          ok: true,
+          detail: `Fired to ${body.targetUserId?.slice(0, 8) ?? '?'}...`,
+        });
+      } else {
+        setTestResult({ ok: false, detail: body.error ?? `HTTP ${r.status}` });
+      }
+    } catch (err) {
+      setTestResult({
+        ok: false,
+        detail: err instanceof Error ? err.message : 'Network error',
+      });
+    } finally {
+      setTestBusy(false);
+    }
+  }
+
   return (
     <main className="mx-auto max-w-4xl px-4 py-8">
       <div className="mb-6 flex items-center gap-3">
-        <Link
-          to="/app/today"
-          className="text-sm text-muted-foreground hover:underline"
-        >
-          <ArrowLeft className="inline h-4 w-4" /> Back to today
-        </Link>
+        <div className="flex items-center justify-between gap-2">
+          <Link
+            to="/app/today"
+            className="text-sm text-muted-foreground hover:underline"
+          >
+            <ArrowLeft className="inline h-4 w-4" /> Back to today
+          </Link>
+          <button
+            type="button"
+            onClick={() => void fireTestPush()}
+            disabled={testBusy}
+            data-testid="fire-test-push"
+            className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-primary hover:bg-surface-2 disabled:opacity-60"
+          >
+            {testBusy ? 'Firing...' : 'Fire test push'}
+          </button>
+        </div>
+        {testResult && (
+          <p
+            role="status"
+            aria-live="polite"
+            className={
+              testResult.ok
+                ? 'mt-2 text-xs text-green-700'
+                : 'mt-2 text-xs text-error'
+            }
+          >
+            {testResult.ok ? '✓ ' : '✗ '}
+            {testResult.detail}
+          </p>
+        )}
       </div>
 
       <header className="mb-8">
