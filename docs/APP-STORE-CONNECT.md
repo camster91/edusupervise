@@ -21,7 +21,7 @@ The build instructions are in `BUILD.md`; this is just the metadata.
 names.)
 
 ### Subtitle (30 chars)
-**Duty scheduler for K-12 schools**
+**Duty scheduling for schools**
 
 (Used in App Store search results and at the top of the product
 page. Localization: this is the English string. If you localize,
