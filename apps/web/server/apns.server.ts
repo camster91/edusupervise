@@ -32,8 +32,13 @@
 //   - https://developer.apple.com/documentation/usernotifications/sending-notification-requests-to-apns
 //   - https://developer.apple.com/documentation/usernotifications/establishing-a-token-based-connection-to-apns
 
-import { createPrivateKey, createSign, randomUUID } from 'node:crypto';
-import { connect as http2Connect, type ClientHttp2Stream, type IncomingHttpHeaders } from 'node:http2';
+import { createPrivateKey, createSign, randomUUID, type KeyObject } from 'node:crypto';
+import {
+  connect as http2Connect,
+  type ClientHttp2Session,
+  type ClientHttp2Stream,
+  type IncomingHttpHeaders,
+} from 'node:http2';
 import { Buffer } from 'node:buffer';
 import { logger } from './logger.server';
 
@@ -77,6 +82,46 @@ let cachedConfig: ApnsConfig | null = null;
 let cachedJwt: { token: string; expiresAt: number } | null = null;
 
 /**
+ * Module-level HTTP/2 session cache, keyed on baseUrl. Apple's APNs
+ * protocol model is "persistent HTTP/2" — opening a fresh TCP+TLS
+ * session per push triggers their new-connection burst throttling and
+ * adds 50-150ms of handshake per send. With a 100-recipient broadcast
+ * via /api/notifications/test that's 100 serial handshakes; the same
+ * single session can fan-out all 100 streams (HTTP/2 multiplexing).
+ *
+ * Session is recreated on error/close — see cleanup handler below.
+ */
+interface ApnsSession {
+  session: ClientHttp2Session;
+  keyObj: KeyObject;
+}
+const sessionCache = new Map<string, ApnsSession>();
+
+function getOrCreateSession(cfg: ApnsConfig): ApnsSession | null {
+  const cached = sessionCache.get(cfg.baseUrl);
+  if (cached && !cached.session.closed && !cached.session.destroyed) {
+    return cached;
+  }
+  try {
+    const session = http2Connect(cfg.baseUrl);
+    const keyObj = createPrivateKey({ key: cfg.p8Pem, format: 'pem' });
+    const entry: ApnsSession = { session, keyObj };
+    sessionCache.set(cfg.baseUrl, entry);
+    // Drop from cache on error/close so the next call recreates.
+    const cleanup = () => sessionCache.delete(cfg.baseUrl);
+    session.once('error', (err: Error) => {
+      logger.warn({ err: err.message, baseUrl: cfg.baseUrl }, 'apns: session error; will recreate on next send');
+      cleanup();
+    });
+    session.once('close', cleanup);
+    return entry;
+  } catch (err) {
+    logger.warn({ err: err instanceof Error ? err.message : String(err), baseUrl: cfg.baseUrl }, 'apns: session create failed');
+    return null;
+  }
+}
+
+/**
  * Load APNs config from env. Returns null if any required field is
  * missing — callers should treat that as "APNs not configured" and
  * skip silently (most installs won't have the .p8 wired until Cameron
@@ -104,10 +149,7 @@ export function getApnsConfig(): ApnsConfig | null {
  * Sign a fresh APNs JWT. Cached in-memory until ~50 min old (Apple
  * rejects tokens older than 60 min). We re-sign lazily on next call.
  */
-export function getApnsJwt(): string | null {
-  const cfg = getApnsConfig();
-  if (!cfg) return null;
-
+export function getApnsJwt(cfg: ApnsConfig, keyObj: KeyObject): string | null {
   const now = Math.floor(Date.now() / 1000);
   if (cachedJwt && cachedJwt.expiresAt > now + 60) {
     return cachedJwt.token;
@@ -119,14 +161,11 @@ export function getApnsJwt(): string | null {
   const payloadB64 = base64url(JSON.stringify(payload));
   const signingInput = `${headerB64}.${payloadB64}`;
 
-  // .p8 files come from Apple as PKCS#8 PEM. Node's createSign handles
-  // them directly via 'prime256v1' / 'P-256' / 'ec' algorithm names.
-  const keyObj = createPrivateKey({ key: cfg.p8Pem, format: 'pem' });
+  // sign() returns DER-encoded ASN.1 sequence; APNs requires the raw
+  // r||s form, 32 bytes each. convertDerToRaw handles that.
   const signer = createSign('SHA256');
   signer.update(signingInput);
   signer.end();
-  // For ECDSA, sign() returns DER-encoded ASN.1 sequence; APNs requires
-  // the raw r||s form, 32 bytes each. convertDerToRaw handles that.
   const derSig = signer.sign(keyObj);
   const rawSig = convertDerToRaw(derSig);
   const sigB64 = base64urlRaw(rawSig);
@@ -147,8 +186,15 @@ export async function sendApnsPush(
   payload: ApnsPayload,
 ): Promise<SendResult> {
   const cfg = getApnsConfig();
-  const jwt = getApnsJwt();
-  if (!cfg || !jwt) {
+  if (!cfg) {
+    return { ok: false, reason: 'auth-failed' };
+  }
+  const entry = getOrCreateSession(cfg);
+  if (!entry) {
+    return { ok: false, reason: 'auth-failed' };
+  }
+  const jwt = getApnsJwt(cfg, entry.keyObj);
+  if (!jwt) {
     return { ok: false, reason: 'auth-failed' };
   }
 
@@ -166,15 +212,21 @@ export async function sendApnsPush(
     ...payload.data, // flatten custom fields at top level for the JS bridge
   });
 
+  // Use the cached session (NOT a fresh connection) so we stay within
+  // Apple's persistent-HTTP/2 protocol model. The session is owned by
+  // sessionCache; we never close it here. safeResolve only closes the
+  // per-request stream, never the underlying session.
+  const session = entry.session;
   return new Promise<SendResult>((resolve) => {
-    const session = http2Connect(cfg.baseUrl);
     let req: ClientHttp2Stream | null = null;
     let resolved = false;
     const safeResolve = (r: SendResult) => {
       if (resolved) return;
       resolved = true;
       try { req?.close(); } catch {}
-      try { session.close(); } catch {}
+      // NOTE: do NOT session.close() here — the session is shared
+      // across all sends on this baseUrl. Lifecycle is owned by
+      // sessionCache (recreated on error/close events).
       resolve(r);
     };
 
@@ -254,39 +306,68 @@ function base64urlRaw(buf: Buffer): string {
  * to the raw r||s form (32 bytes each) that APNs requires.
  *
  * Layout in DER: 0x30 LEN 0x02 RLEN R... 0x02 SLEN S...
+ *
+ * **P-256 only.** We sign with ES256 (P-256, ~256-bit curve) so r and s
+ * are always at most 33 bytes (32 bytes + possible leading 0x00 sign
+ * padding). Larger curves (P-384, P-521) would produce 48 / 66-byte
+ * values that overflow our 32-byte pad. Apple's APNs only accepts
+ * ES256, so this constraint is firm. Audited 2026-07-09.
+ *
+ * Length sanity checks throw on malformed input with descriptive
+ * errors — the previous implementation used `der[N]!` non-null
+ * assertions that crashed with cryptic TypeError messages instead.
  */
 function convertDerToRaw(der: Buffer): Buffer {
-  // Skip the outer SEQUENCE header (0x30 + length).
+  if (der.length < 8) {
+    throw new Error(`convertDerToRaw: DER signature too short (${der.length} bytes; minimum 8 for P-256)`);
+  }
+  if (der[0] !== 0x30) {
+    throw new Error(`convertDerToRaw: expected outer SEQUENCE tag 0x30, got 0x${der[0]!.toString(16)}`);
+  }
+  // Short-form DER length only (P-256 sig is always < 128 bytes).
   let offset = 2;
-  if (der[1]! & 0x80) offset += (der[1]! & 0x7f);
+  if ((der[1]! & 0x80) !== 0) {
+    throw new Error('convertDerToRaw: long-form DER length not supported (P-256 sig always fits in short-form)');
+  }
 
-  // Read R.
-  if (der[offset] !== 0x02) throw new Error('expected INTEGER tag for R');
+  // Read R: tag 0x02 + length byte + rLen bytes.
+  if (der[offset] !== 0x02) {
+    throw new Error(`convertDerToRaw: expected INTEGER tag 0x02 for R, got 0x${der[offset]!.toString(16)}`);
+  }
   offset++;
-  let rLen = der[offset]!;
+  const rLen = der[offset]!;
+  if (rLen === 0 || rLen > 33) {
+    throw new Error(`convertDerToRaw: R length ${rLen} out of range (1-33 for P-256)`);
+  }
   offset++;
-  let r = der.subarray(offset, offset + rLen);
+  const r = der.subarray(offset, offset + rLen);
   offset += rLen;
 
-  // Read S.
-  if (der[offset] !== 0x02) throw new Error('expected INTEGER tag for S');
+  // Read S: tag 0x02 + length byte + sLen bytes.
+  if (der[offset] !== 0x02) {
+    throw new Error(`convertDerToRaw: expected INTEGER tag 0x02 for S, got 0x${der[offset]!.toString(16)}`);
+  }
   offset++;
   const sLen = der[offset]!;
+  if (sLen === 0 || sLen > 33) {
+    throw new Error(`convertDerToRaw: S length ${sLen} out of range (1-33 for P-256)`);
+  }
   offset++;
-  let s = der.subarray(offset, offset + sLen);
+  const s = der.subarray(offset, offset + sLen);
 
-  // Strip leading 0x00 padding from R and S if present (added when the
-  // integer is negative — but ECDSA values are positive, so the 0x00
-  // is just sign-byte padding). Also strip leading 0x00 from S, which
-  // can be shorter than 32 bytes if the high bit isn't set.
-  if (r.length === 33 && r[0] === 0x00) r = r.subarray(1);
-  if (s.length === 33 && s[0] === 0x00) s = s.subarray(1);
+  // Strip leading 0x00 sign-byte padding if present. After this,
+  // r and s are each at most 32 bytes.
+  const rNorm = r.length === 33 && r[0] === 0x00 ? r.subarray(1) : r;
+  const sNorm = s.length === 33 && s[0] === 0x00 ? s.subarray(1) : s;
+  if (rNorm.length > 32 || sNorm.length > 32) {
+    throw new Error('convertDerToRaw: normalized R/S length exceeds 32 bytes (P-256 invariant violated)');
+  }
 
   // Left-pad each to exactly 32 bytes.
   const rPadded = Buffer.alloc(32);
   const sPadded = Buffer.alloc(32);
-  r.copy(rPadded, 32 - r.length);
-  s.copy(sPadded, 32 - s.length);
+  rNorm.copy(rPadded, 32 - rNorm.length);
+  sNorm.copy(sPadded, 32 - sNorm.length);
 
   return Buffer.concat([rPadded, sPadded]);
 }
