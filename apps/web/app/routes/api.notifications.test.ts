@@ -30,11 +30,17 @@ import { getSession, requireRole, requireSession } from '../../server/auth.serve
 import { check } from '../../server/rate-limit.server';
 import { sendNotification } from '../../server/notifications.server';
 import { logger } from '../../server/logger.server';
+import { getSystemDb } from '../../server/db.server';
+
+const MAX_BROADCAST_RECIPIENTS = 100;
 
 const bodySchema = z.object({
   // Optional override — defaults to the caller's own userId. Reserved
   // for future "notify another user" workflows (e.g. test broadcast).
   userId: z.string().uuid().optional(),
+  // When true, broadcast to every school_admin in the caller's school
+  // (capped at MAX_BROADCAST_RECIPIENTS). Mutually exclusive with userId.
+  targetAllAdmins: z.boolean().optional(),
   title: z.string().min(1).max(120),
   body: z.string().max(500).optional(),
   linkUrl: z.string().max(500).optional(),
@@ -89,6 +95,89 @@ export async function action({ request }: Route.ActionArgs) {
     );
   }
 
+  // Mutual exclusion: targetAllAdmins OR userId, not both.
+  if (body.targetAllAdmins && body.userId) {
+    return Response.json(
+      { error: 'invalid_request', detail: 'targetAllAdmins and userId are mutually exclusive' },
+      { status: 400 },
+    );
+  }
+
+  // ----- Broadcast path: send to every school_admin in this school.
+  if (body.targetAllAdmins) {
+    const { users: usersTable } = await import('@edusupervise/db');
+    const { eq, and, inArray } = await import('drizzle-orm');
+    const sysDb = getSystemDb();
+    const adminRows = await sysDb
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(
+        and(
+          eq(usersTable.schoolId, session.schoolId),
+          inArray(usersTable.role, ['school_admin']),
+        ),
+      )
+      .limit(MAX_BROADCAST_RECIPIENTS);
+
+    if (adminRows.length === 0) {
+      return Response.json(
+        { error: 'no_recipients', detail: 'No school_admins found in this school.' },
+        { status: 404 },
+      );
+    }
+    if (adminRows.length === MAX_BROADCAST_RECIPIENTS) {
+      logger.warn(
+        { actor: session.userId, schoolId: session.schoolId, cap: MAX_BROADCAST_RECIPIENTS },
+        'notifications.test: broadcast hit recipient cap; remaining admins not notified',
+      );
+    }
+
+    // Fan out in parallel; one recipient's failure must NOT abort the rest.
+    const results = await Promise.allSettled(
+      adminRows.map((row) =>
+        sendNotification({
+          schoolId: session.schoolId,
+          userId: row.id,
+          kind: body.kind,
+          title: body.title,
+          body: body.body,
+          linkUrl: body.linkUrl,
+          data: { source: 'api.notifications.test:broadcast', ts: Date.now() },
+        }),
+      ),
+    );
+
+    const succeeded = results.filter((r) => r.status === 'fulfilled').length;
+    const failed = results.length - succeeded;
+    const failedUserIds = results
+      .map((r, i) => (r.status === 'rejected' ? adminRows[i]?.id : null))
+      .filter((id): id is string => id !== null);
+
+    logger.info(
+      {
+        actor: session.userId,
+        mode: 'broadcast',
+        recipients: results.length,
+        succeeded,
+        failed,
+        kind: body.kind,
+        title: body.title,
+      },
+      'notifications.test: broadcast fired',
+    );
+
+    return Response.json({
+      ok: failed === 0,
+      mode: 'broadcast',
+      recipients: results.length,
+      succeeded,
+      failed,
+      failedUserIds,
+      cappedAt: adminRows.length === MAX_BROADCAST_RECIPIENTS ? MAX_BROADCAST_RECIPIENTS : null,
+    });
+  }
+
+  // ----- Single-recipient path (default).
   const targetUserId = body.userId ?? session.userId;
 
   // When targeting a different user, verify they exist in the
@@ -135,7 +224,7 @@ export async function action({ request }: Route.ActionArgs) {
       },
       'notifications.test: fired',
     );
-    return Response.json({ ok: true, targetUserId });
+    return Response.json({ ok: true, mode: 'single', targetUserId });
   } catch (err) {
     logger.error({ err, actor: session.userId }, 'notifications.test: failed');
     return Response.json({ error: 'internal_error' }, { status: 500 });
