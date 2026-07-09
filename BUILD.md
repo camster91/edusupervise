@@ -273,7 +273,9 @@ verified.
 (local simulator builds, debug-signed TestFlight). Flip to
 `production` for App Store + signed TestFlight builds. Apple
 production tokens are NOT accepted by the sandbox endpoint and
-vice versa — keep this in sync with how the iOS app is signed.## Troubleshooting
+vice versa — keep this in sync with how the iOS app is signed.
+
+## Troubleshooting
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
