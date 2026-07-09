@@ -207,7 +207,13 @@ fourth is the PEM contents of the .p8, fifth defaults to
 # On your Mac:
 scp ~/Downloads/AuthKey_ABCDE12345.p8 root@vps.ashbi.ca:/root/apns-keys/
 
-# On the VPS:
+# On the VPS — mkdir + chmod 700 BEFORE scp so the destination exists
+# with the right perms. sshd auto-creates the parent dir but with
+# default mode 755; explicit mkdir + chmod 700 makes the intent obvious
+# and avoids surprise permissions for non-sshd-experienced operators:
+mkdir -p /root/apns-keys
+chmod 700 /root/apns-keys
+# Now set the .p8 to owner-only read+write:
 chmod 600 /root/apns-keys/AuthKey_*.p8
 ls -la /root/apns-keys/
 ```
