@@ -155,23 +155,119 @@ etc.):
 
 ---
 
-## 9. Push notifications (Phase 2 — not yet wired)
+## 9. Push notifications (Phase 2 — code shipped, .p8 key pending)
 
-Currently `apps/web/server/push.server.ts` is a stub. Phase 2 will:
-1. Add `@capacitor/push-notifications` plugin (already installed via
-   `@capacitor/ios` core)
-2. Server-side: APNs JWT client using the `.p8` auth key from step 1
-3. Web-side: real Web Push implementation using VAPID keys
-4. iOS-side: register APNs device token, forward to server
-5. Server-side: dispatch to whichever subscriptions the user has
+**Current state.** Both push channels are wired and the dispatcher
+fans out in parallel:
 
-When that's wired, the deep-link URL scheme `edusupervise://duty/<id>`
-(configured in Info.plist) becomes the bridge — taps on a push
-notification open the app at the specific duty page.
+- **Web Push** (browser / Safari PWA): VAPID keys generated and
+  loaded into the web container. `apps/web/server/push.server.ts`
+  sends via the `web-push` library; the service worker
+  (`apps/web/public/sw.js`) handles the push event + notification
+  click.
+- **APNs** (iOS app): hand-rolled `apps/web/server/apns.server.ts`
+  using `node:http2` + ES256 JWT signed with the .p8 auth key. iOS
+  registers the device token via `ios/App/App/AppDelegate.swift`
+  `registerForRemoteNotifications()` and forwards to the server
+  through the Capacitor push plugin.
 
----
+The dispatcher is real and tested (11/11 Vitest cases in
+`apps/web/server/push.server.test.ts`). It returns graceful
+no-ops (`reason: 'auth-failed'`) until the .p8 is wired — no
+crashes, no broken rows.
 
-## Troubleshooting
+**What's blocking live iOS delivery.** Cameron needs to provision
+the APNs auth key in App Store Connect and paste it into
+`/root/edusupervise-secrets/.env`. Five env vars total
+(`APNS_KEY_ID`, `APNS_TEAM_ID`, `APNS_BUNDLE_ID`, `APNS_KEY_P8`,
+`APNS_ENV`) — first two are 10-char IDs from App Store Connect,
+third is the iOS bundle ID (already set to `ca.ashbi.edusupervise`),
+fourth is the PEM contents of the .p8, fifth defaults to
+`production`.
+
+### 9.1 Generate the .p8 in App Store Connect (10 min)
+
+1. Open https://appstoreconnect.apple.com → **Users and Access** →
+   **Keys** tab → **App Store Connect API** or **Apple Push
+   Notifications authentication keys (Sandbox & Production)** →
+   click the **+** button.
+2. Name it `edusupervise-prod` (descriptive — you can't see the
+   name again after generation).
+3. Leave the access checkbox ON (you need it for push auth).
+4. Click **Generate**. Download the `.p8` file. **Apple only
+   shows the download button once** — save it somewhere safe
+   (1Password, encrypted volume, your password manager).
+5. Note the **Key ID** (10 chars, top-right of the key row) and
+   your **Team ID** (10 chars, top-right of the membership page
+   — https://developer.apple.com/account → Membership details).
+
+### 9.2 Land the .p8 on the VPS
+
+```bash
+# On your Mac:
+scp ~/Downloads/AuthKey_ABCDE12345.p8 root@vps.ashbi.ca:/root/apns-keys/
+
+# On the VPS:
+chmod 600 /root/apns-keys/AuthKey_*.p8
+ls -la /root/apns-keys/
+```
+
+The file goes to `/root/apns-keys/` (offline backup — never read
+by the app at runtime; the app reads the PEM contents from the
+env file instead, so a restart-with-fresh-env doesn't need the
+.p8 file present).
+
+### 9.3 Wire the env vars
+
+```bash
+ssh root@vps.ashbi.ca
+vim /root/edusupervise-secrets/.env
+```
+
+Replace the five empty `APNS_*` lines at the bottom with real
+values. The PEM contents go on one line, escaped with `\n` where
+there are line breaks in the actual file:
+
+```
+APNS_KEY_ID=ABCDE12345
+APNS_TEAM_ID=1234567890
+APNS_BUNDLE_ID=ca.ashbi.edusupervise
+APNS_KEY_P8="-----BEGIN PRIVATE KEY-----\nMIGTAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBHkwdwIBAQQg...\n-----END PRIVATE KEY-----"
+APNS_ENV=production
+```
+
+(The PEM is long — ~300 chars. Multi-line pasted PEMs also work;
+the dispatcher uses `process.env.APNS_KEY_P8.replace(/\\n/g, '\n')`
+to handle both shapes.)
+
+### 9.4 Rebuild and verify
+
+```bash
+ssh root@vps.ashbi.ca 'cd /opt/edusupervise && \
+  docker compose -f docker/docker-compose.yml -p docker up -d --build web'
+ssh root@vps.ashbi.ca 'docker exec docker-web-1 printenv | grep APNS_'
+```
+
+You should see all 5 vars populated. Then send a test push from
+the iOS app and watch the web container logs:
+
+```bash
+ssh root@vps.ashbi.ca 'docker logs -f docker-web-1 | grep -i apns'
+```
+
+Look for `apns.send: ok` instead of `apns.send: auth-failed`. If
+you see `apns.send: gone` or `apns.send: invalid-token` after a
+real device registers, the dispatcher deletes the stale row
+automatically — that's the row-pruning behavior the QA swarm
+verified.
+
+### 9.5 Sandbox vs production
+
+`APNS_ENV=sandbox` is for testing against `api.sandbox.push.apple.com`
+(local simulator builds, debug-signed TestFlight). Flip to
+`production` for App Store + signed TestFlight builds. Apple
+production tokens are NOT accepted by the sandbox endpoint and
+vice versa — keep this in sync with how the iOS app is signed.## Troubleshooting
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
