@@ -35,8 +35,10 @@ export async function loader() {
 export default function SupportPage({ loaderData }: Route.ComponentProps) {
   const { supportEmail, privacyEmail } = loaderData;
   return (
+    <a href="#main" className="skip-link sr-only focus:not-sr-only focus:absolute focus:top-md focus:left-md focus:z-50 focus:bg-accent focus:text-on-accent focus:px-md focus:py-xs focus:rounded">Skip to content</a>
     <main
       id="main"
+      tabIndex={-1}
       className="min-h-screen bg-bg text-primary"
     >
       <article className="mx-auto max-w-3xl px-md py-2xl">
@@ -47,7 +49,7 @@ export default function SupportPage({ loaderData }: Route.ComponentProps) {
         <header className="mt-lg mb-2xl">
           <h1 className="text-display font-bold tracking-tight">Support</h1>
           <p className="mt-sm text-callout text-secondary">
-            Something not working? Skim the FAQs below — they cover the
+            Something not working? Read the FAQs below — they cover the
             common ones. If not, email us. We read every message.
           </p>
         </header>
