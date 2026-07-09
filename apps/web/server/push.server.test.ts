@@ -33,6 +33,7 @@ vi.mock('web-push', () => ({
 
 vi.mock('./apns.server', () => ({
   sendApnsPush: vi.fn(),
+  getApnsConfig: vi.fn(() => null),
   getApnsJwt: vi.fn(),
 }));
 
@@ -87,6 +88,10 @@ function buildTx(rows: unknown[]) {
       from: vi.fn(() => thenable),
       where: vi.fn(() => thenable),
       insert,
+      // Route tx.execute through fakeDbRef.execute so test assertions
+      // checking fakeDbRef.execute also see the withUserContext-wrapped
+      // DELETE calls. Same mock, two handles.
+      execute: fakeDbRef.execute,
     },
     insert,
     onConflictDoUpdate,
@@ -137,6 +142,8 @@ const SUB_ID_IOS = '44444444-4444-4444-4444-444444444444';
 function makeWebRow() {
   return {
     id: SUB_ID_WEB,
+    schoolId: SCHOOL_ID,
+    userId: USER_ID,
     platform: 'web' as const,
     endpoint: 'https://fcm.googleapis.com/fcm/send/test',
     p256dh: 'BNcRdreALRFXTkOOUHKq1Q0',
@@ -147,6 +154,8 @@ function makeWebRow() {
 function makeIosRow() {
   return {
     id: SUB_ID_IOS,
+    schoolId: SCHOOL_ID,
+    userId: USER_ID,
     platform: 'ios' as const,
     endpoint: null,
     p256dh: null,
