@@ -12,7 +12,7 @@
 //   - When `schools.plan='demo_expired'`, render <ExpiredDemo />
 //     instead of the Outlet — the school is read-only until reset.
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, data, useLoaderData } from 'react-router';
 import { eq } from 'drizzle-orm';
 import { schools, notifications } from '@edusupervise/db';
@@ -99,19 +99,46 @@ export default function AppShell(): React.ReactElement {
   const isDemo = school?.plan === 'demo';
   const isExpired = school?.plan === 'demo_expired';
 
-  // Push subscription registration. Runs once after mount on every
-  // authenticated page. iOS Capacitor users skip Web Push (their
-  // registerIosPush() runs separately via the @capacitor/push-notifications
-  // plugin). On unsupported browsers this is a silent no-op.
+  // Push subscription registration is gated behind a localStorage flag.
+  // We do NOT auto-prompt Notification.requestPermission() on first
+  // visit — that violates Apple HIG's "Request Permission" guidance
+  // (request after the user has done something that the permission
+  // enables, not before they have context for why notifications are
+  // needed). The Profile → Notifications surface exposes a manual
+  // "Enable duty reminders" toggle that calls registerWebPush on
+  // explicit user action. Audited 2026-07-09.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (getCapacitor()) return; // iOS app takes the APNs path
-    void registerWebPush();
+    const promptedKey = 'edu.push.prompted';
+    if (window.localStorage.getItem(promptedKey) === 'true') return;
+    // First-time visitors see no prompt. They discover the toggle
+    // in Profile → Notifications (or via an in-app nudge after they
+    // configure a duty that benefits from push).
+  }, []);
+
+  // Surface a banner if notifications are blocked, so users understand
+  // why push isn't reaching them.
+  const [pushBlocked, setPushBlocked] = useState(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission === 'denied') {
+      setPushBlocked(true);
+    }
   }, []);
 
   return (
     <ThemeStyle accent={school?.accentColor ?? '#3b82f6'}>
       <div className="min-h-screen bg-bg flex flex-col">
+        {pushBlocked ? (
+          <div
+            role="status"
+            className="bg-surface border-b border-border px-md py-xs text-sm text-secondary"
+          >
+            Notifications are blocked in your browser. Enable them in
+            your browser settings to receive duty reminders.
+          </div>
+        ) : null}
         {isDemo && school?.demoExpiresAt && (
           <DemoBanner demoExpiresAt={school.demoExpiresAt.toISOString()} csrfToken={csrfToken} />
         )}
