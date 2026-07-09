@@ -35,13 +35,13 @@ export async function loader() {
 export default function SupportPage({ loaderData }: Route.ComponentProps) {
   const { supportEmail, privacyEmail } = loaderData;
   return (
-    <a href="#main" className="skip-link sr-only focus:not-sr-only focus:absolute focus:top-md focus:left-md focus:z-50 focus:bg-accent focus:text-on-accent focus:px-md focus:py-xs focus:rounded">Skip to content</a>
     <main
       id="main"
       tabIndex={-1}
       className="min-h-screen bg-bg text-primary"
     >
-      <article className="mx-auto max-w-3xl px-md py-2xl">
+      <a href="#main-content" className="skip-link sr-only focus:not-sr-only focus:absolute focus:top-md focus:left-md focus:z-50 focus:bg-accent focus:text-on-accent focus:px-md focus:py-xs focus:rounded">Skip to content</a>
+      <article id="main-content" className="mx-auto max-w-3xl px-md py-2xl">
         <Link to="/" className="text-sm text-accent hover:underline">
           ← Back to EduSupervise
         </Link>
