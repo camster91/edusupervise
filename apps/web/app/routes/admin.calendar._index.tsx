@@ -219,7 +219,9 @@ export default function AdminCalendarPage() {
           : null
       );
       setShowConfirm(false);
-      setTimeout(() => navigate('/admin/calendar'), 1500);
+      // No auto-navigate: the user has just read the success message + the
+  // inserted/skipped counts. Auto-navigating after 1.5s lost their place.
+  // They can click "Back to today" or "Import another" when ready.
     } catch (err) {
       setError('Network error — try again');
       console.error(err);
@@ -325,11 +327,12 @@ export default function AdminCalendarPage() {
           <div className="mt-1 flex items-center gap-2">
             <input
               type="text"
-              inputMode="email"
-              placeholder="user UUID (paste from admin → users)"
+              inputMode="text"
+              placeholder="User UUID (paste from Admin → Users)"
               value={testTargetUserId}
               onChange={(e) => setTestTargetUserId(e.target.value)}
               data-testid="fire-test-push-target-input"
+              aria-describedby="fire-test-push-help"
               className="flex-1 rounded-md border border-border bg-card px-2 py-1 font-mono text-footnote text-primary placeholder:text-secondary"
             />
             <button
@@ -346,8 +349,9 @@ export default function AdminCalendarPage() {
               Fire
             </button>
           </div>
-          <p className="mt-1 text-footnote text-secondary">
-            The target user must belong to your school. Cross-school targeting returns 404.
+          <p id="fire-test-push-help" className="mt-1 text-footnote text-secondary">
+            The target user must belong to your school. Users from
+            another school can\'t be notified.
           </p>
         </details>
       </div>
@@ -420,23 +424,37 @@ export default function AdminCalendarPage() {
             <h2 className="font-medium">Recent calendar imports</h2>
           </header>
           <ul className="divide-y divide-border">
-            {recentCommits.map((r) => (
-              <li key={r.id} className="px-5 py-3 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs">
-                    {r.action.replace('calendar_import.', '')}
-                  </span>
-                  <time className="text-xs text-muted-foreground">
-                    {new Date(r.createdAt).toLocaleString()}
-                  </time>
-                </div>
-                {r.metadata && (
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {summarizeMetadata(r.metadata)}
-                  </p>
-                )}
-              </li>
-            ))}
+            {recentCommits.map((r) => {
+              // Map internal action slugs to plain English. Anything not
+              // in the map falls back to a humanized version of the slug.
+              const slug = r.action.replace(/^calendar_import\./, '');
+              const label: Record<string, string> = {
+                'upload_failed': 'Upload failed',
+                'parse_failed': "Couldn't read the PDF",
+                'commit_succeeded': 'Calendar saved',
+                'commit_failed': 'Save failed',
+                'rolled_back': 'Reverted',
+              };
+              const display = label[slug] ?? slug.replace(/_/g, ' ');
+              const isError = slug.endsWith('failed');
+              return (
+                <li key={r.id} className="px-5 py-3 text-sm">
+                  <div className="flex items-center justify-between">
+                    <span className={isError ? 'text-error font-medium' : 'font-medium'}>
+                      {display}
+                    </span>
+                    <time className="text-xs text-muted-foreground">
+                      {new Date(r.createdAt).toLocaleString()}
+                    </time>
+                  </div>
+                  {r.metadata && (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      {summarizeMetadata(r.metadata, 'processed')}
+                    </p>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}
@@ -447,26 +465,56 @@ export default function AdminCalendarPage() {
           aria-modal="true"
           aria-labelledby="confirm-title"
           className="fixed inset-0 z-50 grid place-items-center bg-black/50"
+          onClick={(e) => {
+            // Backdrop click closes the dialog (unless commit is in flight).
+            if (e.target === e.currentTarget && !committing) {
+              setShowConfirm(false);
+            }
+          }}
+          onKeyDown={(e) => {
+            // Esc closes the dialog.
+            if (e.key === 'Escape' && !committing) setShowConfirm(false);
+          }}
         >
-          <div className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl">
+          <div
+            className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl"
+            onKeyDown={(e) => {
+              // Minimal focus trap: keep focus inside the dialog while open.
+              if (e.key === 'Tab') {
+                const focusable = e.currentTarget.querySelectorAll<HTMLElement>(
+                  'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+                );
+                if (focusable.length === 0) return;
+                const first = focusable[0]!;
+                const last = focusable[focusable.length - 1]!;
+                if (e.shiftKey && document.activeElement === first) {
+                  e.preventDefault();
+                  last.focus();
+                } else if (!e.shiftKey && document.activeElement === last) {
+                  e.preventDefault();
+                  first.focus();
+                }
+              }
+            }}
+          >
             <h2 id="confirm-title" className="text-lg font-semibold">
-              Commit calendar to cycle_calendar?
+              Save {parsed.summary.totalDays} days to your school calendar?
             </h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              This will upsert {parsed.summary.totalDays} days into the
-              school's calendar. Existing rows on the same dates will be
-              updated. The action is reversible only by re-uploading.
+              Existing days on the same dates will be updated. You can fix
+              anything by re-uploading the PDF.
             </p>
             <div className="mt-6 flex justify-end gap-3">
               <Button
                 variant="secondary"
                 onClick={() => setShowConfirm(false)}
                 disabled={committing}
+                autoFocus
               >
                 Cancel
               </Button>
               <Button onClick={() => void commit()} disabled={committing}>
-                {committing ? 'Committing...' : 'Commit'}
+                {committing ? 'Saving...' : 'Save'}
               </Button>
             </div>
           </div>
@@ -561,11 +609,25 @@ function ReviewSection({
                       <span className="rounded bg-green-100 px-2 py-0.5 text-xs text-green-800">
                         Instructional
                       </span>
-                    ) : (
-                      <span className="rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800">
-                        {d.holidayCode ?? 'Off'}
-                      </span>
-                    )}
+                    ) : (() => {
+                      const glossary: Record<string, string> = {
+                        'B': 'Board holiday / break',
+                        'E': 'Elementary PA day',
+                        'ES': 'Elementary / Secondary PA day',
+                        'M': 'Mandatory holiday',
+                        '0': 'Day-zero PA',
+                      };
+                      const code = d.holidayCode ?? 'Off';
+                      const tip = d.holidayCode ? glossary[d.holidayCode] : null;
+                      return (
+                        <abbr
+                          title={tip ?? code}
+                          className="cursor-help rounded bg-amber-100 px-2 py-0.5 text-xs text-amber-800 no-underline"
+                        >
+                          {code}
+                        </abbr>
+                      );
+                    })()}
                   </td>
                 </tr>
               ))}
@@ -604,13 +666,16 @@ function Stat({
   value: number;
   tone?: 'green' | 'amber' | 'red';
 }): JSX.Element {
+  // Use design tokens (text-error / text-success / text-warning) instead of
+  // raw Tailwind color classes — keeps the palette consistent with the
+  // rest of the codebase and lets future theme swaps touch one token file.
   const toneClass =
     tone === 'green'
-      ? 'text-green-700'
+      ? 'text-success'
       : tone === 'amber'
-      ? 'text-amber-700'
+      ? 'text-warning'
       : tone === 'red'
-      ? 'text-red-700'
+      ? 'text-error'
       : '';
   return (
     <div>
@@ -624,13 +689,13 @@ function Stat({
   );
 }
 
-function summarizeMetadata(metadata: Record<string, unknown>): string {
+function summarizeMetadata(metadata: Record<string, unknown>, verb = 'attempted'): string {
   const parts: string[] = [];
   if (typeof metadata.total === 'number') {
     parts.push(`${metadata.total} days`);
   }
   if (typeof metadata.attemptedRows === 'number' && metadata.attemptedRows > 0) {
-    parts.push(`${metadata.attemptedRows} attempted`);
+    parts.push(`${metadata.attemptedRows} ${verb}`);
   }
   if (typeof metadata.error === 'string') {
     parts.push(`error: ${metadata.error.slice(0, 60)}`);
