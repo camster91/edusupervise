@@ -25,12 +25,15 @@
 // notifications.server.ts#sendNotification test paths in client code.
 
 import { z } from 'zod';
+import { and, eq, inArray } from 'drizzle-orm';
+import { users as usersTable } from '@edusupervise/db';
 import type { Route } from './+types/api.notifications.test';
-import { getSession, requireRole, requireSession } from '../../server/auth.server';
+import { getSession, requireRole } from '../../server/auth.server';
 import { check } from '../../server/rate-limit.server';
 import { sendNotification } from '../../server/notifications.server';
 import { logger } from '../../server/logger.server';
 import { getSystemDb } from '../../server/db.server';
+import { validateCsrfFromJson } from '../../server/csrf.server';
 
 const MAX_BROADCAST_RECIPIENTS = 100;
 
@@ -44,17 +47,12 @@ const bodySchema = z.object({
   title: z.string().min(1).max(120),
   body: z.string().max(500).optional(),
   linkUrl: z.string().max(500).optional(),
-  // Defaults to 'system.message' so a test doesn't show up as a real
-  // reminder in the user's in-app inbox. Use 'reminder.failed' (etc.)
-  // only when intentionally testing the worker queue's integration.
-  kind: z
-    .enum([
-      'reminder.failed',
-      'plan.downgrade.pending',
-      'plan.downgrade.applied',
-      'system.message',
-    ])
-    .default('system.message'),
+  // Restricted to 'system.message' only. The high-risk kinds
+  // (reminder.failed, plan.downgrade.*) could be abused to push fake
+  // in-app inbox content via the official push channel. Worker
+  // integration tests cover those paths properly; this debug route
+  // exists only to verify the dispatcher surface end-to-end.
+  kind: z.enum(['system.message']).default('system.message'),
 });
 
 export async function action({ request }: Route.ActionArgs) {
@@ -95,6 +93,15 @@ export async function action({ request }: Route.ActionArgs) {
     );
   }
 
+  // CSRF AFTER parse (so we can validate the body field) and BEFORE
+  // session/role/auth work. Mirrors the api.mobile.push.subscribe.ts
+  // reference pattern. csrf.server.ts#validateCsrfFromJson returns
+  // { ok, response } where response is a full Response to return on miss.
+  const csrf = validateCsrfFromJson(request, body);
+  if (!csrf.ok) {
+    return csrf.response;
+  }
+
   // Mutual exclusion: targetAllAdmins OR userId, not both.
   if (body.targetAllAdmins && body.userId) {
     return Response.json(
@@ -105,8 +112,6 @@ export async function action({ request }: Route.ActionArgs) {
 
   // ----- Broadcast path: send to every school_admin in this school.
   if (body.targetAllAdmins) {
-    const { users: usersTable } = await import('@edusupervise/db');
-    const { eq, and, inArray } = await import('drizzle-orm');
     const sysDb = getSystemDb();
     const adminRows = await sysDb
       .select({ id: usersTable.id })
@@ -125,9 +130,28 @@ export async function action({ request }: Route.ActionArgs) {
         { status: 404 },
       );
     }
-    if (adminRows.length === MAX_BROADCAST_RECIPIENTS) {
+    // Detect real overflow: count total school_admins (no LIMIT) so we
+    // only warn when we actually clipped. A school with exactly
+    // MAX_BROADCAST_RECIPIENTS admins is at-cap, NOT over-cap.
+    const totalCountRows = await sysDb
+      .select({ id: usersTable.id })
+      .from(usersTable)
+      .where(
+        and(
+          eq(usersTable.schoolId, session.schoolId),
+          inArray(usersTable.role, ['school_admin']),
+        ),
+      );
+    const totalCount = totalCountRows.length;
+    if (totalCount > MAX_BROADCAST_RECIPIENTS) {
       logger.warn(
-        { actor: session.userId, schoolId: session.schoolId, cap: MAX_BROADCAST_RECIPIENTS },
+        {
+          actor: session.userId,
+          schoolId: session.schoolId,
+          cap: MAX_BROADCAST_RECIPIENTS,
+          totalAdmins: totalCount,
+          skipped: totalCount - MAX_BROADCAST_RECIPIENTS,
+        },
         'notifications.test: broadcast hit recipient cap; remaining admins not notified',
       );
     }
@@ -173,7 +197,9 @@ export async function action({ request }: Route.ActionArgs) {
       succeeded,
       failed,
       failedUserIds,
-      cappedAt: adminRows.length === MAX_BROADCAST_RECIPIENTS ? MAX_BROADCAST_RECIPIENTS : null,
+      // Only set cappedAt on true overflow; at-cap is not overflow.
+      cappedAt: totalCount > MAX_BROADCAST_RECIPIENTS ? MAX_BROADCAST_RECIPIENTS : null,
+      totalAdmins: totalCount,
     });
   }
 
@@ -186,9 +212,6 @@ export async function action({ request }: Route.ActionArgs) {
   // 404 here is a cleaner signal + cheaper than a transaction
   // abort).
   if (targetUserId !== session.userId) {
-    const { users: usersTable } = await import('@edusupervise/db');
-    const { eq, and } = await import('drizzle-orm');
-    const { getSystemDb } = await import('../../server/db.server');
     const sysDb = getSystemDb();
     const [found] = await sysDb
       .select({ id: usersTable.id })
