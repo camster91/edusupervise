@@ -107,6 +107,22 @@ function main(): void {
   // \n between commits (built-in separator), so the inter-commit
   // sequence is \x01\n\n. The parser strips the leading \n before
   // parsing the next record.
+  // CI / fresh-runner environments may have .git/ but no git binary on
+  // PATH (e.g., thin Docker base image). Check before invoking.
+  let gitAvailable = false;
+  try {
+    execSync('git --version', { stdio: 'ignore' });
+    gitAvailable = true;
+  } catch {
+    gitAvailable = false;
+  }
+  if (!gitAvailable) {
+    console.log(
+      `[changelog] .git present but 'git --version' failed; using existing ${outPath} (committed snapshot).`,
+    );
+    return;
+  }
+
   const gitCmd = [
     `cd ${JSON.stringify(repoRoot)}`,
     `fmt=$(printf '%s\\x01%s\\x01%s\\x01%s\\x01\\n' '%H' '%ad' '%s' '%b')`,
