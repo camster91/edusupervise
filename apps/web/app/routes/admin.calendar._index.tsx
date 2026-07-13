@@ -290,7 +290,7 @@ export default function AdminCalendarPage() {
         <div className="flex items-center justify-between gap-2">
           <Link
             to="/app/today"
-            className="text-sm text-muted-foreground hover:underline"
+            className="text-sm text-secondary hover:underline"
           >
             <ArrowLeft className="inline h-4 w-4" /> Back to today
           </Link>
@@ -300,7 +300,7 @@ export default function AdminCalendarPage() {
               onClick={() => void fireTestPush()}
               disabled={testBusy}
               data-testid="fire-test-push"
-              className="rounded-md border border-border bg-card px-3 py-1.5 text-xs font-medium text-primary hover:bg-surface-2 disabled:opacity-60"
+              className="rounded-md border border-border bg-surface px-3 py-1.5 text-xs font-medium text-primary hover:bg-surface-2 disabled:opacity-60"
             >
               {testBusy ? 'Firing...' : 'Fire test push'}
             </button>
@@ -333,7 +333,7 @@ export default function AdminCalendarPage() {
               onChange={(e) => setTestTargetUserId(e.target.value)}
               data-testid="fire-test-push-target-input"
               aria-describedby="fire-test-push-help"
-              className="flex-1 rounded-md border border-border bg-card px-2 py-1 font-mono text-footnote text-primary placeholder:text-secondary"
+              className="flex-1 rounded-md border border-border bg-surface px-2 py-1 font-mono text-footnote text-primary placeholder:text-secondary"
             />
             <button
               type="button"
@@ -344,7 +344,7 @@ export default function AdminCalendarPage() {
               }}
               disabled={testBusy || !testTargetUserId.trim()}
               data-testid="fire-test-push-target"
-              className="rounded-md border border-border bg-card px-2 py-1 font-medium text-primary hover:bg-surface-2 disabled:opacity-60"
+              className="rounded-md border border-border bg-surface px-2 py-1 font-medium text-primary hover:bg-surface-2 disabled:opacity-60"
             >
               Fire
             </button>
@@ -361,7 +361,7 @@ export default function AdminCalendarPage() {
           <CalendarDays className="h-6 w-6" />
           Calendar import
         </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
+        <p className="mt-2 text-sm text-secondary">
           Upload your school calendar PDF. We'll extract each day and
           mark which ones are instructional (duties fire) vs holidays
           (duties pause). Review the summary, then commit.
@@ -375,10 +375,10 @@ export default function AdminCalendarPage() {
           <p className="mt-2 text-sm">{committed.message}</p>
         </div>
       ) : !parsed ? (
-        <div className="rounded-lg border border-dashed border-border bg-card p-8 text-center">
-          <UploadCloud className="mx-auto h-10 w-10 text-muted-foreground" />
+        <div className="rounded-lg border border-dashed border-border bg-surface p-8 text-center">
+          <UploadCloud className="mx-auto h-10 w-10 text-secondary" />
           <h2 className="mt-3 font-medium">Upload your calendar PDF</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <p className="mt-1 text-sm text-secondary">
             5-day cycle elementary template (YRDSB). Max {MAX_BYTES / 1024 / 1024}MB.
           </p>
           <input
@@ -394,7 +394,7 @@ export default function AdminCalendarPage() {
             className="mx-auto mt-4 block text-sm"
           />
           {busy && (
-            <p className="mt-3 text-sm text-muted-foreground">
+            <p className="mt-3 text-sm text-secondary">
               <FileText className="inline h-4 w-4" /> Parsing...
             </p>
           )}
@@ -418,9 +418,9 @@ export default function AdminCalendarPage() {
       )}
 
       {recentCommits.length > 0 && !parsed && !committed && (
-        <section className="mt-8 rounded-lg border border-border bg-card">
+        <section className="mt-8 rounded-lg border border-border bg-surface">
           <header className="border-b border-border px-5 py-3 flex items-center gap-2">
-            <History className="h-4 w-4 text-muted-foreground" />
+            <History className="h-4 w-4 text-secondary" />
             <h2 className="font-medium">Recent calendar imports</h2>
           </header>
           <ul className="divide-y divide-border">
@@ -443,12 +443,12 @@ export default function AdminCalendarPage() {
                     <span className={isError ? 'text-error font-medium' : 'font-medium'}>
                       {display}
                     </span>
-                    <time className="text-xs text-muted-foreground">
+                    <time className="text-xs text-secondary">
                       {new Date(r.createdAt).toLocaleString()}
                     </time>
                   </div>
                   {r.metadata && (
-                    <p className="mt-1 text-xs text-muted-foreground">
+                    <p className="mt-1 text-xs text-secondary">
                       {summarizeMetadata(r.metadata, 'processed')}
                     </p>
                   )}
@@ -477,7 +477,7 @@ export default function AdminCalendarPage() {
           }}
         >
           <div
-            className="w-full max-w-md rounded-lg border border-border bg-card p-6 shadow-xl"
+            className="w-full max-w-md rounded-lg border border-border bg-surface p-6 shadow-xl"
             onKeyDown={(e) => {
               // Minimal focus trap: keep focus inside the dialog while open.
               if (e.key === 'Tab') {
@@ -500,7 +500,7 @@ export default function AdminCalendarPage() {
             <h2 id="confirm-title" className="text-lg font-semibold">
               Save {parsed.summary.totalDays} days to your school calendar?
             </h2>
-            <p className="mt-2 text-sm text-muted-foreground">
+            <p className="mt-2 text-sm text-secondary">
               Existing days on the same dates will be updated. You can fix
               anything by re-uploading the PDF.
             </p>
@@ -540,9 +540,9 @@ function ReviewSection({
   const { summary, days, calendarTitle, schoolYear, durationMs } = parsed;
   return (
     <div className="space-y-6">
-      <section className="rounded-lg border border-border bg-card p-5">
+      <section className="rounded-lg border border-border bg-surface p-5">
         <h2 className="font-medium">Summary</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="mt-1 text-sm text-secondary">
           {calendarTitle || 'School calendar'} • Year {schoolYear} •
           Parsed in {durationMs}ms
         </p>
@@ -561,13 +561,13 @@ function ReviewSection({
           />
         </dl>
         <details className="mt-3 text-sm">
-          <summary className="cursor-pointer text-muted-foreground">
+          <summary className="cursor-pointer text-secondary">
             Per-code breakdown
           </summary>
           <ul className="mt-2 grid grid-cols-3 gap-1 text-xs">
             {Object.entries(summary.byCode).map(([code, count]) => (
               <li key={code} className="flex justify-between">
-                <span className="text-muted-foreground">{code}</span>
+                <span className="text-secondary">{code}</span>
                 <span>{count}</span>
               </li>
             ))}
@@ -575,13 +575,13 @@ function ReviewSection({
         </details>
       </section>
 
-      <section className="rounded-lg border border-border bg-card">
+      <section className="rounded-lg border border-border bg-surface">
         <header className="border-b border-border px-5 py-3">
           <h2 className="font-medium">Day-by-day</h2>
         </header>
         <div className="max-h-[420px] overflow-y-auto">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-muted/50 text-xs uppercase text-muted-foreground">
+            <thead className="sticky top-0 bg-surface-2 text-xs uppercase text-secondary">
               <tr>
                 <th className="px-3 py-2 text-left">Date</th>
                 <th className="px-3 py-2 text-left">Weekday</th>
@@ -601,7 +601,7 @@ function ReviewSection({
                   <td className="px-3 py-1.5">{d.weekday}</td>
                   <td className="px-3 py-1.5">
                     {d.cycleDay ?? (
-                      <span className="text-muted-foreground">—</span>
+                      <span className="text-secondary">—</span>
                     )}
                   </td>
                   <td className="px-3 py-1.5">
@@ -679,7 +679,7 @@ function Stat({
       : '';
   return (
     <div>
-      <dt className="text-xs uppercase tracking-wide text-muted-foreground">
+      <dt className="text-xs uppercase tracking-wide text-secondary">
         {label}
       </dt>
       <dd className={`mt-0.5 text-2xl font-semibold ${toneClass}`}>
