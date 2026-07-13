@@ -63,10 +63,15 @@ export const links: Route.LinksFunction = () => [
 export async function loader({ request }: Route.LoaderArgs): Promise<{
   accent: string;
   requestId: string;
+  plausibleDomain: string | null;
 }> {
   const requestId = request.headers.get('x-request-id') ?? 'root';
   const accent = accentFor(null);
-  return { accent, requestId };
+  // Plausible analytics. Set PLAUSIBLE_DOMAIN in the env to enable
+  // (e.g. `PLAUSIBLE_DOMAIN=edusupervise.ashbi.ca`). Privacy-focused,
+  // no cookies, no banner needed. Use `PLAUSIBLE_DOMAIN=` to disable.
+  const plausibleDomain = process.env.PLAUSIBLE_DOMAIN?.trim() || null;
+  return { accent, requestId, plausibleDomain };
 }
 
 export function Layout({ children }: { children: React.ReactNode }): React.ReactElement {
@@ -77,6 +82,21 @@ export function Layout({ children }: { children: React.ReactNode }): React.React
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <Meta />
         <Links />
+        {/*
+          Plausible Analytics. Privacy-focused: no cookies, no PII,
+          GDPR/PIPEDA-friendly out of the box (no cookie banner needed).
+          Set PLAUSIBLE_DOMAIN in /opt/eduservise/docker/.env to enable
+          (e.g. PLAUSIBLE_DOMAIN=edusupervise.ashbi.ca). Leave unset or
+          empty in dev/staging to disable. Script is loaded from
+          plausible.io, not bundled (~1KB gzipped).
+        */}
+        {process.env.PLAUSIBLE_DOMAIN ? (
+          <script
+            defer
+            data-domain={process.env.PLAUSIBLE_DOMAIN}
+            src="https://plausible.io/js/script.js"
+          />
+        ) : null}
       </head>
       <body className="min-h-screen bg-bg text-primary antialiased">
         {/*
