@@ -183,10 +183,11 @@ for subscription management. This avoids Apple IAP commission.
 | URL scheme registered | ✓ | `edusupervise://` in Info.plist `CFBundleURLTypes` |
 | iOS splash dimensions correct | ✓ | Fixed in `ff9a8d6` (single 2732×2732 image) |
 | iOS icon dimensions correct | ✓ | All 15 sizes in `AppIcon.appiconset` match the Contents.json slots |
-| `armv7` removed from `UIRequiredDeviceCapabilities` | TODO | Currently in Info.plist (stale Capacitor template default; harmless on App Store but cosmetic). Remove before submission. |
-| Push entitlement (`aps-environment`) | TODO | Must be added in Xcode → Signing & Capabilities → + → Push Notifications. This generates the `.entitlements` file. |
+| `armv7` removed from `UIRequiredDeviceCapabilities` | ✓ | `UIRequiredDeviceCapabilities` is not present in Info.plist at all — Capacitor 7+ dropped it from the default template. Nothing to remove. |
+| Push entitlement (`aps-environment`) | ✓ | `App.entitlements` exists with `aps-environment` driven by `$(APS_ENVIRONMENT)` build var (Debug=development, Release=production). Wired into pbxproj in `ab376e6` and `7b13744`. |
+| `UIBackgroundModes: remote-notification` | ✓ | Added in `7b13744` for background push delivery |
 | Build version numbers | ✓ | `MARKETING_VERSION = 1.0`, `CURRENT_PROJECT_VERSION = 1`. First submission. |
-| Code signing identity | TODO | Set in Xcode after install |
+| Code signing identity | TODO | Set in Xcode → Signing & Capabilities after install. Select team = Cameron's Apple Developer team. |
 | App Privacy answers | TODO | Use section 4 above as a starting point, customize, then answer in App Store Connect |
 | Demo account | TODO | Confirm `deploy.test@example.com` / `Test1234!` works, or rotate |
 
