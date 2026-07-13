@@ -12,19 +12,19 @@
 import { type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction } from 'react-router';
 import { Form, redirect, useActionData, useLoaderData } from 'react-router';
 import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
 
 export const meta: MetaFunction = () => [
   { title: 'Delete your EduSupervise account' },
   { name: 'robots', content: 'noindex' },
 ];
 
-interface LoaderData {
-  alreadySubmitted: boolean;
-}
-
-export async function loader({ request: _request }: LoaderFunctionArgs): Promise<LoaderData> {
-  return { alreadySubmitted: false };
+// Note: the form below does not pre-populate 'alreadySubmitted' state.
+// If a user re-submits the same email within the 7-day token TTL, they
+// get the same 'Check your email' message - the duplicate-request surface
+// is identical by design (idempotent token generation in the v1.1 server
+// function will simply re-issue the same token + extend the expiry).
+export async function loader(_args: LoaderFunctionArgs): Promise<null> {
+  return null;
 }
 
 interface ActionData {
@@ -46,7 +46,7 @@ export async function action({ request }: ActionFunctionArgs): Promise<ActionDat
 }
 
 export default function AccountDelete(): React.ReactElement {
-  const { alreadySubmitted } = useLoaderData<typeof loader>();
+  useLoaderData<typeof loader>();  // returns null currently; v1.1 will populate from cookie
   const result = useActionData<typeof action>();
 
   if (result?.ok) {
@@ -84,13 +84,14 @@ export default function AccountDelete(): React.ReactElement {
         <Form method="post" className="mt-lg flex flex-col gap-md">
           <label className="flex flex-col gap-xs">
             <span className="text-callout font-medium text-primary">Email</span>
-            <Input
+            <input
               type="email"
               name="email"
               required
               autoComplete="email"
               placeholder="you@school.org"
-              className="w-full"
+              aria-label="Email address"
+              className="w-full h-input px-md rounded-md border border-border bg-surface text-primary placeholder:text-tertiary focus:outline-none focus:ring-2 focus:ring-accent"
             />
           </label>
           {result?.error && (
