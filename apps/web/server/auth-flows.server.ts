@@ -50,11 +50,13 @@ export type TokenKind = (typeof TOKEN_KIND)[keyof typeof TOKEN_KIND];
  */
 export function generateAuthToken(): string {
   const buf = new Uint8Array(32);
-  if (typeof crypto !== 'undefined' && 'getRandomValues' in crypto) {
-    crypto.getRandomValues(buf);
-  } else {
-    for (let i = 0; i < buf.length; i++) buf[i] = Math.floor(Math.random() * 256);
+  if (typeof crypto === 'undefined' || !('getRandomValues' in crypto)) {
+    // Refuse to mint a weak token. Math.random() is NOT cryptographically
+    // secure. Token entropy protects password reset + magic-link flows.
+    // If you hit this, the runtime is missing Web Crypto - check the env.
+    throw new Error('auth-flows: crypto.getRandomValues unavailable; refusing to mint a weak token');
   }
+  crypto.getRandomValues(buf);
   return Buffer.from(buf).toString('base64url');
 }
 

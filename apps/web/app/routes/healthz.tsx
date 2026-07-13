@@ -39,7 +39,7 @@ export async function loader(request: Request): Promise<Response> {
   const body = {
     status: ok ? 'ok' : 'degraded',
     db: dbOk ? 'ok' : 'down',
-    ...(dbError ? { db_error: dbError } : {}),
+    // (intentionally do NOT leak dbError to public callers - operators find it in pino logs)
     uptime_s: Math.floor(process.uptime()),
     check_ms: Date.now() - checkStart,
   };

@@ -21,7 +21,8 @@ export async function action({ request }: Route.ActionArgs) {
   }
   const csrf = validateCsrfFromJson(request, body as Record<string, unknown>);
   if (!csrf.ok) return csrf.response;
-  const session = requireSession(await getSession(request));
+  const maybeSession = await getSession(request);
+const session = requireRole(maybeSession, ['school_admin']);  // NIT-005: parent alert send/cancel is admin-only (v1 mock; v2 wires to Twilio/Resend)
   const parsed = Body.safeParse(body);
   if (!parsed.success) {
     return Response.json({ error: 'validation_failed', issues: parsed.error.issues }, { status: 400 });
