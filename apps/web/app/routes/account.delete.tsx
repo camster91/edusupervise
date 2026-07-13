@@ -5,24 +5,19 @@
 // confirmation link; clicking the link soft-deletes the account with a
 // 30-day grace period.
 //
-// This is a "deletion URL" for App Store Connect's Account Deletion
-// field. The proper in-app deletion surface (Settings → Account → Delete)
-// is planned for v1.1; see docs/APP-STORE-PREFLIGHT.md §5.
+// Server function: see apps/web/server/account-deletion.server.ts.
+// Confirmation route: see apps/web/app/routes/account.delete.confirm.tsx.
 
 import { type ActionFunctionArgs, type LoaderFunctionArgs, type MetaFunction } from 'react-router';
-import { Form, redirect, useActionData, useLoaderData } from 'react-router';
+import { Form, useActionData } from 'react-router';
 import { Button } from '../components/ui/Button';
+import { requestAccountDeletion } from '../../server/account-deletion.server';
 
 export const meta: MetaFunction = () => [
   { title: 'Delete your EduSupervise account' },
   { name: 'robots', content: 'noindex' },
 ];
 
-// Note: the form below does not pre-populate 'alreadySubmitted' state.
-// If a user re-submits the same email within the 7-day token TTL, they
-// get the same 'Check your email' message - the duplicate-request surface
-// is identical by design (idempotent token generation in the v1.1 server
-// function will simply re-issue the same token + extend the expiry).
 export async function loader(_args: LoaderFunctionArgs): Promise<null> {
   return null;
 }
@@ -38,15 +33,28 @@ export async function action({ request }: ActionFunctionArgs): Promise<ActionDat
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     return { ok: false, error: 'Enter a valid email address.' };
   }
-  // TODO: server-side — generate one-time token, store in
-  // `account_deletion_requests` table with 7-day expiry, send email
-  // via Mailgun with confirmation link. For now, log + return ok.
-  console.log(`[account/delete] deletion request for ${email}`);
-  return { ok: true };
+  try {
+    const result = await requestAccountDeletion(email);
+    if (!result.ok) {
+      if (result.error === 'rate_limited') {
+        return {
+          ok: false,
+          error: 'Too many requests. Check your email or wait 24 hours and try again.',
+        };
+      }
+      if (result.error === 'invalid_email') {
+        return { ok: false, error: 'Enter a valid email address.' };
+      }
+      return { ok: false, error: 'Something went wrong. Try again in a minute.' };
+    }
+    return { ok: true };
+  } catch (err) {
+    console.error('[account/delete] action failed', err);
+    return { ok: false, error: 'Something went wrong. Try again in a minute.' };
+  }
 }
 
 export default function AccountDelete(): React.ReactElement {
-  useLoaderData<typeof loader>();  // returns null currently; v1.1 will populate from cookie
   const result = useActionData<typeof action>();
 
   if (result?.ok) {
@@ -55,9 +63,10 @@ export default function AccountDelete(): React.ReactElement {
         <article className="w-full max-w-md rounded-lg border border-border bg-surface p-lg shadow-elev-1">
           <h1 className="text-title-2 font-bold text-primary">Check your email</h1>
           <p className="mt-sm text-body text-secondary">
-            If an EduSupervise account exists for that email, we just sent a
-            deletion confirmation link. Click the link to start the 30-day
-            deletion grace period. The link expires in 7 days.
+            We just sent a confirmation link to the address you provided.
+            Click it within 7 days to start the 30-day deletion grace period.
+            After 30 days, your account, calendar, duties, and notifications
+            are permanently deleted.
           </p>
           <p className="mt-md text-callout text-tertiary">
             Didn't get the email? Check spam, or email{' '}

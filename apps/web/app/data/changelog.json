@@ -1,5 +1,292 @@
 [
   {
+    "hash": "978d1bc76a965c2b77790b13fbacc5e851ebfbec",
+    "shortHash": "978d1bc",
+    "date": "2026-07-13",
+    "subject": "infra: 3 security NITs from audit round 2 (NIT-001, NIT-003, NIT-005)",
+    "body": "NIT-001 (healthz leak): apps/web/app/routes/healthz.tsx dropped the\ndb_error field from the public response body. Operators find the\nreal error in pino logs; the public response now only reports\nstatu…"
+  },
+  {
+    "hash": "7b13744f30788acc8720e150a88039ca40ec0084",
+    "shortHash": "7b13744",
+    "date": "2026-07-13",
+    "subject": "infra: iOS - aps-environment build-config driven + UIBackgroundModes",
+    "body": "UX audit round 2 + PUSH-1 BLOCKER fix:\n\nApp Store requires aps-environment=production. The previous fix\n(hardcoded development) would have caused App Store rejection.\nNow:\n\n  ios/App/App/App.entitleme…"
+  },
+  {
+    "hash": "d7b22a39834b9290a9e2553ff6e364949b5e5521",
+    "shortHash": "d7b22a3",
+    "date": "2026-07-13",
+    "subject": "web: account.delete - DEL-1 (Input label) + NIT-EMPTY-1 (dead loader field)",
+    "body": "UX audit round 2 found:\n\nDEL-1: account.delete.tsx was passing <Input> with no label prop.\nInput.tsx declares label as required (a11y). The route wrapped\nthe Input in a custom <label> block, but the I…"
+  },
+  {
+    "hash": "935b6dd8b21240bda70e35f194e6441ee637fb0a",
+    "shortHash": "935b6dd",
+    "date": "2026-07-13",
+    "subject": "web: auth routes - 35 shadcn token migrations + .glass utility",
+    "body": "UX audit round 2 found auth.magic.tsx entirely on shadcn palette\n(missed in the prior sweep), plus remaining focus:border-blue-500\nin reset/verify-phone, plus the hover:bg-accent NIT in login/forgot.\n…"
+  },
+  {
+    "hash": "6f73b63bcf027c63a907bf06c75da83fa077c445",
+    "shortHash": "6f73b63",
+    "date": "2026-07-13",
+    "subject": "web: DowngradeBanner + NotificationBell - 2 BLOCKERs from UX audit",
+    "body": "WCAG-1 (BLOCKER): DowngradeBanner body text + button failed WCAG AA\ncontrast. text-warning on bg-warning-soft = 2.02:1 (needs 4.5:1),\ntext-on-accent on bg-warning = 2.20:1 (needs 4.5:1). Fix: body\ntex…"
+  },
+  {
+    "hash": "381b46be8648a7b7c3515976e55da9500aadfbd9",
+    "shortHash": "381b46b",
+    "date": "2026-07-13",
+    "subject": "web: UI primitives - 4 BLOCKERs + 4 TOKEN-BUGs from UX audit round 2",
+    "body": "UX audit round 2 found 5 BLOCKERs that the prior sweep missed.\nThree fixed in UI primitives:\n\nBANNER-1 (BLOCKER): Banner.tsx used invalid class text-text-primary\n(would fall back to inherited color). …"
+  },
+  {
+    "hash": "a572dfca92387ddda50421ec2209645ca87b91d8",
+    "shortHash": "a572dfc",
+    "date": "2026-07-13",
+    "subject": "infra: Plausible analytics - script tag + helper + env var",
+    "body": "Privacy-focused, no cookies, GDPR/PIPEDA-friendly out of the box (no\ncookie banner needed). Lightweight <1KB gzipped script loaded from\nplausible.io. Cameron sets PLAUSIBLE_DOMAIN in the env to enable…"
+  },
+  {
+    "hash": "b45c5744fcb21450fabab91f0b75d037b31b82d7",
+    "shortHash": "b45c574",
+    "date": "2026-07-13",
+    "subject": "docs: SCREENSHOTS.md - 9 captions across 3 device classes (App Store pre-submission)",
+    "body": "Companion to docs/APP-STORE-PREFLIGHT.md §3 (screenshots required).\nStory-ordered: hero -> differentiator -> flow. 12th-grade English,\nno banned words (unlock, leverage, robust, synergy, holistic, dil…"
+  },
+  {
+    "hash": "ab376e66c0abf92f5896d839713140a03c9189d2",
+    "shortHash": "ab376e6",
+    "date": "2026-07-13",
+    "subject": "infra: iOS - add App.entitlements + wire aps-environment into pbxproj",
+    "body": "Cameron is currently missing the Push Notifications capability\nwiring in his Xcode project. Without it, APNs registration in\nAppDelegate.swift (already calls registerForRemoteNotifications())\nsucceeds…"
+  },
+  {
+    "hash": "38c5600135130c83d02ddf0de57c5e0c2ad9e2c0",
+    "shortHash": "38c5600",
+    "date": "2026-07-13",
+    "subject": "web: routes.ts - register /account/delete for App Store 5.1.1(v)",
+    "body": "The account.delete.tsx file was added in the previous commit but\nroutes.ts is the manual route registry (not file-based) so the\nnew file was orphaned. Registering it now.\n\nGET https://edusupervise.ash…"
+  },
+  {
+    "hash": "d35ed0074c6f35892eb861f037df66c05e96a1fb",
+    "shortHash": "d35ed00",
+    "date": "2026-07-13",
+    "subject": "infra: App Store pre-flight checklist + /account/delete + Info.plist cleanup",
+    "body": "Three changes to make the iOS submission go smooth:\n\n1. docs/APP-STORE-PREFLIGHT.md (new, 223 lines) - full pre-submission\n   checklist: App Privacy questionnaire answers, age rating, demo\n   account,…"
+  },
+  {
+    "hash": "7f2dd935a672b26d87afc36b5e73a18f59d19571",
+    "shortHash": "7f2dd93",
+    "date": "2026-07-13",
+    "subject": "web: placeholder pages - swap shadcn palette for HIG tokens",
+    "body": "3 placeholder routes (reminders, assignments, teachers) used the\nshadcn default placeholder style: text-2xl font-bold text-slate-900\non a bg-white border-slate-200 card. Now use text-title-1 font-bold…"
+  },
+  {
+    "hash": "f15fb5b8a90a4030f1ac8d582ce5be5e4bcadd03",
+    "shortHash": "f15fb5b",
+    "date": "2026-07-13",
+    "subject": "web: billing + mobile nav - swap shadcn palette for HIG tokens",
+    "body": "3 components that show up on every admin visit:\n  - _app.settings.billing (the plan-tier page — converts free -> paid)\n  - DowngradeBanner (warning on every admin page when downgrade pending)\n  - Mobi…"
+  },
+  {
+    "hash": "22bc7c966e8184962ab8f6d46f6d3a1fb4eae034",
+    "shortHash": "22bc7c9",
+    "date": "2026-07-13",
+    "subject": "web: auth + duties + recurring routes - swap shadcn palette for HIG tokens",
+    "body": "5 auth pages (login, forgot, reset, verify-email, verify-phone) plus\nauth.magic and _app.duties.new and _app.recurring._index were\nimports from the shadcn default template. The auth pages are the\nlite…"
+  },
+  {
+    "hash": "137419033ad94226785ce12120f95c13d4f35c77",
+    "shortHash": "1374190",
+    "date": "2026-07-13",
+    "subject": "web: UI primitives - swap shadcn Tailwind classes for HIG design tokens",
+    "body": "8 form / display primitives (Input, Dialog, Toast, Select, Tabs, Table,\nPopover, Form) used raw Tailwind palette classes (text-slate-*, bg-white,\nborder-slate-*, etc.) that diverged from the HIG desig…"
+  },
+  {
+    "hash": "3f9069ec6d65746c4d223baec76bd1e54befe0ef",
+    "shortHash": "3f9069e",
+    "date": "2026-07-13",
+    "subject": "infra: tokens - add --color-overlay (light + dark) for modal backdrops",
+    "body": "The shadcn Dialog primitive hardcoded bg-slate-950/40 for the modal\nbackdrop. Now that Dialog is being migrated to HIG tokens, we need\na first-class --color-overlay token so the design system owns the…"
+  },
+  {
+    "hash": "969d3f2636d9145630c142e115860b7b21ce208a",
+    "shortHash": "969d3f2",
+    "date": "2026-07-13",
+    "subject": "web: Banner - fix WCAG AA contrast on info/success/warning variants",
+    "body": "The Banner used text-on-accent (#FFFFFF) as the foreground for\nevery variant:\n  - info    bg=#5AC8FA fg=white  -> 1.9:1  (fail AA)\n  - success bg=#34C759 fg=white  -> 2.5:1  (fail AA)\n  - warning bg=#…"
+  },
+  {
+    "hash": "ff9a8d629a0684d620c01394d968acd71273b4e0",
+    "shortHash": "ff9a8d6",
+    "date": "2026-07-13",
+    "subject": "infra: iOS splash - collapse to single 2732x2732 image",
+    "body": "The 3-slot Splash.imageset was mapping the wrong files to wrong\nscale factors:\n  - @1x slot had splash-2732x2732-2.png  (2732x2732, the @3x size)\n  - @2x slot had splash-2732x2732-1.png  (1366x1366, s…"
+  },
+  {
+    "hash": "7c659220db02467833afecbe1aa458e1e3837404",
+    "shortHash": "7c65922",
+    "date": "2026-07-13",
+    "subject": "web: Sidebar + MobileNav - remove nav items that 404",
+    "body": "3 routes referenced in the nav did not exist as files:\n  - /app/reports       (admin-only, in both Sidebar and MobileNav)\n  - /app/notifications (MobileNav)\n  - /app/profile       (MobileNav)\n\nAdmins …"
+  },
+  {
+    "hash": "bd3e3d174a19c20f8a40ff3805a44f3eac793327",
+    "shortHash": "bd3e3d1",
+    "date": "2026-07-13",
+    "subject": "web: admin.calendar._index.tsx - swap undefined Tailwind classes to existing tokens",
+    "body": "The route used:\n  - bg-card           (no such class in tailwind.config.ts)\n  - text-muted-foreground  (no such class)\n  - bg-muted/50       (no such class)\n\nAll 24 occurrences across 13 unique lines.…"
+  },
+  {
+    "hash": "cddeb5f27b84cf407c977f00e8fb61b0913ea50f",
+    "shortHash": "cddeb5f",
+    "date": "2026-07-13",
+    "subject": "web: theme + ThemeStyle - align per-school accent writers to --color-accent",
+    "body": "The Tailwind config and tokens.css use --color-accent, but\nThemeStyle.tsx and lib/theme.ts were writing to --accent. The\nmismatch meant every school's brand color override was a silent\nno-op — the per…"
+  },
+  {
+    "hash": "5101c5fdc7e02caf3bca369a2b53b5dd34afb9d6",
+    "shortHash": "5101c5f",
+    "date": "2026-07-09",
+    "subject": "web: admin.calendar._index.tsx - \"Commit to cycle_calendar\" button -> \"Save to school calendar\"",
+    "body": "UX spot-check (r2, 2026-07-09) flagged that the trigger button at\n:653 still leaked the database table name \"cycle_calendar\" even\nthough the Confirm dialog copy was already fixed. The dialog\ntext read…"
+  },
+  {
+    "hash": "f7799082f221c0431e558df95558a57d8fa1cc46",
+    "shortHash": "f779908",
+    "date": "2026-07-09",
+    "subject": "web: push.server.test.ts - delete dead vi.mock + renderSQL helper + 3 bundle-mismatch tests",
+    "body": "Code-quality audit (2026-07-09) flagged 3 items, all fixed:\n\n1. **Delete dead first vi.mock('@edusupervise/db', ...) declaration**\n   (HIGH #4). The first mock body just spread `...actual` with no\n   …"
+  },
+  {
+    "hash": "8dc75cdf67350eb7fe197d98016f325d3b796b08",
+    "shortHash": "8dc75cd",
+    "date": "2026-07-09",
+    "subject": "web: support.tsx - skip link + \"Read\" instead of \"Skim\"",
+    "body": "UX audit (2026-07-09) flagged:\n\n1. **Skip link** (NIT). Public pages (privacy + support) have no\n   \"Skip to content\" link — bad for keyboard-only users and AT\n   reviewers. Added a visually-hidden li…"
+  },
+  {
+    "hash": "52ea0841977368c869b968975bc3a8a935be2742",
+    "shortHash": "52ea084",
+    "date": "2026-07-09",
+    "subject": "web: _app.tsx - gate Web Push prompt behind localStorage flag",
+    "body": "UX audit (2026-07-09) BLOCKER #2: the `useEffect(() => void\nregisterWebPush(), [])` on every mount of every authenticated route\ncalled `Notification.requestPermission()` before the user had any\ncontex…"
+  },
+  {
+    "hash": "30fdf8a1255c09870cd3d4e6f4448efd679e83a7",
+    "shortHash": "30fdf8a",
+    "date": "2026-07-09",
+    "subject": "web: admin.calendar._index.tsx - focus trap, plain-English copy, design tokens, auto-navigate removal",
+    "body": "UX audit (2026-07-09) flagged 7 issues on /admin/calendar. All fixed:\n\n1. **Confirm modal — focus trap + autoFocus Cancel + Esc-to-close +\n   backdrop click** (HIGH). Previous modal had `role=\"alertdi…"
+  },
+  {
+    "hash": "09d4bffbe63f27cedb62b6ad0342dc224d32a22b",
+    "shortHash": "09d4bff",
+    "date": "2026-07-09",
+    "subject": "web: changelog.tsx - ErrorBoundary + copy fallback modal + radiogroup filter + h3 per commit",
+    "body": "UX audit (2026-07-09) flagged 5 issues on /changelog. All fixed:\n\n1. **ErrorBoundary export** (BLOCKER #5). If the prebuilt JSON is\n   malformed or missing, the page 500s with a blank error. New\n   `E…"
+  },
+  {
+    "hash": "6b1913fab6f4f56134d529a9b0ecab190846159c",
+    "shortHash": "6b1913f",
+    "date": "2026-07-09",
+    "subject": "tools: build-changelog.ts - which git guard for CI resilience",
+    "body": "DevOps NIT (2026-07-09): the prebuild script assumed `git` is on PATH\nwhenever `.git` exists. Thin Docker base images or fresh CI runners\nmay have `.git/` (via volume mount) but no git binary. The scr…"
+  },
+  {
+    "hash": "e8ab140bb7f9f0913a9ca5cfaff1f221dbf474a1",
+    "shortHash": "e8ab140",
+    "date": "2026-07-09",
+    "subject": "docs: APP-STORE-CONNECT.md - fix subtitle over 30-char limit",
+    "body": "UX audit (2026-07-09) caught a ship-blocker: the App Store subtitle\n\"Duty scheduler for K-12 schools\" is 31 chars; App Store limit is 30.\nSubmission would be rejected or truncated silently.\n\nFix: \"Dut…"
+  },
+  {
+    "hash": "88ec586bf83d5743654671db1c3ee0a93da1c9a7",
+    "shortHash": "88ec586",
+    "date": "2026-07-09",
+    "subject": "infra: docker-compose.yml - drop version: \"3.9\"",
+    "body": "DevOps NIT (2026-07-09): the `version: \"3.9\"` key in docker-compose.yml\nis obsolete — docker compose has printed \"the attribute version is\nobsolete, it will be ignored, please remove it to avoid poten…"
+  },
+  {
+    "hash": "a8d9f0a23f8210d442aa20f0f87a141f26459921",
+    "shortHash": "a8d9f0a",
+    "date": "2026-07-09",
+    "subject": "infra: BUILD.md - blank line before ## Troubleshooting",
+    "body": "UX audit (2026-07-09) caught a markdown source issue: line 270 had\n`...signed.## Troubleshooting` with no blank line between, so\nmarkdown rendered the heading as a paragraph fragment instead of\nan h2.…"
+  },
+  {
+    "hash": "a134cc8e0c6d54b3630d8ea0bdc6a4aa7b5685b2",
+    "shortHash": "a134cc8",
+    "date": "2026-07-09",
+    "subject": "web: regenerate changelog.json snapshot with body truncation + redaction applied",
+    "body": "scripts/build-changelog.ts now truncates bodies to first 200 chars\nand redacts emails / IPs / infra hostnames / /root paths / bearer\ntoken prefixes. Regenerated snapshot reflects the sanitization.\n\nIN…"
+  },
+  {
+    "hash": "d0f788581663adf673716b510c19be0b50cb9f40",
+    "shortHash": "d0f7885",
+    "date": "2026-07-09",
+    "subject": "web: push.server.test.ts - extend fixtures with schoolId/userId + tx.execute mock + getApnsConfig mock",
+    "body": "Test infrastructure updates for the push.server.ts refactor:\n\n1. makeWebRow + makeIosRow now include schoolId + userId fields\n   (required by the extended Subscription interface).\n2. buildTx returns a…"
+  },
+  {
+    "hash": "1ab4613645c5fb36ccf16208f5be77abfc33f901",
+    "shortHash": "1ab4613",
+    "date": "2026-07-09",
+    "subject": "infra: BUILD.md - §9.2 explicit mkdir + chmod 700 for /root/apns-keys",
+    "body": "DevOps NIT: §9.2 referenced [/path] which doesn't exist\nby default on the VPS. sshd auto-creates parent dirs during scp\nbut with default mode 755 — explicit mkdir + chmod 700 BEFORE\nthe scp m…"
+  },
+  {
+    "hash": "1c09776e77dc6ebe007e8a6804c9abc819893c9a",
+    "shortHash": "1c09776",
+    "date": "2026-07-09",
+    "subject": "tools: build-changelog.ts - body truncation + redaction at build time",
+    "body": "QA fix from 2026-07-09 audit (security HIGH): the committed\nchangelog.json exposes full commit bodies publicly via /changelog.\nToday the 50 committed bodies are clean (no real customer names,\nAPI keys…"
+  },
+  {
+    "hash": "b14857debe1afb315e7fc847dcd0b370ab6d2883",
+    "shortHash": "b14857d",
+    "date": "2026-07-09",
+    "subject": "web: api.push.register.ts - CSRF + apnsBundleId regex validation",
+    "body": "QA fixes from 2026-07-09 audit (security + code-quality):\n\n1. **CSRF on POST mutation route** (HIGH). Added\n   `validateCsrfFromJson(request, parsed)` AFTER the body parse\n   and BEFORE any state-muta…"
+  },
+  {
+    "hash": "4e6d4aaa3efb62c831495f22d435115c6dec870b",
+    "shortHash": "4e6d4aa",
+    "date": "2026-07-09",
+    "subject": "web: api.notifications.test.ts - CSRF + narrow kind enum + real overflow detection + static imports",
+    "body": "QA fixes from 2026-07-09 audit (security + code-quality):\n\n1. **CSRF on POST mutation route** (HIGH). Added\n   `validateCsrfFromJson(request, body)` AFTER request.json() and\n   BEFORE any state-mutati…"
+  },
+  {
+    "hash": "9c34576f9a1efeb5a195f26b3aaae1277afe7ab5",
+    "shortHash": "9c34576",
+    "date": "2026-07-09",
+    "subject": "web+infra: push.server.ts - deleteSubscription RLS fix + bundle validation + dead exports removed + structured PushPayload",
+    "body": "QA fixes from 2026-07-09 audit (security BLOCKER + 4 HIGHs):\n\n1. **deleteSubscription RLS fix (BLOCKER)**. Previous signature was\n   `deleteSubscription(id)` which called\n   `db.execute(sql\\`DELETE FR…"
+  },
+  {
+    "hash": "597089aac356aa6cdce97421b0f40941c8061d55",
+    "shortHash": "597089a",
+    "date": "2026-07-09",
+    "subject": "web+infra: apns.server.ts - HTTP/2 session pool + cached ECDSA KeyObject + DER length hardening",
+    "body": "Three QA fixes from 2026-07-09 audit:\n\n1. **HTTP/2 session pool** (BLOCKER). Previous: sendApnsPush opened a\n   fresh TCP+TLS+HTTP/2 connection per push via `http2Connect()` then\n   closed it in safeR…"
+  },
+  {
+    "hash": "c324f2a567c4abaea780f132e4e29bef88ba1b09",
+    "shortHash": "c324f2a",
+    "date": "2026-07-09",
+    "subject": "db: schema.ts - rename push_subscriptions lookup index to _all",
+    "body": "Migration 0015_push_subscriptions_apns.sql line 110-117 DROPs\n`idx_push_subscriptions_user` and CREATEs\n`idx_push_subscriptions_user_all` (the new name reflects that\nthis index covers BOTH web + iOS s…"
+  },
+  {
+    "hash": "53c6223a90adcf8679a55a224a551194537d0452",
+    "shortHash": "53c6223",
+    "date": "2026-07-09",
+    "subject": "infra: .dockerignore - anchor docker/.env family + mirror .gitignore",
+    "body": "DevOps hardening audit (2026-07-09) caught a credential-leak path:\ndocker/.env (containing POSTGRES_PASSWORD + EDUSUPERVISE_*_PASSWORD)\nwas landing in the build context because .dockerignore's `.env`\n…"
+  },
+  {
     "hash": "a12685205459ec62c58b5f23d388a8980153b3a3",
     "shortHash": "a126852",
     "date": "2026-07-09",
@@ -61,292 +348,5 @@
     "date": "2026-07-08",
     "subject": "web+infra: real push notifications — Web Push + APNs in parallel",
     "body": "Phase 2 of the iOS App Store pipeline. WKWebView does NOT support the\nWeb Push API on iOS, so the iOS app needs a separate channel (APNs)\neven though it loads the same web code as the browser. This co…"
-  },
-  {
-    "hash": "d196a8da0c9dce4d367f8632e38297a1554232b0",
-    "shortHash": "d196a8d",
-    "date": "2026-07-08",
-    "subject": "infra: ship to iOS — Capacitor scaffold + icons + splash + BUILD.md",
-    "body": "Phase 1 of the iOS App Store pipeline. The web app stays single-source on\n[host]; this commit wraps it in a WKWebView with native\nchrome (icon, splash, bundle ID, URL scheme) so it inst…"
-  },
-  {
-    "hash": "d88695dad52e27cd8f98ee0322a83b4af131ce0b",
-    "shortHash": "d88695d",
-    "date": "2026-07-07",
-    "subject": "tools: add scripts/parse-pdf.mjs — offline tsx wrapper for the pdf parser",
-    "body": "31-line script around pdf-parser.server.ts that runs the parser on a\nlocal PDF and dumps parsed rows to stdout. Lets you test a PDF without\nthe HTTP/upload flow. Usage:\n\n    tsx scripts/parse-pdf.mjs …"
-  },
-  {
-    "hash": "4d72cf8ce95c056431fffebbb88ae9e3369f6776",
-    "shortHash": "4d72cf8",
-    "date": "2026-07-07",
-    "subject": "web: calendar import CSRF — route + frontend align on x-csrf-token header",
-    "body": "Before: route called validateCsrfFromJson(request, {}) on a multipart body\n(returns 403 missing_token because body is multipart, not JSON) and the\nadmin frontend only attached CSRF via a FormData fiel…"
-  },
-  {
-    "hash": "59f72613eba8daa584d70d339befdd5673ccb60a",
-    "shortHash": "59f7261",
-    "date": "2026-07-06",
-    "subject": "web: Cluster 2 admin/calendar UX BLOCKERs + unlock banned-word sweep",
-    "body": "QA swarm (2026-07-05) flagged 5 BLOCKING UX issues on the freshly-shipped\n/admin/calendar admin UI:\n\n  1. role=\"alert\" missing on error messages (regression of S-U8)\n     - Added role=\"alert\" on both …"
-  },
-  {
-    "hash": "4dfce1c5a5b580c5cbe8dc9cef509c4ca96c51e4",
-    "shortHash": "4dfce1c",
-    "date": "2026-07-06",
-    "subject": "web: H4 magic-link TTL UI copy — \"5 minutes\" -> \"60 minutes\"",
-    "body": "QA swarm HIGH finding. The auth-flows.server.ts default ttlMs\nis 60 * 60 * 1000 (60 minutes) but auth.magic.tsx:233 UI copy\nsaid \"The link expires in 5 minutes.\" Trust-eating drift.\n\nUpdated UI to mat…"
-  },
-  {
-    "hash": "bbfb4dbe4954d4747b2145f40c7a647ad9788a6b",
-    "shortHash": "bbfb4db",
-    "date": "2026-07-06",
-    "subject": "web: H2 writtenCount -> attemptedRows rename (calendar_import audit row semantics)",
-    "body": "QA swarm HIGH finding. writtenCount was misleading — the counter\nincrements BEFORE each row insert in the txn, so on throw the\ntxn ROLLS BACK and the rows never persisted. The count was the\nlast-attem…"
-  },
-  {
-    "hash": "93581b4edd1026892d9b4fc07dea0c2db98ffaab",
-    "shortHash": "93581b4",
-    "date": "2026-07-06",
-    "subject": "web: H1 PII redact — phone numbers masked in logger.warn (verify-phone.server.ts)",
-    "body": "QA swarm HIGH finding. verify-phone.server.ts:89,113 called\nlogger.warn({ phone }) which wrote raw phone numbers into logs.\nReplaced with redactPhone() helper that emits +1****NN (last 2\ndigits only).…"
-  },
-  {
-    "hash": "9bb141228e7ff018c762162ed1d72e5072a01a75",
-    "shortHash": "9bb1412",
-    "date": "2026-07-06",
-    "subject": "web: getSystemDb() singleton + auth.server uses cached pool (Cluster 3 BLOCKER)",
-    "body": "QA swarm (2026-07-05) found loadSessionFromDb opened a fresh\npostgres system pool per request via getSystemClient(systemUrl) +\nclose(). Under 50 concurrent requests this saturated the 10-conn\nruntime …"
-  },
-  {
-    "hash": "b9f13dcedc1af81c9881fb854efee1be9359c25e",
-    "shortHash": "b9f13dc",
-    "date": "2026-07-05",
-    "subject": "docs: postmortem - calendar import BLOCKING (holiday_code CHECK mismatch)",
-    "body": "Documents the BLOCKING bug caught by app-ship-prep verifier on\n2026-07-05 (session mvs_498818874f5b439ebb78debd3277d2e1).\n\nTL;DR: migration 0013 had CHECK allowing 8 human-readable slugs\n(holiday/rece…"
-  },
-  {
-    "hash": "369d8d7aab672a907702c61ff43b1c2acb3290f3",
-    "shortHash": "369d8d7",
-    "date": "2026-07-05",
-    "subject": "web: tests - calendar-import.server shape + CalendarUpsertError coverage",
-    "body": "Pins the public contract of apps/web/server/calendar-import.server.ts:\n\n  - CalendarUpsertError class: writtenCount + failedDate +\n    originalError fields populated correctly; instance is catchable\n …"
-  },
-  {
-    "hash": "4c7620a2118895cc1c698e4332ca0b04b05aef76",
-    "shortHash": "4c7620a",
-    "date": "2026-07-05",
-    "subject": "docs: tighten import route header + inline comments (5-min nit from verifier)",
-    "body": "Verifier (mvs_4988) flagged that acf8dad over-claimed stderr was\npiped into audit metadata. Actual: jobId is in audit + stderr is\npreserved in web container logs (logger.warn in the TS wrapper)\nand op…"
-  },
-  {
-    "hash": "2912cfea707f026309750e75d9620851d146dc05",
-    "shortHash": "2912cfe",
-    "date": "2026-07-05",
-    "subject": "web: calendar_import - CalendarUpsertError carries writtenCount into the catch block (MED-2)",
-    "body": "MED-2 from app-ship-prep verifier (mvs_4988) re-verify round.\n\nBefore: calendar_import.commit_failed audit row stored\nattemptedDays (parse-time total, e.g. 215) but no count of how\nmany rows actually …"
-  },
-  {
-    "hash": "bc32e48e9b1cdc2ee6be0189745ce501c36ef605",
-    "shortHash": "bc32e48",
-    "date": "2026-07-05",
-    "subject": "web: pdf_calendar_extract - validateShape reads note from python dict (MED-1)",
-    "body": "MED-1 from app-ship-prep verifier (mvs_4988) re-verify round.\n\nBefore: CalendarDay interface declared note field, the upsert\nhelper forwarded it, and the database column accepted it - but\nvalidateShap…"
-  },
-  {
-    "hash": "acf8dadc8a74f7b68b7d13325900aadb17de76b5",
-    "shortHash": "acf8dad",
-    "date": "2026-07-05",
-    "subject": "web: import + upsert + parser - pipe stderr to audit + note passthrough",
-    "body": "Two HIGH fixes from app-ship-prep verifier (mvs_4988):\n\n  1. api.admin.calendar.import.ts now includes jobId in the\n     calendar_import.parse_failed audit metadata so operators can\n     correlate the…"
-  },
-  {
-    "hash": "5779011778ca7c3ca57dd438558e963654c58c63",
-    "shortHash": "5779011",
-    "date": "2026-07-05",
-    "subject": "web: api.admin.calendar.commit - wrap upsert in try/catch + calendar_import.commit_failed audit on throw",
-    "body": "HIGH feedback from app-ship-prep verifier (mvs_4988).\n\nBefore: if upsertCalendarDays threw mid-transaction, the admin saw\na 500 with NO audit row written, no operator visibility into what\nwas attempte…"
-  },
-  {
-    "hash": "6554a9ee267612713de75cca42b47d32ce194469",
-    "shortHash": "6554a9e",
-    "date": "2026-07-05",
-    "subject": "db: migration 0014 - fix cycle_calendar.holiday_code CHECK to match parser output",
-    "body": "BLOCKING. Caught by app-ship-prep verifier (mvs_4988) before\nproduction exposure.\n\nMigration 0013 (committed 07ee533) shipped a CHECK constraint\nallowing 8 human-readable slugs:\n  holiday, recess, pd_…"
-  },
-  {
-    "hash": "b58aa72f5c204b4398a14f4af2512231d130676e",
-    "shortHash": "b58aa72",
-    "date": "2026-07-05",
-    "subject": "web: admin calendar import routes + UI (/admin/calendar)",
-    "body": "Three new routes wired through RR7 explicit registration\n(apps/web/app/routes.ts):\n\n  GET  /admin/calendar                 admin.calendar._index.tsx\n       - School-admin-only loader (defense-in-depth…"
-  },
-  {
-    "hash": "dc6f9210d91ad2620015f4e7124ffe569124fc4f",
-    "shortHash": "dc6f921",
-    "date": "2026-07-05",
-    "subject": "web: calendar-import.server.ts - upsert helper for cycle_calendar",
-    "body": "apps/web/server/calendar-import.server.ts is the persistence layer\nfor the admin calendar-import flow. Two-phase operation:\n\n  1. Pre-validate: drop days with malformed dates (not ISO 8601) or\n     wi…"
-  },
-  {
-    "hash": "b63df8a2904593a5ec9488bdf3aefb6f23dd2ebe",
-    "shortHash": "b63df8a",
-    "date": "2026-07-05",
-    "subject": "web: pdf_calendar_extract TS wrapper (shells to python + shape validation + redis cache)",
-    "body": "apps/web/server/pdf_calendar_extract.server.ts wraps the python\nscript written by the DevOps overnight agent. It:\n\n  1. Shells out to apps/web/server/pdf_calendar_extract.py with an\n     8s timeout. C…"
-  },
-  {
-    "hash": "8723a5f671265bc6aeaf1a3bbabf3dae16ee8e13",
-    "shortHash": "8723a5f",
-    "date": "2026-07-05",
-    "subject": "worker: reminder-scheduler skips non-instructional days (0013)",
-    "body": "apps/worker/src/jobs/reminder-scheduler.ts now selects\nisInstructional from cycle_calendar and skips candidate dates where\nthe cycle row marks the day non-instructional (PD day, holiday,\nboard break).…"
-  },
-  {
-    "hash": "7a298e786eec63a264c311bf6c79294f86c6dcb8",
-    "shortHash": "7a298e7",
-    "date": "2026-07-05",
-    "subject": "coverage: skip non-instructional days (migration 0013)",
-    "body": "Three query sites in apps/web/server/coverage.server.ts now read\nisInstructional from cycle_calendar and short-circuit return [] /\nnull when the day is marked non-instructional:\n\n  - findAffectedDutie…"
-  },
-  {
-    "hash": "830d3b5403ec16b3c7f20d446c7c8716e0524e38",
-    "shortHash": "830d3b5",
-    "date": "2026-07-05",
-    "subject": "db: schema.ts - add missing note column + 0013 isInstructional/holidayCode",
-    "body": "Two drift fixes on packages/db/src/schema.ts:\n\n  1. Migration 0013 (committed earlier as 07ee533) added the\n     isInstructional boolean + holidayCode text columns. Drizzle\n     schema now mirrors the…"
-  },
-  {
-    "hash": "8de06a4a1f0cbffb747da3fef2e117babaf4a73a",
-    "shortHash": "8de06a4",
-    "date": "2026-07-05",
-    "subject": "devops: pdf_calendar_extract.py + parser + import-deployment runbooks + sample output",
-    "body": "PDF calendar parser written by the overnight devops engineer. Extracts a\nYRDSB-style 5-day cycle calendar PDF into JSON shaped for direct insertion\ninto cycle_calendar. Verified against the fixture at…"
-  },
-  {
-    "hash": "9c9468aadec15d07c1bd87ebdded3df89991fddd",
-    "shortHash": "9c9468a",
-    "date": "2026-07-05",
-    "subject": "docs: cycle_calendar import spec (DB agent orientation + RLS check + journal splice notes)",
-    "body": "Three companion docs from the database engineer overnight:\n\n  cycle-calendar-readme.md\n    - orientation: where 0013 lives in the migration lineage, how the\n      new columns fit existing tenant_isola…"
-  },
-  {
-    "hash": "6bad8ffd4e4291cd548b4762db13a7918fd9d60c",
-    "shortHash": "6bad8ff",
-    "date": "2026-07-05",
-    "subject": "db: schema.ts - add isInstructional + holidayCode to cycle_calendar",
-    "body": "Drizzle mirror of migration 0013. Defaults match SQL defaults so the schema\nstays the canonical source-of-truth that drizzle-kit generates against.\n\n  isInstructional: boolean NOT NULL DEFAULT true\n  …"
-  },
-  {
-    "hash": "07ee5338ce66050eef5180d3f7ea7b072e031c7e",
-    "shortHash": "07ee533",
-    "date": "2026-07-05",
-    "subject": "db: migration 0013 - cycle_calendar is_instructional + holiday_code columns",
-    "body": "Context: PDF calendar importer populates cycle_calendar with one row per date.\nExisting is_school_day captures in-session vs out-of-session at coarse level;\nimporter needs two finer-grained fields.\n\n …"
-  },
-  {
-    "hash": "57318ddedcda6f91ecb23dcf8f3a2b05152b3c1a",
-    "shortHash": "57318dd",
-    "date": "2026-07-05",
-    "subject": "docs(specs): PDF calendar import feature spec (2026-07-05)",
-    "body": ""
-  },
-  {
-    "hash": "fd00d14738063d1653650f87a872e6796729e105",
-    "shortHash": "fd00d14",
-    "date": "2026-07-05",
-    "subject": "chore(scripts): reminder pipeline end-to-end smoke test (H-4)",
-    "body": ""
-  },
-  {
-    "hash": "4312ba8c9031b7f6d91b7f21754124c53b7f9635",
-    "shortHash": "4312ba8",
-    "date": "2026-07-05",
-    "subject": "chore(scripts): reminder pipeline end-to-end smoke test (H-4)",
-    "body": ""
-  },
-  {
-    "hash": "9134c4c7de3ff9234fdf65d59573ec1aa7fbe63e",
-    "shortHash": "9134c4c",
-    "date": "2026-07-05",
-    "subject": "chore(scripts): reminder pipeline end-to-end smoke test (H-4)",
-    "body": ""
-  },
-  {
-    "hash": "5e37d6f42b9458bfc8de6996be783285c79a0a3f",
-    "shortHash": "5e37d6f",
-    "date": "2026-07-05",
-    "subject": "chore(scripts): errorHandler shape + 4xx smoke test (H-3)",
-    "body": ""
-  },
-  {
-    "hash": "ac3c4a0424c4f77eb6e88ea800cbb14074677725",
-    "shortHash": "ac3c4a0",
-    "date": "2026-07-05",
-    "subject": "docs: investigate H-1 postgres user probe — external scanner, not internal bug",
-    "body": ""
-  },
-  {
-    "hash": "19d3b0bac3f0feea85b49c200ee1197c0e628928",
-    "shortHash": "19d3b0b",
-    "date": "2026-07-05",
-    "subject": "style(forgot): port to design tokens (H3)",
-    "body": ""
-  },
-  {
-    "hash": "d98f3390487a577d523166be1aab9fecadfcb9d6",
-    "shortHash": "d98f339",
-    "date": "2026-07-05",
-    "subject": "style(login): port to design tokens (H3)",
-    "body": ""
-  },
-  {
-    "hash": "2a10851fc4cd6235a2f0c700efaec550e8c4135b",
-    "shortHash": "2a10851",
-    "date": "2026-07-05",
-    "subject": "db: drop redundant non-unique indexes idx_schools_slug + idx_cycle_calendar_school_date (H-DB-4)",
-    "body": ""
-  },
-  {
-    "hash": "4173bd3f87fa64a9f15d94f783217caede0ef56a",
-    "shortHash": "4173bd3",
-    "date": "2026-07-05",
-    "subject": "chore(cron): wire heartbeat-cleanup.sql into nightly loop (L-DB-4)",
-    "body": ""
-  },
-  {
-    "hash": "fd8d6e470fc8ea0ce66622a93c31c1fc1959e2f3",
-    "shortHash": "fd8d6e4",
-    "date": "2026-07-05",
-    "subject": "chore(cron): nightly worker_heartbeats cleanup (L-DB-4)",
-    "body": ""
-  },
-  {
-    "hash": "842ced767576a1184205349a33d9b894d22cc589",
-    "shortHash": "842ced7",
-    "date": "2026-07-05",
-    "subject": "db: add pg_stat_statements extension to init scripts (H-DB-1)",
-    "body": ""
-  },
-  {
-    "hash": "6adfca91e023f211d715c8a7c6dc86258fa0922d",
-    "shortHash": "6adfca9",
-    "date": "2026-07-05",
-    "subject": "fix(entry): await db_pool_connections gauge updates (H-DB-2 follow-up)",
-    "body": ""
-  },
-  {
-    "hash": "8138e0c685260e2bd7d1216d53c5560d39d0f523",
-    "shortHash": "8138e0c",
-    "date": "2026-07-05",
-    "subject": "perf(today): parallelize 3 sequential reads in /app/today loader (H-DB-5)",
-    "body": ""
-  },
-  {
-    "hash": "b2ed48ded015a8248810e84a78efe463838b2382",
-    "shortHash": "b2ed48d",
-    "date": "2026-07-05",
-    "subject": "fix(health): /api/health checks worker_heartbeats freshness (H-DB-3)",
-    "body": ""
   }
 ]

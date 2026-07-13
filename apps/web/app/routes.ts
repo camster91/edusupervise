@@ -11,7 +11,10 @@ export default [
   route('reset', 'routes/reset.tsx'),
   route('verify-email', 'routes/verify-email.tsx'),
   route('verify-phone', 'routes/verify-phone.tsx'),
-  route('account/delete', 'routes/account.delete.tsx'),  // App Store 5.1.1(v) compliance
+  route('account/delete', 'routes/account.delete.tsx'),  // App Store 5.1.1(v) - request form
+  route('account/delete/confirm', 'routes/account.delete.confirm.tsx'),  // App Store 5.1.1(v) - token consumption
+  // Internal: daily cron for hard-deleting users past 30-day grace period
+  route('api/admin/purge-account-deletions', 'routes/api.admin.purge-account-deletions.tsx'),  // X-Cron-Secret auth
   route('auth/magic', 'routes/auth.magic.tsx'),
 
   // Onboarding (Phase 2A — Apple HIG spec)
