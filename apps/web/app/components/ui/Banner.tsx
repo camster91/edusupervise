@@ -24,9 +24,12 @@ const variantConfig: Record<
   BannerVariant,
   { Icon: LucideIcon; bg: string; fg: string }
 > = {
-  info:    { Icon: Info,           bg: 'bg-info',    fg: 'text-on-accent' },
-  success: { Icon: CheckCircle2,   bg: 'bg-success', fg: 'text-on-accent' },
-  warning: { Icon: AlertTriangle,  bg: 'bg-warning', fg: 'text-on-accent' },
+  // info / success / warning: dark text on saturated bg (WCAG AA pass).
+  // error: white text on red — the one saturated color with enough
+  // luminance contrast for white text (4.5:1, AA large only).
+  info:    { Icon: Info,           bg: 'bg-info',    fg: 'text-text-primary' },
+  success: { Icon: CheckCircle2,   bg: 'bg-success', fg: 'text-text-primary' },
+  warning: { Icon: AlertTriangle,  bg: 'bg-warning', fg: 'text-text-primary' },
   error:   { Icon: AlertCircle,    bg: 'bg-error',   fg: 'text-on-accent' },
 };
 
