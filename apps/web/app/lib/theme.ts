@@ -1,12 +1,12 @@
 // app/lib/theme.ts — per-school accent color application.
 //
 // Spec section 11: every school has a `schools.accent_color` value
-// (default `#3b82f6`). The application uses `--accent` as a CSS
+// (default `#3b82f6`). The application uses `--color-accent` as a CSS
 // variable so Tailwind's `bg-accent`, `text-accent`, `border-accent`
 // utilities, plus ad-hoc inline styles, can read it.
 //
 // Where the variable is set:
-//   - SSR: rendered into `<html style={{ '--accent': ... }}>` from
+//   - SSR: rendered into `<html style={{ '--color-accent': ... }}>` from
 //     `root.tsx`'s server entry so the first paint already has the
 //     correct color (no FOUC).
 //   - SSR per-route: the authenticated layout (`_app.tsx`) re-applies
@@ -25,11 +25,12 @@
 // Why we don't ship a real CSS file:
 //   - Component CSS would require either Tailwind config plumbing or
 //     a separate stylesheet; both are heavier than a single CSS
-//     variable on the html element. Tailwind v3 reads `--accent` via
-//     `theme.extend.colors.accent.DEFAULT = 'rgb(var(--accent) / <alpha-value>)'`,
-//     which we configure in tailwind.config.ts (not shipped yet, but
-//     the components use inline `style={{ '--accent': ... }}` so
-//     Tailwind is optional).
+//     variable on the html element. Tailwind reads `--color-accent`
+//     via `theme.extend.colors.accent` in tailwind.config.ts and the
+//     `bg-accent` / `text-accent` / `border-accent` utilities resolve
+//     through `var(--color-accent)`. The components use inline
+//     `style={{ '--color-accent': ... }}` so Tailwind picks it up at
+//     SSR (before the stylesheet hydrates) without a flash.
 
 import type * as React from 'react';
 
@@ -83,7 +84,7 @@ export function accentFor(value: string | null | undefined): string {
 export function applyTheme(value: string): void {
   if (typeof document === 'undefined') return;
   const safe = accentFor(value);
-  document.documentElement.style.setProperty('--accent', safe);
+  document.documentElement.style.setProperty('--color-accent', safe);
 }
 
 /**
@@ -95,5 +96,5 @@ export function applyTheme(value: string): void {
  *   <html style={themeStyle(loader.school.accentColor)}>
  */
 export function themeStyle(value: string | null | undefined): React.CSSProperties {
-  return { '--accent': accentFor(value) } as React.CSSProperties;
+  return { '--color-accent': accentFor(value) } as React.CSSProperties;
 }
