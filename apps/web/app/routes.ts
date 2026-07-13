@@ -11,6 +11,7 @@ export default [
   route('reset', 'routes/reset.tsx'),
   route('verify-email', 'routes/verify-email.tsx'),
   route('verify-phone', 'routes/verify-phone.tsx'),
+  route('account/delete', 'routes/account.delete.tsx'),  // App Store 5.1.1(v) compliance
   route('auth/magic', 'routes/auth.magic.tsx'),
 
   // Onboarding (Phase 2A — Apple HIG spec)
