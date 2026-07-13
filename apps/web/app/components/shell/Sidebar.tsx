@@ -18,7 +18,6 @@ import {
   ListTodo,
   Bell,
   Users,
-  BarChart3,
   Settings,
   GraduationCap,
 } from 'lucide-react';
@@ -40,7 +39,6 @@ const sidebarItems: SidebarItem[] = [
   { to: '/app/calendar', label: 'Calendar', icon: Calendar, teacherVisible: true },
   { to: '/app/coverage', label: 'Coverage', icon: Bell, teacherVisible: true },
   { to: '/app/teachers', label: 'Teachers', icon: Users, adminOnly: true },
-  { to: '/app/reports', label: 'Reports', icon: BarChart3, adminOnly: true },
   { to: '/app/settings', label: 'Settings', icon: Settings, adminOnly: true },
 ];
 

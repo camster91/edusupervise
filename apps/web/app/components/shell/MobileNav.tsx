@@ -40,11 +40,8 @@ const allLinks: Array<SheetLink & { adminOnly?: boolean }> = [
   { to: '/app/calendar', label: 'Calendar' },
   { to: '/app/assignments', label: 'Assignments' },
   { to: '/app/reminders', label: 'Reminders' },
-  { to: '/app/notifications', label: 'Notifications' },
   { to: '/app/teachers', label: 'Teachers', adminOnly: true },
-  { to: '/app/reports', label: 'Reports', adminOnly: true },
   { to: '/app/settings', label: 'Settings', adminOnly: true },
-  { to: '/app/profile', label: 'Profile' },
 ];
 
 export function MobileNav({ role, school }: MobileNavProps): React.ReactElement {
