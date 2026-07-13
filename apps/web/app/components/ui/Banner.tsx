@@ -27,9 +27,9 @@ const variantConfig: Record<
   // info / success / warning: dark text on saturated bg (WCAG AA pass).
   // error: white text on red — the one saturated color with enough
   // luminance contrast for white text (4.5:1, AA large only).
-  info:    { Icon: Info,           bg: 'bg-info',    fg: 'text-text-primary' },
-  success: { Icon: CheckCircle2,   bg: 'bg-success', fg: 'text-text-primary' },
-  warning: { Icon: AlertTriangle,  bg: 'bg-warning', fg: 'text-text-primary' },
+  info:    { Icon: Info,           bg: 'bg-info',    fg: 'text-primary' },
+  success: { Icon: CheckCircle2,   bg: 'bg-success', fg: 'text-primary' },
+  warning: { Icon: AlertTriangle,  bg: 'bg-warning', fg: 'text-primary' },
   error:   { Icon: AlertCircle,    bg: 'bg-error',   fg: 'text-on-accent' },
 };
 
@@ -86,7 +86,7 @@ export function Banner({
   return (
     <div
       role={isAssertive ? 'alert' : 'status'}
-      aria-live={isAssertive ? 'assertive' : 'polite'}
+      // alert role implies aria-live=assertive + aria-atomic=true. status role defaults to polite. Don't set aria-live on alert - would downgrade to polite per ARIA spec.
       className={cn(
         'flex items-center gap-md',
         'px-lg py-md',

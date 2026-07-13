@@ -68,7 +68,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
             'block w-full px-3 py-2 bg-surface border rounded-md text-body',
             'focus:outline-none focus:ring-2 transition',
             error
-              ? 'border-error focus:border-red-500 focus:ring-red-200'
+              ? 'border-error focus:border-error focus:ring-error-soft'
               : 'border-border focus:border-accent focus:ring-accent/30',
             // Disable native-autofill yellow flash on Chrome
             'autofill:shadow-[inset_0_0_0_1000px_white]',
@@ -127,7 +127,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
             'block w-full px-3 py-2 bg-surface border rounded-md text-body min-h-[80px]',
             'focus:outline-none focus:ring-2 transition',
             error
-              ? 'border-error focus:border-red-500 focus:ring-red-200'
+              ? 'border-error focus:border-error focus:ring-error-soft'
               : 'border-border focus:border-accent focus:ring-accent/30',
             className,
           )}
