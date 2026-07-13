@@ -43,7 +43,7 @@ export function DowngradeBanner({
         ⚠
       </span>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-warning">
+        <p className="text-sm font-semibold text-primary">
           Your {currentPlan} subscription has ended. Data retention will be reduced on{' '}
           {isoDate} ({daysLeft} day{daysLeft === 1 ? '' : 's'} from now).
         </p>
@@ -54,7 +54,7 @@ export function DowngradeBanner({
       </div>
       <a
         href="/api/billing/audit-export.csv"
-        className="shrink-0 inline-flex items-center gap-1.5 bg-warning hover:bg-warning text-on-accent text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
+        className="shrink-0 inline-flex items-center gap-1.5 bg-warning text-primary hover:opacity-90 text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
         download
         aria-label="Export audit log as CSV"
       >

@@ -18,7 +18,9 @@ export interface NotificationBellProps {
 
 export function NotificationBell({
   unreadCount,
-  to = '/app/notifications',
+  // /app/notifications is a planned v1.1 page. For now route to the
+  // Today page where unread counts also surface via the in-page banner.
+  to = '/app/today',
   className,
 }: NotificationBellProps): React.ReactElement {
   const hasUnread = unreadCount > 0;
