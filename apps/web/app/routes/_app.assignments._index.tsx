@@ -14,8 +14,8 @@ export async function loader({ request }: Route.LoaderArgs) {
 export default function AssignmentsPage() {
   return (
     <div className="space-y-4">
-      <h2 className="text-2xl font-bold text-slate-900">Assignments</h2>
-      <div className="bg-white border border-slate-200 rounded-xl p-12 text-center text-slate-500">
+      <h2 className="text-2xl font-bold text-primary">Assignments</h2>
+      <div className="bg-surface border border-border rounded-xl p-12 text-center text-tertiary">
         Use the duty detail page to assign teachers. A dedicated roster view is on the Tier 2 roadmap.
       </div>
     </div>
