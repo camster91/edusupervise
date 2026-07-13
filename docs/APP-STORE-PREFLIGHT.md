@@ -95,27 +95,25 @@ Apple's "data collection" disclosure. For each data type the app collects, you d
 
 Required for any app that creates user accounts. Currently we have **no in-app deletion path**. Two options:
 
-### Option A: Add an in-app "Delete my account" surface (recommended)
+### Option A: Add an in-app "Delete my account" surface (recommended) — **SHIPPED 2026-07-13**
 
-User flow: Settings → Account → "Delete my account" → confirm dialog → 30-day soft delete → hard delete. The 30-day buffer respects accidental clicks and gives users a recovery window.
+User flow: `/account/delete` → email form → 30-day soft delete → hard delete. The 30-day buffer respects accidental clicks and gives users a recovery window.
 
-Required work:
-- New route `apps/web/app/routes/_app.settings.account.tsx` (Settings → Account tab)
-- Server function `deleteMyAccount(schoolId, userId)` that:
-  - Marks the user as `pending_deletion` (new column on `users` table) — 30-day soft delete
-  - Stops push subscriptions (delete the row, not just soft-delete — per Apple Push rules)
-  - Logs the request in `audit_log` with `kind = 'account_deletion_requested'`
-  - Sends a confirmation email to the user with a "Cancel deletion" link (clicking the link sets `pending_deletion = NULL`)
-- A cron job runs daily, hard-deletes users with `pending_deletion < now() - 30 days`. Hard delete cascades to: notifications, duties, coverage_requests, push_subscriptions, magic-link tokens.
-- For the `school_admin` role: if the admin is the only one in the school, also handle the school record (transfer ownership, archive, or hard-delete-with-grace-period).
+Shipped components (all in commit history by 2026-07-13):
+- `GET/POST /account/delete` — email form, calls `requestAccountDeletion(email)` (server function in `apps/web/server/account-deletion.server.ts`)
+- `GET /account/delete/confirm?token=...` — token consumer, calls `confirmAccountDeletion(rawToken)`
+- Server function `cancelAccountDeletion(userId)` — clears `pending_deletion_at` (the Settings → Account → Cancel deletion route is a v1.1 follow-up; the server function is shipped now)
+- `POST /api/admin/purge-account-deletions` — X-Cron-Secret auth, called by the daily cron
+- Schema migration `0016_account_deletion` — adds `users.pending_deletion_at` + the `account_deletion_tokens` table (RLS+FORCE, defense in depth)
+- Schema migration `0017_cascade_created_by` — flips NO ACTION FKs on `duties.created_by` / `coverage_events.created_by` / `duty_assignments.created_by` / `duty_assignments.assigned_by_user_id` / `audit_log.user_id` to CASCADE so the single `DELETE FROM users` cleans up everything atomically
+- Cron entry `/etc/cron.d/edusupervise-deletion-purge` at `30 4 * * *`, calling `/root/edusupervise-secrets/daily-account-deletion-purge.sh`
+- `audit_log` entries: `action='account_deletion_confirmed' | 'account_deletion_cancelled' | 'account_deletion_purged'`. We don't write a `requested` event (the request step is unauthenticated; we don't audit anonymous email submissions to avoid spam).
 
-Estimated work: 1-2 days. Pull request to `apps/web/app/routes/_app.settings.tsx` (add Account tab), new route, new server function, schema migration 0016, cron job.
+For the `school_admin` role: hard-delete cascades to `duties` / `coverage_events` / `duty_assignments` (they go away with the user). If the school has no other admins after the hard-delete, the school record is left intact but no one can manage it; the next admin signup for that school_id will be a fresh onboarding. (Open question: transfer ownership before hard-delete — out of scope for the App Store submission but worth designing in v1.1.)
 
-### Option B: Add a deletion URL in App Store Connect (5-min stopgap)
+Set the "Account Deletion URL" in App Store Connect to `https://edusupervise.ashbi.ca/account/delete` (the request form, not the confirm URL — the URL must work for a logged-out user).
 
-Add `https://edusupervise.ashbi.ca/account/delete` as the "Account Deletion URL" in App Store Connect. Create that route as a simple form that emails a deletion request to support. Apple accepts this for v1; the proper in-app path is still required by the next App Store review (1-3 months out).
-
-**My pick:** Option B now (5 min, gets the submission through), Option A in the post-launch v1.1 sprint. Tell me if you want me to wire Option B before the iOS submission.
+See `docs/CRON-ACCOUNT-DELETION.md` for the full operational details.
 
 ## 6. Age rating questionnaire (App Store Connect → Age Rating)
 
@@ -217,7 +215,7 @@ After Apple approves (1-3 days):
 [ ] Demo account — paste section 7
 [ ] App Review notes — paste section 8
 [ ] Screenshots — section 3 dimensions captured
-[ ] Account deletion URL — if Option B, add https://edusupervise.ashbi.ca/account/delete
+[ ] Account deletion URL — https://edusupervise.ashbi.ca/account/delete (Option A shipped; full 30-day soft + hard-delete flow live)
 [ ] Submit for Review
 ```
 
