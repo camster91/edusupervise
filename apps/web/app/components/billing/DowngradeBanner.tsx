@@ -36,25 +36,25 @@ export function DowngradeBanner({
     <div
       role="alert"
       aria-live="polite"
-      className="bg-amber-50 border-b border-amber-200 px-6 py-3 flex items-start gap-3"
+      className="bg-warning-soft border-b border-warning px-6 py-3 flex items-start gap-3"
       data-testid="downgrade-banner"
     >
-      <span aria-hidden className="text-amber-600 text-lg leading-none mt-0.5">
+      <span aria-hidden className="text-warning text-lg leading-none mt-0.5">
         ⚠
       </span>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-semibold text-amber-900">
+        <p className="text-sm font-semibold text-warning">
           Your {currentPlan} subscription has ended. Data retention will be reduced on{' '}
           {isoDate} ({daysLeft} day{daysLeft === 1 ? '' : 's'} from now).
         </p>
-        <p className="text-sm text-amber-800 mt-0.5">
+        <p className="text-sm text-warning mt-0.5">
           We&apos;ll switch the plan to <b>{pendingPlan}</b> on that date. Export your
           audit log now if you need it beyond the new retention window.
         </p>
       </div>
       <a
         href="/api/billing/audit-export.csv"
-        className="shrink-0 inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
+        className="shrink-0 inline-flex items-center gap-1.5 bg-warning hover:bg-warning text-on-accent text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
         download
         aria-label="Export audit log as CSV"
       >

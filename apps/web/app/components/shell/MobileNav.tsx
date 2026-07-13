@@ -71,12 +71,12 @@ export function MobileNav({ role, school }: MobileNavProps): React.ReactElement 
         )}
         closeLabel="Close navigation menu"
       >
-        <div className="flex items-center justify-between p-4 border-b border-slate-200">
+        <div className="flex items-center justify-between p-4 border-b border-border">
           <div>
             <DialogTitle className="text-base font-semibold">
               {school.name}
             </DialogTitle>
-            <DialogDescription className="text-xs text-slate-500">
+            <DialogDescription className="text-xs text-tertiary">
               EduSupervise
             </DialogDescription>
           </div>
@@ -84,8 +84,8 @@ export function MobileNav({ role, school }: MobileNavProps): React.ReactElement 
             onClick={() => setOpen(false)}
             aria-label="Close navigation menu"
             className={cn(
-              'rounded-md p-1 text-slate-500 hover:text-slate-900',
-              'hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+              'rounded-md p-1 text-tertiary hover:text-primary',
+              'hover:bg-surface-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent',
             )}
           >
             <X className="h-4 w-4" aria-hidden />
@@ -141,8 +141,8 @@ function SheetLink({
         'block px-4 py-2.5 rounded-lg text-sm font-medium transition-colors',
         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-1',
         active
-          ? 'bg-blue-50 text-blue-700'
-          : 'text-slate-700 hover:bg-slate-100',
+          ? 'bg-accent-soft text-accent'
+          : 'text-primary hover:bg-surface-2',
       )}
     >
       {children}

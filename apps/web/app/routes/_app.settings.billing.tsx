@@ -166,13 +166,13 @@ export default function BillingSettingsPage() {
       <h1 className="text-title-1 text-primary font-bold">Billing</h1>
 
       {pendingDowngrade && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-          <p className="text-sm font-semibold text-amber-900">
+        <div className="bg-warning-soft border border-warning rounded-xl p-4">
+          <p className="text-sm font-semibold text-warning">
             {school.plan === 'pro' || school.plan === 'school'
               ? `Pending downgrade to ${pendingDowngrade.pendingPlan}`
               : 'Plan downgrade in progress'}
           </p>
-          <p className="text-sm text-amber-800 mt-1">
+          <p className="text-sm text-warning mt-1">
             Your plan switches to <b>{pendingDowngrade.pendingPlan}</b> on{' '}
             <b>{pendingDowngrade.pendingDowngradeAt.slice(0, 10)}</b>. Export your
             audit log now if you need to keep more than the {pendingDowngrade.pendingPlan}{' '}
@@ -180,7 +180,7 @@ export default function BillingSettingsPage() {
           </p>
           <a
             href="/api/billing/audit-export.csv"
-            className="mt-3 inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
+            className="mt-3 inline-flex items-center gap-1.5 bg-warning hover:bg-warning text-on-accent text-sm font-medium px-3 py-1.5 rounded-lg transition-colors"
             download
           >
             ↓ Export audit log (CSV)
@@ -219,18 +219,18 @@ function PlanCard({
         ? new Date(school.trialEndsAt)
         : null;
   return (
-    <section className="bg-white border border-slate-200 rounded-xl p-6">
+    <section className="bg-surface border border-border rounded-xl p-6">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <div className="text-xs uppercase tracking-wide text-slate-500">
+          <div className="text-xs uppercase tracking-wide text-tertiary">
             Current plan
           </div>
-          <div className="text-2xl font-bold text-slate-900 capitalize flex items-center gap-2">
+          <div className="text-2xl font-bold text-primary capitalize flex items-center gap-2">
             {school.plan === 'school' && <Sparkles size={20} aria-hidden className="text-accent" />}
             {school.plan}
           </div>
           {trialEnds && (
-            <div className="text-xs text-slate-500 mt-1">
+            <div className="text-xs text-tertiary mt-1">
               Trial ends {trialEnds.toISOString().slice(0, 10)}
             </div>
           )}
@@ -242,9 +242,9 @@ function PlanCard({
 
 function PlanUpgradeForm({ csrfToken }: { csrfToken: string }) {
   return (
-    <section className="bg-white border border-slate-200 rounded-xl p-6">
-      <h3 className="text-sm font-semibold text-slate-900">Upgrade plan</h3>
-      <p className="text-xs text-slate-500 mt-1">
+    <section className="bg-surface border border-border rounded-xl p-6">
+      <h3 className="text-sm font-semibold text-primary">Upgrade plan</h3>
+      <p className="text-xs text-tertiary mt-1">
         We&apos;ll redirect you to Stripe Checkout to complete payment. In mock
         mode the redirect target is a stub URL.
       </p>
@@ -254,7 +254,7 @@ function PlanUpgradeForm({ csrfToken }: { csrfToken: string }) {
           <input type="hidden" name="plan" value="pro" />
           <button
             type="submit"
-            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+            className="bg-accent hover:bg-accent-hover text-on-accent text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
             Upgrade to Pro — $9 / mo
           </button>
@@ -264,7 +264,7 @@ function PlanUpgradeForm({ csrfToken }: { csrfToken: string }) {
           <input type="hidden" name="plan" value="school" />
           <button
             type="submit"
-            className="bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+            className="bg-primary hover:bg-primary text-on-accent text-sm font-medium px-4 py-2 rounded-lg transition-colors"
           >
             Upgrade to School — $39 / mo
           </button>
@@ -276,9 +276,9 @@ function PlanUpgradeForm({ csrfToken }: { csrfToken: string }) {
 
 function PortalButton({ csrfToken }: { csrfToken: string }) {
   return (
-    <section className="bg-white border border-slate-200 rounded-xl p-6">
-      <h3 className="text-sm font-semibold text-slate-900">Manage subscription</h3>
-      <p className="text-xs text-slate-500 mt-1">
+    <section className="bg-surface border border-border rounded-xl p-6">
+      <h3 className="text-sm font-semibold text-primary">Manage subscription</h3>
+      <p className="text-xs text-tertiary mt-1">
         Update your card, change billing email, or cancel your subscription via the
         Stripe Customer Portal.
       </p>
@@ -286,7 +286,7 @@ function PortalButton({ csrfToken }: { csrfToken: string }) {
         <input type="hidden" name="csrf" value={csrfToken} />
         <button
           type="submit"
-          className="bg-white border border-slate-300 hover:bg-slate-50 text-slate-900 text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          className="bg-surface border border-border hover:bg-surface-2 text-primary text-sm font-medium px-4 py-2 rounded-lg transition-colors"
         >
           Open billing portal →
         </button>
@@ -306,7 +306,7 @@ function ComparePlans({
   const tiers: Array<'free' | 'pro' | 'school'> = ['free', 'pro', 'school'];
   return (
     <section
-      className="bg-white border border-slate-200 rounded-xl p-6"
+      className="bg-surface border border-border rounded-xl p-6"
       data-testid="compare-plans"
     >
       <header className="mb-md">
@@ -321,12 +321,12 @@ function ComparePlans({
       <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-xs uppercase tracking-wide text-slate-500 text-left">
+            <tr className="text-xs uppercase tracking-wide text-tertiary text-left">
               <th className="py-2 pr-4 w-1/3">Feature</th>
               {tiers.map((t) => (
                 <th key={t} className="py-2 pr-4 align-bottom">
                   <div className="flex flex-col gap-1">
-                    <div className="capitalize font-semibold text-slate-900">{t}</div>
+                    <div className="capitalize font-semibold text-primary">{t}</div>
                     <div className="text-callout font-normal text-secondary">
                       {PLAN_PRICING[t]?.price ?? ''}
                     </div>
@@ -342,16 +342,16 @@ function ComparePlans({
           </thead>
           <tbody>
             {PLAN_FEATURES.map((row) => (
-              <tr key={row.label} className="border-t border-slate-100">
-                <td className="py-2 pr-4 font-medium text-slate-800">{row.label}</td>
+              <tr key={row.label} className="border-t border-divider">
+                <td className="py-2 pr-4 font-medium text-primary">{row.label}</td>
                 {tiers.map((t) => (
-                  <td key={t} className="py-2 pr-4 text-slate-700">
+                  <td key={t} className="py-2 pr-4 text-primary">
                     <FeatureValue value={row[t]} />
                   </td>
                 ))}
               </tr>
             ))}
-            <tr className="border-t border-slate-200">
+            <tr className="border-t border-border">
               <td></td>
               {tiers.map((t) => (
                 <td key={t} className="py-3 pr-4">
@@ -367,8 +367,8 @@ function ComparePlans({
                         type="submit"
                         className={`text-callout font-semibold rounded px-md py-1 transition-colors ${
                           t === 'school'
-                            ? 'bg-slate-900 hover:bg-slate-800 text-white'
-                            : 'bg-blue-600 hover:bg-blue-700 text-white'
+                            ? 'bg-primary hover:bg-primary text-on-accent'
+                            : 'bg-accent hover:bg-accent-hover text-on-accent'
                         }`}
                       >
                         {t === 'school' ? 'Upgrade to School' : 'Upgrade to Pro'}
@@ -402,7 +402,7 @@ function FeatureValue({ value }: { value: string | boolean }): React.ReactElemen
       </span>
     );
   }
-  return <span className="text-callout text-slate-700">{value}</span>;
+  return <span className="text-callout text-primary">{value}</span>;
 }
 
 function InvoicesList({
@@ -420,13 +420,13 @@ function InvoicesList({
   }>;
 }) {
   return (
-    <section className="bg-white border border-slate-200 rounded-xl p-6">
-      <h3 className="text-sm font-semibold text-slate-900">Invoices</h3>
+    <section className="bg-surface border border-border rounded-xl p-6">
+      <h3 className="text-sm font-semibold text-primary">Invoices</h3>
       {invoices.length === 0 ? (
-        <p className="text-xs text-slate-500 mt-2">No invoices yet.</p>
+        <p className="text-xs text-tertiary mt-2">No invoices yet.</p>
       ) : (
         <table className="mt-3 w-full text-sm">
-          <thead className="text-xs uppercase tracking-wide text-slate-500 text-left">
+          <thead className="text-xs uppercase tracking-wide text-tertiary text-left">
             <tr>
               <th className="py-1.5 pr-4">Number</th>
               <th className="py-1.5 pr-4">Date</th>
@@ -437,22 +437,22 @@ function InvoicesList({
           </thead>
           <tbody>
             {invoices.map((inv) => (
-              <tr key={inv.id} className="border-t border-slate-100">
-                <td className="py-2 pr-4 font-mono text-xs text-slate-700">
+              <tr key={inv.id} className="border-t border-divider">
+                <td className="py-2 pr-4 font-mono text-xs text-primary">
                   {inv.number ?? inv.id.slice(0, 14)}
                 </td>
-                <td className="py-2 pr-4 text-slate-700">
+                <td className="py-2 pr-4 text-primary">
                   {new Date(inv.created * 1000).toISOString().slice(0, 10)}
                 </td>
-                <td className="py-2 pr-4 text-slate-700">
+                <td className="py-2 pr-4 text-primary">
                   {(inv.amountDue / 100).toFixed(2)} {inv.currency.toUpperCase()}
                 </td>
                 <td className="py-2 pr-4">
                   <span
                     className={
                       inv.status === 'paid'
-                        ? 'bg-green-100 text-green-700 text-xs px-2 py-0.5 rounded-full'
-                        : 'bg-amber-100 text-amber-700 text-xs px-2 py-0.5 rounded-full'
+                        ? 'bg-success-soft text-success text-xs px-2 py-0.5 rounded-full'
+                        : 'bg-warning-soft text-amber-700 text-xs px-2 py-0.5 rounded-full'
                     }
                   >
                     {inv.status}
@@ -484,9 +484,9 @@ function TestDevTools() {
   const csrfToken = csrfApp?.csrfToken ?? '';
   if (process.env.NODE_ENV === 'production') return null;
   return (
-    <section className="bg-slate-50 border border-slate-200 border-dashed rounded-xl p-4 text-xs text-slate-700">
-      <div className="font-semibold text-slate-900 mb-1">Developer tools</div>
-      <p className="text-slate-600 mb-3">
+    <section className="bg-surface-2 border border-border border-dashed rounded-xl p-4 text-xs text-primary">
+      <div className="font-semibold text-primary mb-1">Developer tools</div>
+      <p className="text-secondary mb-3">
         Hidden in production. Used by integration tests and local
         development to bypass Stripe for the plan-flip flow.
       </p>
