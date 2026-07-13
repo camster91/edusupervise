@@ -285,3 +285,15 @@ vice versa — keep this in sync with how the iOS app is signed.
 | Splash is white | Splash.imageset not loading | Confirm `Splash.imageset/Contents.json` references the `splash-2732x2732*.png` files |
 | WKWebView shows blank white | Server-side error blocking initial render | Open Safari, navigate to `https://edusupervise.ashbi.ca` directly — if that works, the iOS app will too |
 | Apple rejects as "minimal value" | "Just a web wrapper" risk | Push notifications + native splash + camera/PDF access via webkit are usually enough; add `@capacitor/push-notifications` early to anchor native value |
+
+## 10. App Store Pre-Flight Checklist
+
+See `docs/APP-STORE-PREFLIGHT.md` for the complete pre-submission checklist:
+App Privacy questionnaire answers, account deletion strategy, age rating
+questionnaire, demo account credentials, App Review notes for the human
+reviewer, screenshot dimensions, and a quick-launch checklist for the day
+of submission.
+
+The pre-flight doc was written alongside the 5 visual BLOCKER fixes
+(commits cddeb5f..969d3f2) and the 5-commit HIG-token sweep
+(3f9069e..7f2dd93).
