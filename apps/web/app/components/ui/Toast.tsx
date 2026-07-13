@@ -59,10 +59,10 @@ const toastVariants = cva(
   {
     variants: {
       variant: {
-        default: 'border-slate-200 bg-white text-slate-900',
-        success: 'border-green-300 bg-green-50 text-green-900',
-        error: 'border-red-300 bg-red-50 text-red-900',
-        warning: 'border-amber-300 bg-amber-50 text-amber-900',
+        default: 'border-border bg-surface text-primary',
+        success: 'border-success bg-success-soft text-success',
+        error: 'border-error bg-error-soft text-red-900',
+        warning: 'border-warning bg-warning-soft text-warning',
       },
     },
     defaultVariants: { variant: 'default' },
@@ -106,7 +106,7 @@ export const Toast = React.forwardRef<
       </div>
       <ToastPrimitive.Close
         aria-label={closeLabel}
-        className="absolute right-2 top-2 rounded-md p-1 text-slate-500 hover:text-slate-900 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="absolute right-2 top-2 rounded-md p-1 text-tertiary hover:text-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         <X className="h-4 w-4" aria-hidden />
       </ToastPrimitive.Close>

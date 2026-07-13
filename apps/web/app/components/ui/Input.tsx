@@ -55,7 +55,7 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
       <div className={cn('flex flex-col gap-1.5', containerClassName)}>
         <label
           htmlFor={inputId}
-          className="text-sm font-medium text-slate-700"
+          className="text-body font-medium text-primary"
         >
           {label}
         </label>
@@ -65,11 +65,11 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy}
           className={cn(
-            'block w-full px-3 py-2 bg-white border rounded-lg text-sm',
+            'block w-full px-3 py-2 bg-surface border rounded-md text-body',
             'focus:outline-none focus:ring-2 transition',
             error
-              ? 'border-red-400 focus:border-red-500 focus:ring-red-200'
-              : 'border-slate-300 focus:border-accent focus:ring-accent/30',
+              ? 'border-error focus:border-red-500 focus:ring-red-200'
+              : 'border-border focus:border-accent focus:ring-accent/30',
             // Disable native-autofill yellow flash on Chrome
             'autofill:shadow-[inset_0_0_0_1000px_white]',
             className,
@@ -77,12 +77,12 @@ export const Input = React.forwardRef<HTMLInputElement, InputProps>(
           {...rest}
         />
         {description && !error && (
-          <p id={descriptionId} className="text-xs text-slate-500">
+          <p id={descriptionId} className="text-xs text-tertiary">
             {description}
           </p>
         )}
         {error && (
-          <p id={errorId} className="text-xs text-red-600" role="alert">
+          <p id={errorId} className="text-xs text-error" role="alert">
             {error}
           </p>
         )}
@@ -114,7 +114,7 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
       <div className={cn('flex flex-col gap-1.5', containerClassName)}>
         <label
           htmlFor={inputId}
-          className="text-sm font-medium text-slate-700"
+          className="text-body font-medium text-primary"
         >
           {label}
         </label>
@@ -124,22 +124,22 @@ export const Textarea = React.forwardRef<HTMLTextAreaElement, TextareaProps>(
           aria-invalid={error ? true : undefined}
           aria-describedby={describedBy}
           className={cn(
-            'block w-full px-3 py-2 bg-white border rounded-lg text-sm min-h-[80px]',
+            'block w-full px-3 py-2 bg-surface border rounded-md text-body min-h-[80px]',
             'focus:outline-none focus:ring-2 transition',
             error
-              ? 'border-red-400 focus:border-red-500 focus:ring-red-200'
-              : 'border-slate-300 focus:border-accent focus:ring-accent/30',
+              ? 'border-error focus:border-red-500 focus:ring-red-200'
+              : 'border-border focus:border-accent focus:ring-accent/30',
             className,
           )}
           {...rest}
         />
         {description && !error && (
-          <p id={descriptionId} className="text-xs text-slate-500">
+          <p id={descriptionId} className="text-xs text-tertiary">
             {description}
           </p>
         )}
         {error && (
-          <p id={errorId} className="text-xs text-red-600" role="alert">
+          <p id={errorId} className="text-xs text-error" role="alert">
             {error}
           </p>
         )}

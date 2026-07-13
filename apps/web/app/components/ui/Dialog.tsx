@@ -28,7 +28,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      'fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm',
+      'fixed inset-0 z-50 bg-overlay/40 backdrop-blur-sm',
       'data-[state=open]:animate-in data-[state=closed]:animate-out',
       'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
       className,
@@ -60,7 +60,7 @@ const DialogContent = React.forwardRef<
       ref={ref}
       className={cn(
         'fixed left-1/2 top-1/2 z-50 grid w-full max-w-lg -translate-x-1/2 -translate-y-1/2',
-        'gap-4 bg-white p-6 shadow-lg rounded-2xl border border-slate-200',
+        'gap-4 bg-surface p-lg shadow-lg rounded-lg border border-border',
         'duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out',
         'data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0',
         'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
@@ -71,7 +71,7 @@ const DialogContent = React.forwardRef<
       {children}
       <DialogPrimitive.Close
         aria-label={closeLabel}
-        className="absolute right-4 top-4 rounded-md p-1 text-slate-500 hover:text-slate-900 hover:bg-slate-100 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="absolute right-4 top-4 rounded-md p-1 text-tertiary hover:text-primary hover:bg-surface-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       >
         <CloseIcon className="h-4 w-4" aria-hidden />
       </DialogPrimitive.Close>
@@ -102,7 +102,7 @@ const DialogTitle = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Title
     ref={ref}
-    className={cn('text-lg font-semibold text-slate-900 leading-none', className)}
+    className={cn('text-lg font-semibold text-primary leading-none', className)}
     {...props}
   />
 ));
@@ -114,7 +114,7 @@ const DialogDescription = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Description
     ref={ref}
-    className={cn('text-sm text-slate-500', className)}
+    className={cn('text-sm text-tertiary', className)}
     {...props}
   />
 ));

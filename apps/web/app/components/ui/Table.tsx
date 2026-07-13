@@ -23,7 +23,7 @@ export const Table = React.forwardRef<
   }
 >(function Table({ className, caption, children, ...props }, ref) {
   return (
-    <div className="w-full overflow-auto rounded-lg border border-slate-200">
+    <div className="w-full overflow-auto rounded-lg border border-border">
       <table
         ref={ref}
         className={cn('w-full caption-bottom text-sm', className)}
@@ -43,7 +43,7 @@ export const TableHeader = React.forwardRef<
   return (
     <thead
       ref={ref}
-      className={cn('[&_tr]:border-b bg-slate-50', className)}
+      className={cn('[&_tr]:border-b bg-surface-2', className)}
       {...props}
     />
   );
@@ -69,7 +69,7 @@ export const TableFooter = React.forwardRef<
   return (
     <tfoot
       ref={ref}
-      className={cn('bg-slate-50 font-medium', className)}
+      className={cn('bg-surface-2 font-medium', className)}
       {...props}
     />
   );
@@ -83,8 +83,8 @@ export const TableRow = React.forwardRef<
     <tr
       ref={ref}
       className={cn(
-        'border-b transition-colors hover:bg-slate-50',
-        'data-[state=selected]:bg-slate-100',
+        'border-b transition-colors hover:bg-surface-2',
+        'data-[state=selected]:bg-surface-2',
         className,
       )}
       {...props}
@@ -100,7 +100,7 @@ export const TableHead = React.forwardRef<
     <th
       ref={ref}
       scope="col"
-      className={cn('h-10 px-4 text-left align-middle text-xs font-semibold uppercase text-slate-500 tracking-wide', className)}
+      className={cn('h-10 px-4 text-left align-middle text-xs font-semibold uppercase text-tertiary tracking-wide', className)}
       {...props}
     />
   );
@@ -113,7 +113,7 @@ export const TableCell = React.forwardRef<
   return (
     <td
       ref={ref}
-      className={cn('p-4 align-middle text-sm text-slate-700', className)}
+      className={cn('p-4 align-middle text-sm text-primary', className)}
       {...props}
     />
   );
