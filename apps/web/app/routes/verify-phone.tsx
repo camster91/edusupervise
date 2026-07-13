@@ -209,7 +209,7 @@ export default function VerifyPhonePage() {
           <h1 className="text-title-1 font-bold text-primary mb-1">Phone verified</h1>
           <p className="text-sm text-secondary">Your phone number is now verified.</p>
           <p className="text-sm text-secondary mt-6">
-            <a href="/app" className="text-blue-600 hover:underline">Back to dashboard</a>
+            <a href="/app" className="text-accent hover:underline">Back to dashboard</a>
           </p>
         </div>
       </main>
@@ -231,7 +231,7 @@ export default function VerifyPhonePage() {
                 type="tel"
                 required
                 placeholder="+14165551234"
-                className="mt-1 block w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-accent outline-none"
+                className="mt-1 block w-full px-3 py-2 bg-surface border border-border rounded-lg text-body focus:border-accent focus:ring-2 focus:ring-accent/30 outline-none"
                 onChange={(e) => setPhone(e.target.value)}
               />
             </label>
@@ -261,7 +261,7 @@ export default function VerifyPhonePage() {
                 pattern="[0-9]{6}"
                 maxLength={6}
                 required
-                className="mt-1 block w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-accent outline-none"
+                className="mt-1 block w-full px-3 py-2 bg-surface border border-border rounded-lg text-body focus:border-accent focus:ring-2 focus:ring-accent/30 outline-none"
               />
             </label>
             {data?.error && (

@@ -178,7 +178,7 @@ export default function ForgotPage() {
               {data.detail ?? data.error}
             </p>
           )}
-          <button type="submit" className="w-full bg-accent hover:bg-accent text-on-accent font-medium py-2 px-4 rounded-lg transition-colors">
+          <button type="submit" className="w-full bg-accent hover:bg-accent-hover text-on-accent font-medium py-2 px-4 rounded-lg transition-colors">
             Send reset link
           </button>
         </Form>

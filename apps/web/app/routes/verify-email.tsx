@@ -172,7 +172,7 @@ export default function VerifyEmailPage() {
             Your email is now verified. You can sign in.
           </p>
           <p className="text-sm text-secondary mt-6">
-            <a href="/login" className="text-blue-600 hover:underline">Sign in</a>
+            <a href="/login" className="text-accent hover:underline">Sign in</a>
           </p>
         </div>
       </main>

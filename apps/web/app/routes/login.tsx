@@ -151,7 +151,7 @@ export default function LoginPage() {
               className="mt-1 block w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm focus:border-accent focus:ring-2 focus:ring-accent outline-none" />
           </label>
           {data?.error && <p className="text-sm text-error" role="alert">Invalid email or password.</p>}
-          <button type="submit" className="w-full bg-accent hover:bg-accent text-on-accent font-medium py-2 px-4 rounded-lg transition-colors">
+          <button type="submit" className="w-full bg-accent hover:bg-accent-hover text-on-accent font-medium py-2 px-4 rounded-lg transition-colors">
             Sign in
           </button>
         </Form>

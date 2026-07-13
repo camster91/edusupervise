@@ -225,10 +225,10 @@ export default function MagicLinkPage() {
   // --- Sent-success view (after request) ---
   if (data?.ok && !token) {
     return (
-      <main className="min-h-screen grid place-items-center bg-slate-50 px-4">
-        <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-          <h1 className="text-2xl font-bold text-slate-900 mb-1">Check your email</h1>
-          <p className="text-sm text-slate-600">
+      <main className="min-h-screen grid place-items-center bg-bg px-4">
+        <div className="w-full max-w-sm bg-surface rounded-lg shadow-elev-1 border border-border p-8">
+          <h1 className="text-title-1 font-bold text-primary mb-1">Check your email</h1>
+          <p className="text-body text-secondary">
             If we have an account on file for that address, we just sent a
             sign-in link. The link expires in 60 minutes.
           </p>
@@ -252,12 +252,12 @@ export default function MagicLinkPage() {
   }
 
   return (
-    <main className="min-h-screen grid place-items-center bg-slate-50 px-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+    <main className="min-h-screen grid place-items-center bg-bg px-4">
+      <div className="w-full max-w-sm bg-surface rounded-lg shadow-elev-1 border border-border p-8">
         {token ? (
           <>
-            <h1 className="text-2xl font-bold text-slate-900 mb-1">Signing you in…</h1>
-            <p className="text-sm text-slate-600">
+            <h1 className="text-title-1 font-bold text-primary mb-1">Signing you in…</h1>
+            <p className="text-body text-secondary">
               Your magic link is being verified. You'll be redirected in a moment.
             </p>
             <form id="auto-magic-consume" method="post" style={{ display: 'none' }}>
@@ -266,32 +266,32 @@ export default function MagicLinkPage() {
               <input type="hidden" name="email" value={email} />
             </form>
             {data?.error && (
-              <p className="text-sm text-red-600 mt-4" role="alert">
+              <p className="text-body text-error mt-4" role="alert">
                 {data.detail ?? data.error}
               </p>
             )}
           </>
         ) : (
           <>
-            <h1 className="text-2xl font-bold text-slate-900 mb-1">Email me a sign-in link</h1>
-            <p className="text-sm text-slate-600 mb-6">
+            <h1 className="text-title-1 font-bold text-primary mb-1">Email me a sign-in link</h1>
+            <p className="text-body text-secondary mb-6">
               Enter your email and we'll send you a one-time sign-in link.
             </p>
             <Form method="post" className="space-y-4">
           <input type="hidden" name="csrf" value={csrfToken} />
               <input type="hidden" name="intent" value="request" />
               <label className="block">
-                <span className="text-sm font-medium text-slate-700">Email</span>
+                <span className="text-body font-medium text-primary">Email</span>
                 <input
                   name="email"
                   type="email"
                   required
                   autoComplete="email"
-                  className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
+                  className="mt-1 block w-full px-3 py-2 bg-surface border border-border rounded-lg text-body focus:border-accent focus:ring-2 focus:ring-accent/30 outline-none"
                 />
               </label>
               {data?.error && (
-                <p className="text-sm text-red-600" role="alert">
+                <p className="text-body text-error" role="alert">
                   {data.detail ?? data.error}
                 </p>
               )}
@@ -299,8 +299,8 @@ export default function MagicLinkPage() {
                 Send sign-in link
               </button>
             </Form>
-            <p className="text-sm text-slate-600 text-center mt-6">
-              <a href="/login" className="text-blue-600 hover:underline">Back to sign in</a>
+            <p className="text-body text-secondary text-center mt-6">
+              <a href="/login" className="text-accent hover:underline">Back to sign in</a>
             </p>
           </>
         )}

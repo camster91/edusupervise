@@ -188,7 +188,7 @@ export default function ResetPage() {
             from the email, or request a new one.
           </p>
           <p className="text-sm text-secondary mt-6">
-            <a href="/forgot" className="text-blue-600 hover:underline">Request a new reset link</a>
+            <a href="/forgot" className="text-accent hover:underline">Request a new reset link</a>
           </p>
         </div>
       </main>
@@ -214,7 +214,7 @@ export default function ResetPage() {
               required
               minLength={8}
               autoComplete="new-password"
-              className="mt-1 block w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-accent outline-none"
+              className="mt-1 block w-full px-3 py-2 bg-surface border border-border rounded-lg text-body focus:border-accent focus:ring-2 focus:ring-accent/30 outline-none"
             />
           </label>
           {data?.error && (
