@@ -29,7 +29,8 @@
   /* Borders */
   --color-border:        #E4E7EE;
   --color-border-strong: #C7CCD6;
-  --color-divider:       #EDEFF3;   /* hairline dividers */
+  --color-divider:       #EDEFF3;
+  --color-overlay:       rgba(10, 14, 26, 0.4);   /* hairline dividers */
 
   /* Brand — overridable per school. Default = Apple system blue. */
   --color-accent:        #007AFF;
@@ -173,6 +174,7 @@
     --color-border:        #3A4156;
     --color-border-strong: #6F7689;
     --color-divider:       #1C2030;
+    --color-overlay:       rgba(0, 0, 0, 0.6);
 
     --color-accent:        #0A84FF;
     --color-accent-hover:  #409CFF;

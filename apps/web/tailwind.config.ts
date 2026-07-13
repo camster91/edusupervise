@@ -37,6 +37,7 @@ export default {
         border:        'var(--color-border)',
         'border-strong': 'var(--color-border-strong)',
         divider:       'var(--color-divider)',
+        overlay:     'var(--color-overlay)',
 
         // Brand — overridable
         accent:       'var(--color-accent)',
