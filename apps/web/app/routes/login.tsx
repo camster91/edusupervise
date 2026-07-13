@@ -135,22 +135,22 @@ export default function LoginPage() {
   const { csrfToken } = useLoaderData<typeof loader>();
   return (
     <main className="min-h-screen grid place-items-center bg-bg px-4">
-      <div className="w-full max-w-sm bg-surface rounded-2xl shadow-sm border border-border p-8">
-        <h1 className="text-2xl font-bold text-primary mb-1">Welcome back</h1>
+      <div className="w-full max-w-sm bg-surface rounded-lg shadow-elev-1 border border-border p-8">
+        <h1 className="text-title-1 font-bold text-primary mb-1">Welcome back</h1>
         <p className="text-sm text-secondary mb-6">Sign in to EduSupervise.</p>
         <Form method="post" className="space-y-4">
           <input type="hidden" name="csrf" value={csrfToken} />
           <label className="block">
             <span className="text-sm font-medium text-primary">Email</span>
             <input name="email" type="email" required autoComplete="email"
-              className="mt-1 block w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm focus:border-accent focus:ring-2 focus:ring-blue-200 outline-none" />
+              className="mt-1 block w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm focus:border-accent focus:ring-2 focus:ring-accent outline-none" />
           </label>
           <label className="block">
             <span className="text-sm font-medium text-primary">Password</span>
             <input name="password" type="password" required autoComplete="current-password"
-              className="mt-1 block w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm focus:border-accent focus:ring-2 focus:ring-blue-200 outline-none" />
+              className="mt-1 block w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm focus:border-accent focus:ring-2 focus:ring-accent outline-none" />
           </label>
-          {data?.error && <p className="text-sm text-red-600" role="alert">Invalid email or password.</p>}
+          {data?.error && <p className="text-sm text-error" role="alert">Invalid email or password.</p>}
           <button type="submit" className="w-full bg-accent hover:bg-accent text-on-accent font-medium py-2 px-4 rounded-lg transition-colors">
             Sign in
           </button>

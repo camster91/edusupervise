@@ -204,11 +204,11 @@ export default function VerifyPhonePage() {
 
   if (data?.ok && !phone) {
     return (
-      <main className="min-h-screen grid place-items-center bg-slate-50 px-4">
-        <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-          <h1 className="text-2xl font-bold text-slate-900 mb-1">Phone verified</h1>
-          <p className="text-sm text-slate-600">Your phone number is now verified.</p>
-          <p className="text-sm text-slate-600 mt-6">
+      <main className="min-h-screen grid place-items-center bg-surface-2 px-4">
+        <div className="w-full max-w-sm bg-surface rounded-lg shadow-elev-1 border border-border p-8">
+          <h1 className="text-title-1 font-bold text-primary mb-1">Phone verified</h1>
+          <p className="text-sm text-secondary">Your phone number is now verified.</p>
+          <p className="text-sm text-secondary mt-6">
             <a href="/app" className="text-blue-600 hover:underline">Back to dashboard</a>
           </p>
         </div>
@@ -217,30 +217,30 @@ export default function VerifyPhonePage() {
   }
 
   return (
-    <main className="min-h-screen grid place-items-center bg-slate-50 px-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-        <h1 className="text-2xl font-bold text-slate-900 mb-1">Verify your phone</h1>
+    <main className="min-h-screen grid place-items-center bg-surface-2 px-4">
+      <div className="w-full max-w-sm bg-surface rounded-lg shadow-elev-1 border border-border p-8">
+        <h1 className="text-title-1 font-bold text-primary mb-1">Verify your phone</h1>
         {!data?.ok ? (
           <Form method="post" className="space-y-4">
           <input type="hidden" name="csrf" value={csrfToken} />
             <input type="hidden" name="intent" value="request" />
             <label className="block">
-              <span className="text-sm font-medium text-slate-700">Phone (international format)</span>
+              <span className="text-sm font-medium text-primary">Phone (international format)</span>
               <input
                 name="phone"
                 type="tel"
                 required
                 placeholder="+14165551234"
-                className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
+                className="mt-1 block w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-accent outline-none"
                 onChange={(e) => setPhone(e.target.value)}
               />
             </label>
             {data?.error && (
-              <p className="text-sm text-red-600" role="alert">
+              <p className="text-sm text-error" role="alert">
                 {data.detail ?? data.error}
               </p>
             )}
-            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+            <button type="submit" className="w-full bg-accent hover:bg-accent-hover text-on-accent font-medium py-2 px-4 rounded-lg transition-colors">
               Send code
             </button>
           </Form>
@@ -248,11 +248,11 @@ export default function VerifyPhonePage() {
           <Form method="post" className="space-y-4">
             <input type="hidden" name="intent" value="confirm" />
             <input type="hidden" name="phone" value={data.phone ?? phone} />
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-secondary">
               We sent a 6-digit code to {data.phone ?? phone}. Enter it below.
             </p>
             <label className="block">
-              <span className="text-sm font-medium text-slate-700">Code</span>
+              <span className="text-sm font-medium text-primary">Code</span>
               <input
                 name="code"
                 type="text"
@@ -261,15 +261,15 @@ export default function VerifyPhonePage() {
                 pattern="[0-9]{6}"
                 maxLength={6}
                 required
-                className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
+                className="mt-1 block w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-accent outline-none"
               />
             </label>
             {data?.error && (
-              <p className="text-sm text-red-600" role="alert">
+              <p className="text-sm text-error" role="alert">
                 {data.detail ?? data.error}
               </p>
             )}
-            <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+            <button type="submit" className="w-full bg-accent hover:bg-accent-hover text-on-accent font-medium py-2 px-4 rounded-lg transition-colors">
               Verify
             </button>
           </Form>

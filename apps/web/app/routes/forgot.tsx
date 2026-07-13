@@ -140,8 +140,8 @@ export default function ForgotPage() {
   if (data?.ok) {
     return (
       <main className="min-h-screen grid place-items-center bg-bg px-4">
-        <div className="w-full max-w-sm bg-surface rounded-2xl shadow-sm border border-border p-8">
-          <h1 className="text-2xl font-bold text-primary mb-1">Check your email</h1>
+        <div className="w-full max-w-sm bg-surface rounded-lg shadow-elev-1 border border-border p-8">
+          <h1 className="text-title-1 font-bold text-primary mb-1">Check your email</h1>
           <p className="text-sm text-secondary">
             If we have an account on file for that address, you'll get a
             password-reset link in a few minutes. The link expires in 1 hour.
@@ -156,8 +156,8 @@ export default function ForgotPage() {
 
   return (
     <main className="min-h-screen grid place-items-center bg-bg px-4">
-      <div className="w-full max-w-sm bg-surface rounded-2xl shadow-sm border border-border p-8">
-        <h1 className="text-2xl font-bold text-primary mb-1">Forgot password</h1>
+      <div className="w-full max-w-sm bg-surface rounded-lg shadow-elev-1 border border-border p-8">
+        <h1 className="text-title-1 font-bold text-primary mb-1">Forgot password</h1>
         <p className="text-sm text-secondary mb-6">
           Enter the email you signed up with. We'll send you a reset link.
         </p>
@@ -170,11 +170,11 @@ export default function ForgotPage() {
               type="email"
               required
               autoComplete="email"
-              className="mt-1 block w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm focus:border-accent focus:ring-2 focus:ring-blue-200 outline-none"
+              className="mt-1 block w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm focus:border-accent focus:ring-2 focus:ring-accent outline-none"
             />
           </label>
           {data?.error && (
-            <p className="text-sm text-red-600" role="alert">
+            <p className="text-sm text-error" role="alert">
               {data.detail ?? data.error}
             </p>
           )}

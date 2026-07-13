@@ -618,7 +618,7 @@ function RecurringDutyForm({
                 onClick={() => toggleDay(d.bit)}
                 className={
                   (bitmask & d.bit)
-                    ? 'px-md py-xs rounded-full bg-accent text-white text-callout font-semibold'
+                    ? 'px-md py-xs rounded-full bg-accent text-on-accent text-callout font-semibold'
                     : 'px-md py-xs rounded-full bg-surface-3 text-secondary text-callout font-medium hover:bg-surface-2'
                 }
               >

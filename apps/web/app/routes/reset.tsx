@@ -169,10 +169,10 @@ export default function ResetPage() {
 
   if (data?.ok) {
     return (
-      <main className="min-h-screen grid place-items-center bg-slate-50 px-4">
-        <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-          <h1 className="text-2xl font-bold text-slate-900 mb-1">Password updated</h1>
-          <p className="text-sm text-slate-600">Redirecting you to the dashboard…</p>
+      <main className="min-h-screen grid place-items-center bg-surface-2 px-4">
+        <div className="w-full max-w-sm bg-surface rounded-lg shadow-elev-1 border border-border p-8">
+          <h1 className="text-title-1 font-bold text-primary mb-1">Password updated</h1>
+          <p className="text-sm text-secondary">Redirecting you to the dashboard…</p>
         </div>
       </main>
     );
@@ -180,14 +180,14 @@ export default function ResetPage() {
 
   if (!token) {
     return (
-      <main className="min-h-screen grid place-items-center bg-slate-50 px-4">
-        <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-          <h1 className="text-2xl font-bold text-slate-900 mb-1">Invalid reset link</h1>
-          <p className="text-sm text-slate-600">
+      <main className="min-h-screen grid place-items-center bg-surface-2 px-4">
+        <div className="w-full max-w-sm bg-surface rounded-lg shadow-elev-1 border border-border p-8">
+          <h1 className="text-title-1 font-bold text-primary mb-1">Invalid reset link</h1>
+          <p className="text-sm text-secondary">
             The password-reset link you used is missing its token. Open the link
             from the email, or request a new one.
           </p>
-          <p className="text-sm text-slate-600 mt-6">
+          <p className="text-sm text-secondary mt-6">
             <a href="/forgot" className="text-blue-600 hover:underline">Request a new reset link</a>
           </p>
         </div>
@@ -196,10 +196,10 @@ export default function ResetPage() {
   }
 
   return (
-    <main className="min-h-screen grid place-items-center bg-slate-50 px-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-        <h1 className="text-2xl font-bold text-slate-900 mb-1">Set a new password</h1>
-        <p className="text-sm text-slate-600 mb-6">
+    <main className="min-h-screen grid place-items-center bg-surface-2 px-4">
+      <div className="w-full max-w-sm bg-surface rounded-lg shadow-elev-1 border border-border p-8">
+        <h1 className="text-title-1 font-bold text-primary mb-1">Set a new password</h1>
+        <p className="text-sm text-secondary mb-6">
           Choose a new password for your EduSupervise account.
         </p>
         <Form method="post" className="space-y-4">
@@ -207,22 +207,22 @@ export default function ResetPage() {
           <input type="hidden" name="token" value={token} />
           <input type="hidden" name="email" value={email} />
           <label className="block">
-            <span className="text-sm font-medium text-slate-700">New password</span>
+            <span className="text-sm font-medium text-primary">New password</span>
             <input
               name="newPassword"
               type="password"
               required
               minLength={8}
               autoComplete="new-password"
-              className="mt-1 block w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-blue-200 outline-none"
+              className="mt-1 block w-full px-3 py-2 bg-surface border border-border rounded-lg text-sm focus:border-blue-500 focus:ring-2 focus:ring-accent outline-none"
             />
           </label>
           {data?.error && (
-            <p className="text-sm text-red-600" role="alert">
+            <p className="text-sm text-error" role="alert">
               {data.detail ?? data.error}
             </p>
           )}
-          <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+          <button type="submit" className="w-full bg-accent hover:bg-accent-hover text-on-accent font-medium py-2 px-4 rounded-lg transition-colors">
             Update password
           </button>
         </Form>

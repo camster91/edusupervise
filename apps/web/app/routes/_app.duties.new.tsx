@@ -110,7 +110,7 @@ export default function NewDuty() {
         </div>
         {data?.error && <p className="text-sm text-red-600">{data.error}</p>}
         <div className="flex gap-2">
-          <button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg">Create duty</button>
+          <button type="submit" className="bg-accent hover:bg-accent-hover text-on-accent font-medium px-4 py-2 rounded-lg">Create duty</button>
           <a href="/app/duties" className="bg-white border border-slate-300 text-slate-700 font-medium px-4 py-2 rounded-lg hover:bg-slate-50">Cancel</a>
         </div>
       </Form>

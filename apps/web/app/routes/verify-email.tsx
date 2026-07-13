@@ -165,13 +165,13 @@ export default function VerifyEmailPage() {
 
   if (data?.ok && !data.redirectTo) {
     return (
-      <main className="min-h-screen grid place-items-center bg-slate-50 px-4">
-        <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-          <h1 className="text-2xl font-bold text-slate-900 mb-1">Email verified</h1>
-          <p className="text-sm text-slate-600">
+      <main className="min-h-screen grid place-items-center bg-surface-2 px-4">
+        <div className="w-full max-w-sm bg-surface rounded-lg shadow-elev-1 border border-border p-8">
+          <h1 className="text-title-1 font-bold text-primary mb-1">Email verified</h1>
+          <p className="text-sm text-secondary">
             Your email is now verified. You can sign in.
           </p>
-          <p className="text-sm text-slate-600 mt-6">
+          <p className="text-sm text-secondary mt-6">
             <a href="/login" className="text-blue-600 hover:underline">Sign in</a>
           </p>
         </div>
@@ -181,10 +181,10 @@ export default function VerifyEmailPage() {
 
   if (!token) {
     return (
-      <main className="min-h-screen grid place-items-center bg-slate-50 px-4">
-        <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-          <h1 className="text-2xl font-bold text-slate-900 mb-1">Invalid verification link</h1>
-          <p className="text-sm text-slate-600">
+      <main className="min-h-screen grid place-items-center bg-surface-2 px-4">
+        <div className="w-full max-w-sm bg-surface rounded-lg shadow-elev-1 border border-border p-8">
+          <h1 className="text-title-1 font-bold text-primary mb-1">Invalid verification link</h1>
+          <p className="text-sm text-secondary">
             The link you used is missing its token. Open the link from your
             verification email.
           </p>
@@ -194,10 +194,10 @@ export default function VerifyEmailPage() {
   }
 
   return (
-    <main className="min-h-screen grid place-items-center bg-slate-50 px-4">
-      <div className="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
-        <h1 className="text-2xl font-bold text-slate-900 mb-1">Verify your email</h1>
-        <p className="text-sm text-slate-600 mb-6">
+    <main className="min-h-screen grid place-items-center bg-surface-2 px-4">
+      <div className="w-full max-w-sm bg-surface rounded-lg shadow-elev-1 border border-border p-8">
+        <h1 className="text-title-1 font-bold text-primary mb-1">Verify your email</h1>
+        <p className="text-sm text-secondary mb-6">
           Click the button below to confirm your email.
         </p>
         <Form method="post" className="space-y-4">
@@ -205,11 +205,11 @@ export default function VerifyEmailPage() {
           <input type="hidden" name="token" value={token} />
           <input type="hidden" name="email" value={email} />
           {data?.error && (
-            <p className="text-sm text-red-600" role="alert">
+            <p className="text-sm text-error" role="alert">
               {data.detail ?? data.error}
             </p>
           )}
-          <button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 px-4 rounded-lg transition-colors">
+          <button type="submit" className="w-full bg-accent hover:bg-accent-hover text-on-accent font-medium py-2 px-4 rounded-lg transition-colors">
             Verify email
           </button>
         </Form>
