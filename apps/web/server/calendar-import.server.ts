@@ -13,11 +13,15 @@
 //      skipped, plus the diff for the audit log.
 //
 // Verifier feedback (2026-07-05):
-//   - MED-2: per-row try/catch lets us count written rows BEFORE
-//     throwing, then attach that count to a CalendarUpsertError so
-//     the caller can audit both attemptedDays AND attemptedRows.
+//   - MED-2: CalendarUpsertError carries attemptedRows so the caller
+//     can audit how many rows landed in cycle_calendar before the throw.
+//   - Audit 2026-07-22: with the bulk-upsert refactor, the write is one
+//     transaction. A failure rolls back every row, so attemptedRows
+//     reports zero rather than the number of statements attempted.
+//     The field is kept for audit-row compat.
 
 import { cycleCalendar } from '@edusupervise/db';
+import { sql } from 'drizzle-orm';
 import { withSchoolId } from './db.server';
 import { logger } from './logger.server';
 import type { CalendarDay } from './pdf_calendar_extract.server';
@@ -43,20 +47,26 @@ export interface UpsertOutcome {
 
 export interface UpsertResult {
   result: UpsertOutcome;
-  /** Number of rows successfully committed. On partial-failure
-   *  throws, this is the count that landed in cycle_calendar; the
-   *  operator reads this from the audit row to know how many rows
-   *  survived the throw. */
+  /** Number of rows successfully committed. With bulk-upsert (one
+   *  transaction), this is always either `total` (success) or `0`
+   *  (failure with rollback). The field name is preserved from
+   *  the per-row try/catch era for backward compat; the route reads
+   *  it via `attemptedRows` on `CalendarUpsertError` to learn how
+   *  many rows landed in cycle_calendar before the throw. */
   attemptedRows: number;
 }
 
-/** Thrown by upsertCalendarDays when a per-row write fails. Carries
- *  attemptedRows so the caller can audit the partial cursor. */
+/** Thrown by upsertCalendarDays when the bulk write fails. Carries
+ * attemptedRows so the caller can audit the partial cursor.
+ * Audit 2026-07-22: with the bulk-upsert refactor, attemptedRows
+ * is always 0 on a failed transaction; the field is kept for
+ * audit-row compat (the route handler reads it). */
 export class CalendarUpsertError extends Error {
   override readonly name = 'CalendarUpsertError';
   constructor(
     message: string,
-    /** How many rows made it into cycle_calendar before this throw. */
+    /** How many rows made it into cycle_calendar before this throw.
+     *  With bulk-upsert (one transaction), always 0 on a failed write. */
     public readonly attemptedRows: number,
     /** The date that triggered the throw, if known. */
     public readonly failedDate?: string,
@@ -74,8 +84,9 @@ export async function upsertCalendarDays(
 ): Promise<UpsertResult> {
   const skipped: string[] = [];
   const valid: CalendarDay[] = [];
+  const seen = new Set<string>();
   for (const d of args.days) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(d.date)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d.date) || seen.has(d.date)) {
       skipped.push(d.date);
       continue;
     }
@@ -84,6 +95,7 @@ export async function upsertCalendarDays(
       skipped.push(d.date);
       continue;
     }
+    seen.add(d.date);
     valid.push(d);
   }
 
@@ -100,46 +112,37 @@ export async function upsertCalendarDays(
     };
   }
 
-  // Per-row try/catch: a CHECK violation on row N still allows rows
-  // 1..N-1 to commit (the txn rolls back at COMMIT, but our intent
-  // here is "count what landed, then throw with the cursor"). Note:
-  // because we run inside withSchoolId's transaction wrapper, a per-
-  // row throw will poison the transaction and force a ROLLBACK at
-  // the wrapper boundary. So `written` here counts LOGICAL writes
-  // attempted before the throw, not rows that physically survived.
-  // The audit row + a SELECT count(*) on cycle_calendar together
-  // give operators the true partial cursor.
   let written = 0;
   try {
-    await withSchoolId(args.schoolId, async (tx) => {
-      for (const d of valid) {
-        await tx
-          .insert(cycleCalendar)
-          .values({
-            schoolId: args.schoolId,
-            date: d.date,
-            cycleDay: d.cycleDay,
-            isSchoolDay: d.isInstructional,
-            isInstructional: d.isInstructional,
-            holidayCode: d.holidayCode,
-            // Forward any parser note (currently unused; defense for
-            // future parser changes that may emit annotations like
-            // "exam day", "half day", etc.).
-            note: d.note ?? null,
-          })
-          .onConflictDoUpdate({
-            target: [cycleCalendar.schoolId, cycleCalendar.date],
-            set: {
-              cycleDay: d.cycleDay,
-              isSchoolDay: d.isInstructional,
-              isInstructional: d.isInstructional,
-              holidayCode: d.holidayCode,
-              note: d.note ?? null,
-            },
-          });
-        written += 1;
-      }
+    const committed = await withSchoolId(args.schoolId, async (tx) => {
+      return tx
+        .insert(cycleCalendar)
+        .values(valid.map((d) => ({
+          schoolId: args.schoolId,
+          date: d.date,
+          cycleDay: d.cycleDay,
+          isSchoolDay: d.isInstructional,
+          isInstructional: d.isInstructional,
+          holidayCode: d.holidayCode,
+          note: d.note ?? null,
+        })))
+        .onConflictDoUpdate({
+          target: [cycleCalendar.schoolId, cycleCalendar.date],
+          // Every conflicting row must use its own proposed values. Refer to
+          // Postgres' EXCLUDED relation rather than closing over one CalendarDay.
+          set: {
+            cycleDay: sql`excluded.cycle_day`,
+            isSchoolDay: sql`excluded.is_school_day`,
+            isInstructional: sql`excluded.is_instructional`,
+            holidayCode: sql`excluded.holiday_code`,
+            note: sql`excluded.note`,
+          },
+        })
+        .returning({ date: cycleCalendar.date });
     });
+    // withSchoolId resolves only after COMMIT, so this count describes rows
+    // that actually survived the transaction rather than attempted writes.
+    written = committed.length;
   } catch (err) {
     logger.error(
       {
@@ -147,15 +150,15 @@ export async function upsertCalendarDays(
         schoolId: args.schoolId,
         importedBy: args.importedBy,
         jobId: args.jobId,
-        written,
+        written: 0,
         valid: valid.length,
       },
       'calendar import: upsert threw mid-transaction',
     );
     throw new CalendarUpsertError(
       err instanceof Error ? err.message : String(err),
-      written,
-      valid[written]?.date,
+      0,
+      undefined,
       err,
     );
   }

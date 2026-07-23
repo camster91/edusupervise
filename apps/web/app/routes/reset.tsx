@@ -15,7 +15,7 @@ import {
 } from 'react-router';
 import type { Route } from './+types/reset';
 import { eq } from 'drizzle-orm';
-import { hashPassword, newSessionTokenFor, sessionCookieAttributes } from '../../server/auth.server';
+import { hashPassword, newSessionTokenFor, setSessionCookie } from '../../server/auth.server';
 import {
   ensureCsrfCookie,
   validateCsrfWithFormToken,
@@ -134,7 +134,7 @@ export async function action({ request }: Route.ActionArgs) {
         status: 200,
         headers: {
           'content-type': 'application/json',
-          'Set-Cookie': `edusupervise.session=${sessionToken}; ${sessionCookieAttributes()}`,
+          'Set-Cookie': setSessionCookie(sessionToken),
         },
       },
     );

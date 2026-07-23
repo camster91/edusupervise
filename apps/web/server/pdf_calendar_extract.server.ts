@@ -138,7 +138,15 @@ export async function parseCalendarPdf(args: {
     const r = await execFileAsync(PY_BIN, [PY_SCRIPT, args.filePath], {
       timeout: PY_TIMEOUT_MS,
       maxBuffer: 16 * 1024 * 1024,
-      env: { ...process.env, PYTHONUNBUFFERED: '1' },
+      // SECURITY: curated env whitelist. Same rationale as
+      // apps/web/server/pdf-parser.server.ts — never spread process.env
+      // into a subprocess. Audit 2026-07-22 P1-3.
+      env: {
+        PATH: process.env.PATH ?? '',
+        LANG: process.env.LANG ?? 'C.UTF-8',
+        PYTHONUNBUFFERED: '1',
+        PYTHONHASHSEED: process.env.PYTHONHASHSEED ?? '',
+      },
     });
     stdout = r.stdout;
     stderr = r.stderr;

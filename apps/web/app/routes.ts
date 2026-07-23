@@ -105,6 +105,11 @@ export default [
 
   // Duty quick actions (Phase 2C — Today redesign)
   route('app/api/duty.complete', 'routes/app.api.duty.complete.ts'),
+  // Mobile companion (Sprint 1) — JSON mirror of /app/today so the
+  // React Native app can fetch the same data without RR7's .data
+  // convention. See apps/web/app/routes/app.api.today.ts for the
+  // contract.
+  route('app/api/today', 'routes/app.api.today.ts'),
 
   // Reminders (Phase 2D — inline CRUD on duty cards)
   route('app/api/reminders/create', 'routes/app.api.reminders.create.ts'),
@@ -115,6 +120,13 @@ export default [
   route('api/coverage/parent-alerts', 'routes/api.coverage.parent-alerts.ts'),
   route('api/coverage/parent-alerts/send', 'routes/api.coverage.parent-alerts.send.ts'),
   route('api/coverage/parent-alerts/cancel', 'routes/api.coverage.parent-alerts.cancel.ts'),
+
+  // Mobile companion (Sprint 1) — Expo Push token registration
+  // (slice C). The mobile app calls these on every foreground so
+  // the server has an up-to-date token for dispatching duty
+  // reminders + coverage requests.
+  route('api/mobile/push/subscribe', 'routes/api.mobile.push.subscribe.ts'),
+  route('api/mobile/push/unsubscribe', 'routes/api.mobile.push.unsubscribe.ts'),
 
   // Phase 3 — PDF calendar import (admin-only).
   route('admin/calendar', 'routes/admin.calendar._index.tsx'),

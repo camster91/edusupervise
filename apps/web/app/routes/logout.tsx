@@ -1,7 +1,11 @@
-// apps/web/app/routes/logout.tsx — clears the session cookie and redirects to /login.
+// apps/web/app/routes/logout.tsx — clears the session + CSRF cookies and redirects to /login.
 import { redirect } from 'react-router';
+import { clearSessionCookie } from '../../server/auth.server';
 import type { Route } from './+types/logout';
-import { validateCsrfWithFormToken } from '../../server/csrf.server';
+import {
+  clearCsrfCookie,
+  validateCsrfWithFormToken,
+} from '../../server/csrf.server';
 
 export async function action({ request }: Route.ActionArgs) {
   // CSRF check. Logout is a state-changing operation per spec section
@@ -11,11 +15,17 @@ export async function action({ request }: Route.ActionArgs) {
   const csrf = validateCsrfWithFormToken(request, form);
   if (!csrf.ok) return csrf.response;
 
-  return redirect('/login', {
-    headers: { 'Set-Cookie': 'edusupervise.session=; Path=/; HttpOnly; Max-Age=0' },
-  });
+  // Audit 2026-07-22 P3-2: clear both cookies so the double-submit token
+  // doesn't outlive the session. A logged-out victim kept their CSRF
+  // token in document.cookie for the full 24h TTL after this fix landed.
+  const headers = new Headers();
+  headers.append('Set-Cookie', clearSessionCookie());
+  headers.append('Set-Cookie', clearCsrfCookie());
+  return redirect('/login', { headers });
 }
 
 export async function loader() {
-  return redirect('/login');
+  return redirect('/login', {
+    headers: { 'Set-Cookie': clearCsrfCookie() },
+  });
 }

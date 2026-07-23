@@ -28,7 +28,7 @@ import type { Route } from './+types/verify-email';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { getSystemClient, users } from '@edusupervise/db';
-import { newSessionTokenFor, sessionCookieAttributes } from '../../server/auth.server';
+import { newSessionTokenFor, setSessionCookie } from '../../server/auth.server';
 import {
   ensureCsrfCookie,
   validateCsrfWithFormToken,
@@ -128,7 +128,7 @@ export async function action({ request }: Route.ActionArgs) {
         status: 200,
         headers: {
           'content-type': 'application/json',
-          'Set-Cookie': `edusupervise.session=${sessionToken}; ${sessionCookieAttributes()}`,
+          'Set-Cookie': setSessionCookie(sessionToken),
         },
       });
     }

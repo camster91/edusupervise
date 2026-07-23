@@ -14,10 +14,14 @@
 //     inside upsertCalendarDays writes a calendar_import.commit_failed
 //     audit row before bubbling the 500. Closes the partial-commit /
 //     no-audit-trail gap.
-//   - MED-2: the audit row now carries BOTH `attemptedDays` (parse-time
-//     total, e.g. 215) AND `attemptedRows` (rows that landed before the
-//     throw). Operators can reconstruct the partial cursor without
-//     querying cycle_calendar separately.
+//   - MED-2: the audit row carries `attemptedDays` (parse-time total),
+//     and the CalendarUpsertError carries `attemptedRows` (rows that
+//     landed before the throw). Operators can reconstruct the partial
+//     cursor without querying cycle_calendar separately.
+//   - Audit 2026-07-22: failed imports are transactional — the bulk
+//     upsert is one transaction so a mid-loop failure rolls back the
+//     whole write and `writtenCount` stays at zero. The audit row
+//     records the attempted size for operator visibility.
 
 import { z } from 'zod';
 import type { Route } from './+types/api.admin.calendar.commit';
@@ -129,10 +133,11 @@ export async function action({ request }: Route.ActionArgs) {
     });
   } catch (err) {
     // Verifier feedback (HIGH + MED-2): partial commit / no audit
-    // trail was a gap. The CalendarUpsertError class carries
-    // attemptedRows so operators can see exactly how many rows
-    // landed before the throw. Any other Error type falls back
-    // to attemptedDays with attemptedRows=0.
+    // trail was a gap. CalendarUpsertError carries attemptedRows so
+    // operators can see how many rows landed before the throw.
+    // Audit 2026-07-22: because the bulk upsert is one transaction,
+    // attemptedRows is zero on rollback; non-CalendarUpsertError
+    // errors also fall back to zero.
     const errMsg = err instanceof Error ? err.message : String(err);
     const attemptedRows =
       err instanceof CalendarUpsertError ? err.attemptedRows : 0;
@@ -162,7 +167,7 @@ export async function action({ request }: Route.ActionArgs) {
       {
         error: 'commit_failed',
         message:
-          'Calendar commit failed mid-transaction. The database may have partial rows; check cycle_calendar and the audit_log for details.',
+          'Calendar commit failed. No calendar rows were saved; fix the source data and retry.',
       },
       { status: 500 },
     );

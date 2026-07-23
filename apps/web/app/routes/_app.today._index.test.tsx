@@ -139,6 +139,17 @@ vi.mock('../../server/reminders.server', () => ({
   listRemindersForDuties: vi.fn(),
 }));
 
+vi.mock('../../server/today.server', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../server/today.server')>();
+  return {
+    ...actual,
+    loadTodayData: vi.fn((session: { userId: string }) => ({
+      ...fixtureLoaderData,
+      userId: session.userId,
+    })),
+  };
+});
+
 // ---------------------------------------------------------------------------
 // Fake Drizzle transaction for withSchoolId.
 //
@@ -269,7 +280,7 @@ describe('_app.today loader (B5 mutation-resistant regression)', () => {
 
   it('returns userId === session.userId when loader runs (B5 tripwire)', async () => {
     const mod = await import('./_app.today._index');
-    const loader = mod.loader as (args: {
+    const loader = mod.loader as unknown as (args: {
       request: Request;
     }) => Promise<Record<string, unknown>>;
     const result = await loader({ request: new Request('http://localhost/app/today') });
@@ -287,7 +298,7 @@ describe('_app.today loader (B5 mutation-resistant regression)', () => {
     mockGetSession.mockResolvedValue(altSession);
 
     const mod = await import('./_app.today._index');
-    const loader = mod.loader as (args: {
+    const loader = mod.loader as unknown as (args: {
       request: Request;
     }) => Promise<Record<string, unknown>>;
     const result = await loader({ request: new Request('http://localhost/app/today') });
@@ -298,7 +309,7 @@ describe('_app.today loader (B5 mutation-resistant regression)', () => {
 
   it('returns all 14 fields the component destructures from useLoaderData', async () => {
     const mod = await import('./_app.today._index');
-    const loader = mod.loader as (args: {
+    const loader = mod.loader as unknown as (args: {
       request: Request;
     }) => Promise<Record<string, unknown>>;
     const result = await loader({ request: new Request('http://localhost/app/today') });
@@ -334,7 +345,7 @@ describe('_app.today loader (B5 mutation-resistant regression)', () => {
     mockGetSession.mockResolvedValue(null);
 
     const mod = await import('./_app.today._index');
-    const loader = mod.loader as (args: {
+    const loader = mod.loader as unknown as (args: {
       request: Request;
     }) => Promise<unknown>;
     let thrown: unknown;

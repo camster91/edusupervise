@@ -41,19 +41,11 @@ import {
   Sparkles,
   type LucideIcon,
 } from 'lucide-react';
-import { and, eq, gte, lte, desc, isNull, or } from 'drizzle-orm';
-import {
-  duties,
-  dutyAssignments,
-  cycleCalendar,
-  schools,
-  recurringDuties,
-  users,
-} from '@edusupervise/db';
 import type { Route } from './+types/_app.today._index';
 import { getSession } from '../../server/auth.server.ts';
-import { withSchoolId } from '../../server/db.server.ts';
-import { listRemindersForDuties, type ReminderRow } from '../../server/reminders.server';
+import { loadTodayData } from '../../server/today.server';
+import { addCalendarDays } from '../lib/calendar-date';
+import type { ReminderRow } from '../../server/reminders.server';
 import {
   HeroCard,
   EmptyState,
@@ -68,7 +60,6 @@ import {
 } from '../components/ui';
 import { SkeletonCard } from '../components/Skeleton';
 import { RecurringDutyCard } from '../components/RecurringDutyCard';
-import { getGroupDutyRoster } from '../../server/duty-assignments.server';
 
 /**
  * Hydrate fallback: shown while the loader is fetching initial data
@@ -99,181 +90,7 @@ export async function loader({ request }: Route.LoaderArgs) {
     });
   }
 
-  const data = await withSchoolId(session.schoolId, async (tx) => {
-    // Read the school's timezone so "today" matches what the school
-    // sees on the wall clock. Without this, a server in UTC and a
-    // school in America/Toronto disagree about "today" between 8pm
-    // and midnight local — the WeekStrip would silently jump to
-    // tomorrow's date. (Bug found 2026-06-30.)
-    const [school] = await tx
-      .select({
-        timezone: schools.timezone,
-        demoExpiresAt: schools.demoExpiresAt,
-      })
-      .from(schools)
-      .where(eq(schools.id, session.schoolId))
-      .limit(1);
-    const tz = school?.timezone ?? 'America/Toronto';
-    // Solo teachers and EAs in solo schools (non-demo) see the
-    // onboarding banner until they have at least one duty assignment.
-    // Demo schools do not (they already have seed duties).
-    const isSoloSchool = !school?.demoExpiresAt;
-
-    const now = new Date();
-    const today = formatDateInTz(now, tz);
-    const tomorrow = formatDateInTz(new Date(now.getTime() + 86_400_000), tz);
-    const weekFromNow = formatDateInTz(new Date(now.getTime() + 7 * 86_400_000), tz);
-
-    // Active duties + my assignments + cycle info for today — three
-    // independent reads on the same tx. Run in parallel via Promise.all
-    // to drop 3 round-trips down to 1 at the network layer (postgres
-    // still serializes them on the wire, but the client-to-server
-    // network hops collapse). (Audit H-DB-5, 2026-07-04.)
-    const [allDuties, myAssignments, cycleRows] = await Promise.all([
-      tx
-        .select({
-          id: duties.id,
-          name: duties.location,
-          location: duties.location,
-          startTime: duties.startTime,
-          endTime: duties.endTime,
-          cycleDay: duties.cycleDay,
-          requiresVest: duties.requiresVest,
-          requiresRadio: duties.requiresRadio,
-        })
-        .from(duties)
-        .where(eq(duties.isActive, true))
-        .limit(200),
-      tx
-        .select({
-          dutyId: dutyAssignments.dutyId,
-          startDate: dutyAssignments.startDate,
-          endDate: dutyAssignments.endDate,
-        })
-        .from(dutyAssignments)
-        .where(and(
-          eq(dutyAssignments.userId, session.userId),
-          isNull(dutyAssignments.endDate),
-        ))
-        .limit(200),
-      tx
-        .select({ cycleDay: cycleCalendar.cycleDay, isSchoolDay: cycleCalendar.isSchoolDay })
-        .from(cycleCalendar)
-        .where(eq(cycleCalendar.date, today))
-        .limit(1),
-    ]);
-    const [cycle] = cycleRows;
-
-    // My duties for the next 7 days — powers the "My Upcoming" stat.
-    const myUpcoming = allDuties.filter((d) =>
-      myAssignments.some((a) => a.dutyId === d.id)
-    ).length;
-
-    // Total duties school-wide
-    const totalDuties = allDuties.length;
-
-    // Unique locations school-wide
-    const totalLocations = new Set(allDuties.map((d) => d.location)).size;
-
-    // Total scheduled minutes per week for the logged-in teacher.
-    const myMinutesPerWeek = myUpcoming * 25; // avg 25 min/duty estimate
-
-    // ------------------------------------------------------------------
-    // Phase 3 §3.1 + §3.2:
-    //   - Group-duty roster: for every duty I'm on, who else is on it
-    //     (with their coverage_role). Powers "you're covering with N
-    //     others" copy in the duty card.
-    //   - Recurring duties: same-day-of-week firing duties this
-    //     teacher is responsible for. Rendered in their own section
-    //     so they don't get mixed in with cycle-day duties.
-    // ------------------------------------------------------------------
-    // Parallelize getGroupDutyRoster (separate tx, system role) and
-    // recurringDuties (current tx). Both are independent reads — no
-    // point serializing them.
-    const [groupRosterMap, recurringRows] = await Promise.all([
-      getGroupDutyRoster({
-        schoolId: session.schoolId,
-        userId: session.userId,
-      }),
-      // Recurring duties that affect this teacher (assigned to them)
-      // OR fire school-wide when unassigned. Both admin and teacher see
-      // the school-wide ones so a duty lead can step in if needed.
-      tx
-        .select({
-          id: recurringDuties.id,
-          name: recurringDuties.name,
-          location: recurringDuties.location,
-          startTime: recurringDuties.startTime,
-          endTime: recurringDuties.endTime,
-          daysOfWeek: recurringDuties.daysOfWeek,
-          assignedUserId: recurringDuties.assignedUserId,
-          assignedUserName: users.name,
-          requiresVest: recurringDuties.requiresVest,
-          requiresRadio: recurringDuties.requiresRadio,
-        })
-        .from(recurringDuties)
-        .leftJoin(users, eq(users.id, recurringDuties.assignedUserId))
-        .where(and(
-          eq(recurringDuties.schoolId, session.schoolId),
-          eq(recurringDuties.isActive, true),
-          // Assigned to me OR unassigned (school-wide fallback).
-          or(
-            eq(recurringDuties.assignedUserId, session.userId),
-            isNull(recurringDuties.assignedUserId),
-          ),
-        ))
-        .orderBy(recurringDuties.startTime)
-        .limit(20),
-    ]);
-    const groupRoster = Object.fromEntries(groupRosterMap);
-
-    // Phase 1.3 — solo onboarding banner.
-    //   Show when (a) this is NOT a demo school (demo users already
-    //   have seed duties) AND (b) the teacher has zero upcoming duties
-    //   from the active cycle.
-    const showOnboardingBanner: boolean = isSoloSchool && myUpcoming === 0;
-
-    return {
-      role: session.role,
-      userId: session.userId,
-      today,
-      tomorrow,
-      weekFromNow,
-      allDuties,
-      myAssignments,
-      cycleDay: cycle?.cycleDay ?? null,
-      isSchoolDay: cycle?.isSchoolDay ?? true,
-      stats: {
-        totalDuties,
-        totalLocations,
-        myUpcoming,
-        myMinutesPerWeek,
-      },
-      groupRoster,
-      recurringDuties: recurringRows,
-      // Phase 1.3 — solo onboarding banner driver. Set true when the
-      // user is in a non-demo school with zero upcoming duties.
-      showOnboardingBanner,
-    };
-  });
-
-  // Reminders: fetched via system-role client (RLS-bypassing) because
-  // the reminders table is tenant-scoped and we want to show ALL
-  // reminders set up on each duty, regardless of who's currently
-  // assigned (admins configure, not just teachers).
-  //
-  // Single batch query — replaces the N+1 pattern that called
-  // listRemindersForDuty once per duty (up to 200 sequential
-  // round-trips per page load, audit B7 2026-07-04).
-  const reminderMapRaw = await listRemindersForDuties(
-    session.schoolId,
-    data.allDuties.map((d) => d.id),
-  );
-  const reminderMap: Record<string, ReminderRow[]> = Object.fromEntries(
-    reminderMapRaw,
-  );
-
-  return { ...data, reminderMap };
+  return loadTodayData(session);
 }
 
 export default function Today() {
@@ -315,14 +132,17 @@ export default function Today() {
   });
   const nextDuty = myDuties.find((d) => d.startTime && d.startTime > currentTime);
 
-  // Build week strip
-  const todayDate = new Date(today + 'T00:00:00');
+  // Build week strip from timezone-free calendar keys. UTC rendering avoids
+  // both DST-length days and host-timezone parsing differences.
   const weekDays = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date(todayDate.getTime() + i * 86_400_000);
+    const d = new Date(`${addCalendarDays(today, i)}T00:00:00Z`);
     return {
       index: i,
-      weekday: d.toLocaleDateString('en-US', { weekday: 'short' }),
-      day: d.getDate(),
+      weekday: d.toLocaleDateString('en-US', {
+        timeZone: 'UTC',
+        weekday: 'short',
+      }),
+      day: d.getUTCDate(),
       isToday: i === 0,
       hasDuties: myDuties.length > 0,
       inCycle: true,
@@ -1068,24 +888,6 @@ function formatTime12h(hhmm: string | null | undefined): string {
   const period = (h ?? 0) >= 12 ? 'PM' : 'AM';
   const h12 = (h ?? 0) % 12 || 12;
   return `${h12}:${String(m).padStart(2, '0')} ${period}`;
-}
-
-/**
- * Format a Date as YYYY-MM-DD in the given IANA timezone. Server runs
- * in UTC, so a naive `.toISOString().slice(0, 10)` would show
- * tomorrow's date for a Toronto school between 8pm and midnight.
- * Uses Intl.DateTimeFormat which is the only built-in timezone API
- * that handles DST correctly without an extra dependency.
- */
-function formatDateInTz(d: Date, tz: string): string {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: tz,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).formatToParts(d);
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
-  return `${get('year')}-${get('month')}-${get('day')}`;
 }
 
 function formatHours(minutes: number): string {

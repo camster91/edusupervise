@@ -26,6 +26,12 @@ http:
       tls:
         certResolver: letsencrypt
       service: edusupervise
+      # Audit 2026-07-22 P2-4: attach the security headers middleware so
+      # every response carries HSTS, X-Content-Type-Options, frame policy,
+      # referrer policy, and a minimal permissions policy. Roll out CSP
+      # separately in report-only mode first to avoid breaking the app.
+      middlewares:
+        - edusupervise-security-headers
 
     # HTTP -> HTTPS redirect. Anyone hitting http:// gets bumped to https://
     # without ever touching the app.
@@ -52,3 +58,35 @@ http:
       redirectScheme:
         scheme: https
         permanent: true
+
+    # Audit 2026-07-22 P2-4: security headers middleware applied to every
+    # response. Conservative defaults; CSP deferred until we have a
+    # baseline of allowed inline-script sources.
+    edusupervise-security-headers:
+      headers:
+        # 2 years, include subdomains, preload-eligible. Edusupervise is
+        # an HTTPS-only product so the long max-age is acceptable.
+        stsSeconds: 63072000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        # Defense against MIME-type sniffing (esp. legacy IE/Edge).
+        contentTypeNosniff: true
+        # Clickjacking protection. SAMEORIGIN keeps the app's own
+        # iframes (e.g. embedded PDF preview) working; DENY would break
+        # them. CSP frame-ancestors is the modern equivalent if we
+        # later add a strict CSP.
+        frameDeny: false
+        customFrameOptionsValue: "SAMEORIGIN"
+        # Disable referrer leakage to third-party hosts.
+        referrerPolicy: "strict-origin-when-cross-origin"
+        # Disable powerful features we don't use (geolocation, camera,
+        # microphone, payment, USB, etc.). Audit-worthy when adding a
+        # new client-side integration.
+        permissionsPolicy: "geolocation=(), camera=(), microphone=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()"
+        # IE/Edge legacy XSS filter (no-op on modern browsers).
+        browserXssFilter: true
+        customResponseHeaders:
+          X-Frame-Options: "SAMEORIGIN"
+          X-Content-Type-Options: "nosniff"
+          Referrer-Policy: "strict-origin-when-cross-origin"
+          Permissions-Policy: "geolocation=(), camera=(), microphone=(), payment=(), usb=()"

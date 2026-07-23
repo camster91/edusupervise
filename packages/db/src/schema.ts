@@ -97,6 +97,11 @@ export type UserRole = (typeof userRoleEnum.enumValues)[number];
 export const reminderChannelEnum = pgEnum('reminder_channel', [
   'email',
   'sms',
+  // Mobile push (Expo HTTP API). Migration 0015 added this value to the
+  // Postgres ENUM via ALTER TYPE ... ADD VALUE. The mobile app registers
+  // a token at /api/mobile/push/subscribe; the worker's reminder processor
+  // calls sendMobilePushToUser (packages/push/src/expo.ts) for the channel.
+  'push-expo',
 ]);
 export type ReminderChannel = (typeof reminderChannelEnum.enumValues)[number];
 
@@ -762,6 +767,89 @@ export type PushSubscription = typeof pushSubscriptions.$inferSelect;
 export type NewPushSubscription = typeof pushSubscriptions.$inferInsert;
 
 // ---------------------------------------------------------------------------
+// Mobile push subscriptions (Expo Push) — Migration 0015
+//
+// One row per device the user has logged in on with the mobile app.
+// The Expo push token is opaque (format: "ExponentPushToken[xxxxxxxx]")
+// and is the natural key for a device. UNIQUE(user_id, expo_push_token)
+// makes /api/mobile/push/subscribe idempotent — re-registering the same
+// device just refreshes last_seen_at and clears revoked_at.
+//
+// Why a separate table (not a column on push_subscriptions):
+//   - Web Push uses VAPID `endpoint + p256dh + auth` (RFC 8030). Expo Push
+//     uses a single opaque token. Schema is genuinely different.
+//   - One user can have a Web Push browser subscription AND a mobile push
+//     subscription at the same time. The dispatch path calls both.
+//   - The shared dispatch path (server decides "send to all devices for
+//     user X") lives in packages/push/src/expo.ts + apps/web/server/notifications.server.ts.
+//
+// revoked_at is a soft-delete marker for logout / app uninstall. We never
+// hard-delete from this table — keeping the row makes audit + analytics
+// queries easier (e.g. "how many devices registered total this month?").
+//
+// RLS is defined in packages/db/migrations/0015_mobile_push_subscriptions.sql.
+// FORCE ROW LEVEL SECURITY so the runtime role can't bypass it.
+// ---------------------------------------------------------------------------
+
+export const mobilePushSubscriptions = pgTable(
+  'mobile_push_subscriptions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    schoolId: uuid('school_id')
+      .notNull()
+      .references(() => schools.id, { onDelete: 'cascade' }),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    expoPushToken: text('expo_push_token').notNull(),
+    platform: text('platform').notNull(),
+    deviceId: text('device_id'),
+    appVersion: text('app_version'),
+    createdAt: timestamp('created_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    lastSeenAt: timestamp('last_seen_at', { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+  },
+  (t) => [
+    // Idempotency on subscribe — same (school, user, token) re-register
+    // just refreshes last_seen_at + clears revoked_at. See
+    // apps/web/app/routes/api.mobile.push.subscribe.ts.
+    //
+    // NOTE: the composite key includes school_id (matches the web-push
+    // precedent at pushSubscriptions:721 — UNIQUE(school_id, user_id, endpoint)).
+    // Two reasons school_id is part of the key:
+    //   1. School transfer (admin reassigns user to another school):
+    //      the old row doesn't block the new school's subscription.
+    //   2. Shared device across two schools (school-issued iPad loaned
+    //      out, or staff member covering two schools): each school's
+    //      subscription is a distinct row, no spurious unique violation.
+    unique('mobile_push_subscriptions_school_user_token_unique').on(
+      t.schoolId,
+      t.userId,
+      t.expoPushToken,
+    ),
+    // The dispatch lookup is "all active (revoked_at IS NULL) subs for this
+    // user in this school". Partial index keeps the hot path small.
+    index('idx_mobile_push_subscriptions_school_user_active')
+      .on(t.schoolId, t.userId)
+      .where(sql`${t.revokedAt} IS NULL`),
+    // Expo's DeviceNotRegistered receipt identifies only the token. Keep a
+    // matching schema declaration for the lookup index created by migration
+    // 0015 so drizzle-kit does not try to remove it as drift.
+    index('idx_mobile_push_subscriptions_token').on(t.expoPushToken),
+    check(
+      'mobile_push_subscriptions_platform_check',
+      sql`${t.platform} IN ('ios', 'android')`,
+    ),
+  ],
+);
+export type MobilePushSubscription = typeof mobilePushSubscriptions.$inferSelect;
+export type NewMobilePushSubscription = typeof mobilePushSubscriptions.$inferInsert;
+
+// ---------------------------------------------------------------------------
 // Plan limits
 // ---------------------------------------------------------------------------
 
@@ -795,6 +883,7 @@ export const usersRelations = relations(users, ({ one, many }) => ({
   dutyAssignments: many(dutyAssignments),
   reminderLogs: many(reminderLog),
   pushSubscriptions: many(pushSubscriptions),
+  mobilePushSubscriptions: many(mobilePushSubscriptions),
 }));
 
 export const dutiesRelations = relations(duties, ({ one, many }) => ({
@@ -894,6 +983,20 @@ export const pushSubscriptionsRelations = relations(
     }),
     user: one(users, {
       fields: [pushSubscriptions.userId],
+      references: [users.id],
+    }),
+  }),
+);
+
+export const mobilePushSubscriptionsRelations = relations(
+  mobilePushSubscriptions,
+  ({ one }) => ({
+    school: one(schools, {
+      fields: [mobilePushSubscriptions.schoolId],
+      references: [schools.id],
+    }),
+    user: one(users, {
+      fields: [mobilePushSubscriptions.userId],
       references: [users.id],
     }),
   }),
@@ -1277,11 +1380,26 @@ export const coverageEvents = pgTable(
       .defaultNow(),
   },
   (t) => [
+    check(
+      'coverage_events_status_check',
+      sql`${t.status} IN ('open', 'routed', 'closed')`,
+    ),
+    check(
+      'coverage_events_source_check',
+      sql`${t.source} IN ('direct', 'frontline', 'red_rover', 'swing', 'manual', 'broadcast')`,
+    ),
     index('idx_coverage_events_school_date_status').on(
       t.schoolId,
       t.absenceDate,
       t.status,
     ),
+    // Webhook idempotency is tenant-scoped. The original SQL index omitted
+    // school_id, which made an external provider id used by school A block
+    // the same provider id for school B. NULL external ids are ordinary
+    // direct/manual events and intentionally remain repeatable.
+    uniqueIndex('coverage_events_school_source_external_id_unique')
+      .on(t.schoolId, t.source, t.externalId)
+      .where(sql`${t.externalId} IS NOT NULL`),
   ],
 );
 export type CoverageEvent = typeof coverageEvents.$inferSelect;
@@ -1316,8 +1434,22 @@ export const coverageAssignments = pgTable(
       .defaultNow(),
   },
   (t) => [
+    check(
+      'coverage_assignments_status_check',
+      sql`${t.status} IN ('pending', 'accepted', 'declined', 'uncovered', 'cancelled')`,
+    ),
     index('idx_coverage_assignments_school_status').on(t.schoolId, t.status),
     index('idx_coverage_assignments_new_teacher').on(t.newTeacherId, t.status),
+    // A broadcast intentionally has several candidates for one duty, but
+    // the same candidate must not be inserted twice. Uncovered rows have a
+    // NULL candidate, so they need a separate partial index to make retries
+    // idempotent too (ordinary UNIQUE indexes treat NULLs as distinct).
+    uniqueIndex('coverage_assignments_event_duty_teacher_unique')
+      .on(t.coverageEventId, t.dutyId, t.newTeacherId)
+      .where(sql`${t.newTeacherId} IS NOT NULL`),
+    uniqueIndex('coverage_assignments_event_duty_uncovered_unique')
+      .on(t.coverageEventId, t.dutyId)
+      .where(sql`${t.newTeacherId} IS NULL`),
   ],
 );
 export type CoverageAssignment = typeof coverageAssignments.$inferSelect;
@@ -1443,6 +1575,10 @@ export const parentAlerts = pgTable(
       .defaultNow(),
   },
   (t) => [
+    uniqueIndex('parent_alerts_parent_assignment_unique').on(
+      t.parentId,
+      t.coverageAssignmentId,
+    ),
     index('idx_parent_alerts_school_status').on(t.schoolId, t.status),
     index('idx_parent_alerts_assignment').on(t.coverageAssignmentId),
   ],
@@ -1496,6 +1632,7 @@ export const schema = {
   workerHeartbeats,
   notifications,
   pushSubscriptions,
+  mobilePushSubscriptions,
   planLimits,
   googleCalendarTokens,
   calendarEventLinks,

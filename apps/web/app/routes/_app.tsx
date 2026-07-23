@@ -14,7 +14,7 @@
 
 import { useEffect, useState } from 'react';
 import { Outlet, data, useLoaderData } from 'react-router';
-import { eq } from 'drizzle-orm';
+import { and, count, eq, isNull } from 'drizzle-orm';
 import { schools, notifications } from '@edusupervise/db';
 import type { Route } from './+types/_app';
 import { getSession } from '../../server/auth.server';
@@ -52,12 +52,14 @@ export async function loader({ request }: Route.LoaderArgs) {
 
     let unreadCount = 0;
     try {
-      const rows = await tx
-        .select({ id: notifications.id })
+      const [row] = await tx
+        .select({ value: count() })
         .from(notifications)
-        .where(eq(notifications.userId, session.userId))
-        .limit(1_000);
-      unreadCount = rows.length;
+        .where(and(
+          eq(notifications.userId, session.userId),
+          isNull(notifications.readAt),
+        ));
+      unreadCount = row?.value ?? 0;
     } catch {
       unreadCount = 0;
     }

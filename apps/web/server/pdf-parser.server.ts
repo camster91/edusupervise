@@ -372,9 +372,20 @@ async function runExtract(
       {
         timeout: timeoutMs,
         maxBuffer: 16 * 1024 * 1024,
+        // SECURITY: curated env whitelist. The Python child must NEVER see
+        // the web container's secrets (DATABASE_URL, STRIPE_*, SESSION_*,
+        // REDIS_URL, EDUSUPERVISE_SECRETS_DIR, ...). Passing `...process.env`
+        // exposes the entire secret surface to a transitive Python dependency
+        // (e.g. a malicious pdfplumber update could exfiltrate all of it).
+        // Audit 2026-07-22: previously `env: { ...process.env, ... }`.
         env: {
-          ...process.env,
+          PATH: process.env.PATH ?? '',
+          LANG: process.env.LANG ?? 'C.UTF-8',
+          PYTHONUNBUFFERED: '1',
+          PYTHONHASHSEED: process.env.PYTHONHASHSEED ?? '',
           PDF_PARSE_TIMEOUT_MS: String(timeoutMs),
+          // Anything else the helper needs MUST be added here explicitly.
+          // Never spread process.env into a subprocess.
         },
       },
       (err, stdout, _stderr) => {

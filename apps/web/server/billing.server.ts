@@ -42,7 +42,6 @@ import {
   createCheckoutSession as adapterCreateCheckout,
   createPortalSession as adapterCreatePortal,
   verifyWebhook as adapterVerifyWebhook,
-  type BillingProvider,
   type Plan as AdapterPlan,
 } from '@edusupervise/billing-adapter';
 
@@ -67,8 +66,6 @@ export interface BillingCheckoutResult {
 export interface BillingPortalResult {
   url: string;
 }
-
-export type { BillingProvider };
 
 /** Payload shape for `handleWebhookEvent`. Mirrors Stripe's structure. */
 export interface StripeWebhookEvent {

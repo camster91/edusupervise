@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Email provider adapter \u2014 mock + Resend implementations for EduSupervise.",
+  "description": "Email provider adapter — mock + Resend implementations for EduSupervise.",
   "main": "./dist/index.js",
   "types": "./src/index.ts",
   "exports": {
@@ -28,6 +28,6 @@
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
     "typescript": "~5.6.3",
-    "vitest": "^2.1.5"
+    "vitest": "^3.2.7"
   }
 }

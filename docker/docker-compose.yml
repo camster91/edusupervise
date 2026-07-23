@@ -1,3 +1,23 @@
+# Audit 2026-07-22 P1-5: the postgres container was reading
+# `POSTGRES_PASSWORD` from host env, but deploy/install.sh exports
+# only runtime + system passwords — not the owner password. The
+# installer documents the owner password is supplied via
+# `POSTGRES_PASSWORD_FILE` (mounted at /run/secrets/postgres_password)
+# which the postgres entrypoint reads before falling back to
+# `POSTGRES_PASSWORD`. We honor the installer contract: mount the
+# secret and remove the host interpolation. If both env and file are
+# set, the postgres entrypoint refuses to start with "both
+# POSTGRES_PASSWORD and POSTGRES_PASSWORD_FILE are set (but are
+# exclusive)" — so we strictly use the file.
+#
+# The installer writes the owner password to
+# "${EDUSUPERVISE_SECRETS_DIR}/postgres_password.txt" (per
+# deploy/install.sh), which we mount as the secret file below.
+
+secrets:
+  postgres_password:
+    file: ${EDUSUPERVISE_SECRETS_DIR:-/root/edusupervise-secrets}/postgres_password.txt
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -6,11 +26,13 @@ services:
       - ${EDUSUPERVISE_SECRETS_DIR:-/root/edusupervise-secrets}/.env
     environment:
       POSTGRES_USER: edusupervise_owner
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       POSTGRES_DB: edusupervise
       POSTGRES_INITDB_ARGS: "--auth-host=md5"
       EDUSUPERVISE_RUNTIME_PASSWORD: ${EDUSUPERVISE_RUNTIME_PASSWORD}
       EDUSUPERVISE_SYSTEM_PASSWORD: ${EDUSUPERVISE_SYSTEM_PASSWORD}
+    secrets:
+      - postgres_password
     volumes:
       - /data/postgres:/var/lib/postgresql/data
       - ../db/init:/docker-entrypoint-initdb.d:ro
@@ -50,14 +72,14 @@ services:
     env_file:
       - ${EDUSUPERVISE_SECRETS_DIR:-/root/edusupervise-secrets}/.env
     environment:
-      DATABASE_URL: postgres://edusupervise_runtime:${EDUSUPERVISE_RUNTIME_PASSWORD}@postgres:5432/edusupervise
+      DATABASE_URL: postgres://edusupervise_runtime:***@postgres:5432/edusupervise
       # SYSTEM_DATABASE_URL is the BYPASSRLS role used by signup + login
       # for cross-tenant bootstrap (creating a brand-new school + first
       # user, looking up a user by email before school_id is known). The
       # web container needs BOTH: DATABASE_URL for normal request handling
       # (runtime role, FORCE RLS) and SYSTEM_DATABASE_URL for the
       # cross-tenant auth surface (system role, BYPASSRLS).
-      SYSTEM_DATABASE_URL: postgres://edusupervise_system:${EDUSUPERVISE_SYSTEM_PASSWORD}@postgres:5432/edusupervise
+      SYSTEM_DATABASE_URL: postgres://edusupervise_system:***@postgres:5432/edusupervise
       REDIS_URL: redis://redis:6379
       NODE_ENV: production
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -122,7 +144,7 @@ services:
     env_file:
       - ${EDUSUPERVISE_SECRETS_DIR:-/root/edusupervise-secrets}/.env
     environment:
-      DATABASE_URL: postgres://edusupervise_system:${EDUSUPERVISE_SYSTEM_PASSWORD}@postgres:5432/edusupervise
+      DATABASE_URL: postgres://edusupervise_system:***@postgres:5432/edusupervise
       REDIS_URL: redis://redis:6379
       NODE_ENV: production
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -139,10 +161,15 @@ services:
       # The worker has no HTTP endpoint. Probe Postgres + Redis via
       # the same node runtime that already includes ioredis + pg
       # (no need to bundle postgresql-client just for pg_isready).
+      #
+      # Audit 2026-07-22 P2-3: with `CMD-SHELL`, only the first command
+      # runs. The `&&` joins the two probes into one shell string so
+      # both dependencies are tested; the exit code reflects the worst
+      # of the two. Without `&&`, the Redis probe never ran in prod
+      # because the Postgres-only command exited cleanly first.
       test:
         - CMD-SHELL
-        - node -e "const p=require('postgres');const c=p(process.env.DATABASE_URL);c.unsafe('SELECT 1').then(()=>process.exit(0)).catch(()=>process.exit(1))"
-        - node -e "const R=require('ioredis');const c=new R(process.env.REDIS_URL);c.ping().then(r=>process.exit(r==='PONG'?0:1)).catch(()=>process.exit(1))"
+        - "node -e \"const p=require('postgres');const c=p(process.env.DATABASE_URL);c.unsafe('SELECT 1').then(()=>process.exit(0)).catch(()=>process.exit(1))\" && node -e \"const R=require('ioredis');const c=new R(process.env.REDIS_URL);c.ping().then(r=>process.exit(r==='PONG'?0:1)).catch(()=>process.exit(1))\""
       interval: 30s
       timeout: 10s
       retries: 5
@@ -175,7 +202,7 @@ services:
     env_file:
       - ${EDUSUPERVISE_SECRETS_DIR:-/root/edusupervise-secrets}/.env
     environment:
-      DATABASE_URL: postgres://edusupervise_system:${EDUSUPERVISE_SYSTEM_PASSWORD}@postgres:5432/edusupervise
+      DATABASE_URL: postgres://edusupervise_system:***@postgres:5432/edusupervise
     volumes:
       - ../db/cron:/sql:ro
     depends_on:

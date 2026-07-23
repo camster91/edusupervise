@@ -39,6 +39,7 @@ import {
 } from '@edusupervise/db';
 import { sendEmail } from '@edusupervise/email';
 import { sendSms } from '@edusupervise/sms';
+import { sendMobilePushToUser } from '@edusupervise/push';
 import {
   reminderJobSchema,
   INVALID_PAYLOAD_ERROR,
@@ -63,6 +64,8 @@ export interface ProcessorDeps {
   /** Override for tests — defaults to the env-driven `sendEmail` / `sendSms`. */
   sendEmail?: typeof sendEmail;
   sendSms?: typeof sendSms;
+  /** Override for tests — defaults to the real @edusupervise/push dispatcher. */
+  sendMobilePush?: typeof sendMobilePushToUser;
 }
 
 /**
@@ -74,6 +77,7 @@ export function makeReminderProcessor(deps: ProcessorDeps) {
   const { db, logger } = deps;
   const doEmail = deps.sendEmail ?? sendEmail;
   const doSms = deps.sendSms ?? sendSms;
+  const doMobilePush = deps.sendMobilePush ?? sendMobilePushToUser;
 
   return async function processReminder(job: Job): Promise<void> {
     const raw = job.data as unknown;
@@ -102,6 +106,60 @@ export function makeReminderProcessor(deps: ProcessorDeps) {
     //    behavior is identical to the runtime path. If a future bug
     //    drops us out of the system role, RLS would still kick in.
     const logRowId = randomUUID();
+    const attempt = job.attemptsMade + 1;
+
+    // Commit the claim before calling any external provider. Attempts are
+    // monotonic, so a BullMQ retry (attempt N+1) may reclaim a pending row,
+    // while a concurrent duplicate at the same attempt cannot.
+    const claimed = await db.transaction(async (tx) => {
+      await tx.execute(
+        sql`SELECT set_config('app.school_id', ${payload.schoolId}, true)`,
+      );
+      const inserted = await tx
+        .insert(reminderLog)
+        .values({
+          id: logRowId,
+          schoolId: payload.schoolId,
+          reminderId: payload.reminderId,
+          assignmentId: payload.assignmentId,
+          userId: payload.userId,
+          scheduledFor: new Date(payload.scheduledFor),
+          channel: payload.channel,
+          status: 'pending',
+          sentAt: null,
+          error: null,
+          attempts: attempt,
+        })
+        .onConflictDoNothing()
+        .returning({ id: reminderLog.id });
+      if (inserted.length > 0) return true;
+
+      const reclaimed = await tx
+        .update(reminderLog)
+        .set({ attempts: attempt, error: null })
+        .where(and(
+          eq(reminderLog.reminderId, payload.reminderId),
+          eq(reminderLog.scheduledFor, new Date(payload.scheduledFor)),
+          eq(reminderLog.channel, payload.channel),
+          eq(reminderLog.status, 'pending'),
+          sql`${reminderLog.attempts} < ${attempt}`,
+        ))
+        .returning({ id: reminderLog.id });
+      return reclaimed.length > 0;
+    });
+
+    if (!claimed) {
+      logger.info(
+        {
+          jobId: job.id,
+          schoolId: payload.schoolId,
+          reminderId: payload.reminderId,
+          channel: payload.channel,
+        },
+        'reminder dispatch skipped: delivery slot already claimed',
+      );
+      return;
+    }
 
     try {
       await db.transaction(async (tx) => {
@@ -176,6 +234,7 @@ export function makeReminderProcessor(deps: ProcessorDeps) {
           ? reminder.customMessage
           : `Reminder: your "${duty.description ?? duty.location}" duty starts at ${duty.startTime}.`;
         const subject = `Duty reminder — ${duty.location} at ${duty.startTime}`;
+        const pushTitle = `${duty.location} — duty in ${formatRelativeTime(payload.scheduledFor)}`;
 
         let providerId: string | undefined;
 
@@ -191,7 +250,7 @@ export function makeReminderProcessor(deps: ProcessorDeps) {
             body,
           });
           providerId = result.providerId;
-        } else {
+        } else if (payload.channel === 'sms') {
           if (!user.phone) {
             throw new Error(
               `reminder.dispatch: user ${user.id} has no phone number`,
@@ -202,40 +261,64 @@ export function makeReminderProcessor(deps: ProcessorDeps) {
             body,
           });
           providerId = result.providerId;
+        } else {
+          // 'push-expo' — best-effort. The dispatcher is a thin wrapper
+          // around the Expo HTTP API. It NEVER throws (see expo.ts
+          // header comment). If the user has no active mobile
+          // subscriptions, result.subscriptionsFound is 0 and providerId
+          // stays undefined — we still mark the reminder_log row as
+          // 'sent' because the user has email/SMS as fallbacks. This
+          // matches the existing "missing recipient data is a soft
+          // warning" philosophy.
+          //
+          // Security review E-007: the mobile app reads data.dutyId via
+          // Notifications.addNotificationResponseReceivedListener and
+          // validates it with a strict UUID v4 regex before any
+          // router.push. We always send the assignmentId as dutyId so
+          // the tap target is unambiguous.
+          const pushResult = await doMobilePush(
+            db,
+            payload.userId,
+            payload.schoolId,
+            {
+              title: pushTitle,
+              body: body,
+              kind: 'reminder',
+              linkUrl: '/app/today',
+              data: {
+                dutyId: payload.assignmentId,
+                reminderId: payload.reminderId,
+                scheduledFor: payload.scheduledFor,
+              },
+            },
+            // The push package's PushLogger interface is structurally
+            // compatible with the worker's pino logger (warn/info/error);
+            // the cast silences a type-only mismatch on `debug`.
+            logger as unknown as Parameters<typeof sendMobilePushToUser>[4],
+          );
+          // Encode the dispatch result into providerId for observability.
+          // Format: "expo:found=N,sent=N,revoked=N,failed=N"
+          providerId = `expo:found=${pushResult.subscriptionsFound},sent=${pushResult.messagesSent},revoked=${pushResult.tokensRevoked},failed=${pushResult.messagesFailed}`;
         }
 
-        // 5) Write reminder_log row. UNIQUE(reminder_id, scheduled_for,
-        //    channel) makes this idempotent across concurrent workers.
-        //    Drizzle's onConflictDoNothing covers the rare case where
-        //    a parallel worker beat us to the row.
+        // 5) Transition the row claimed above from pending to sent.
+        // Guard status='pending' so a terminal state can never be
+        // overwritten by a late duplicate completion.
         const inserted = await tx
-          .insert(reminderLog)
-          .values({
-            id: logRowId,
-            schoolId: payload.schoolId,
-            reminderId: payload.reminderId,
-            assignmentId: payload.assignmentId,
-            userId: payload.userId,
-            scheduledFor: new Date(payload.scheduledFor),
-            channel: payload.channel,
+          .update(reminderLog)
+          .set({
             status: 'sent',
             sentAt: new Date(),
             error: null,
             attempts: job.attemptsMade + 1,
           })
-          .onConflictDoUpdate({
-            target: [
-              reminderLog.reminderId,
-              reminderLog.scheduledFor,
-              reminderLog.channel,
-            ],
-            set: {
-              status: 'sent',
-              sentAt: new Date(),
-              error: null,
-              attempts: job.attemptsMade + 1,
-            },
-          })
+          .where(and(
+            eq(reminderLog.reminderId, payload.reminderId),
+            eq(reminderLog.scheduledFor, new Date(payload.scheduledFor)),
+            eq(reminderLog.channel, payload.channel),
+            eq(reminderLog.status, 'pending'),
+            eq(reminderLog.attempts, attempt),
+          ))
           .returning();
 
         logger.info(
@@ -301,4 +384,24 @@ export function parseReminderJob(value: unknown): ReminderJobPayload {
     );
   }
   return r.data;
+}
+
+/**
+ * Format a fire-time as a short human-readable string for the push
+ * notification title (e.g. "in 15m", "in 1h", "now"). Pure UTC math —
+ * the worker's job is to fire at a wall-clock instant, not to localize
+ * the title (the mobile app can localize it on receipt if needed).
+ */
+function formatRelativeTime(scheduledForIso: string): string {
+  const target = new Date(scheduledForIso).getTime();
+  if (!Number.isFinite(target)) return 'soon';
+  const now = Date.now();
+  const diffMs = target - now;
+  if (Math.abs(diffMs) < 60_000) return 'now';
+  const minutes = Math.round(diffMs / 60_000);
+  if (Math.abs(minutes) < 60) return `in ${minutes}m`;
+  const hours = Math.round(minutes / 60);
+  if (Math.abs(hours) < 24) return `in ${hours}h`;
+  const days = Math.round(hours / 24);
+  return `in ${days}d`;
 }

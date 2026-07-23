@@ -1,0 +1,282 @@
+{
+  "_schema": 1,
+  "generatedAt": "2026-07-23T12:37:17Z",
+  "source": "manual entry from rebase-in-progress state",
+  "issues": {
+    "rebase-1": {
+      "key": "rebase-1",
+      "title": "Resolve calendar-import.server.ts rebase conflict (3 blocks)",
+      "severity": "high",
+      "category": "rebase-conflict",
+      "agent": "parent",
+      "status": "done",
+      "blocks": [
+        "verify",
+        "commit",
+        "push",
+        "deploy"
+      ],
+      "history": [
+        {
+          "from": "done",
+          "to": "done",
+          "at": "2026-07-23T13:03:16+00:00",
+          "note": "manually resolved against origin/main; SQL migrations renumbered 0018/0019/0020"
+        }
+      ]
+    },
+    "rebase-2": {
+      "key": "rebase-2",
+      "title": "Resolve _journal.json rebase conflict (main added 0015_push_subscriptions_apns, we added 0015_mobile_push_subscriptions + 0016 + 0017)",
+      "severity": "high",
+      "category": "rebase-conflict",
+      "agent": "parent",
+      "status": "done",
+      "blocks": [
+        "verify",
+        "commit",
+        "push",
+        "deploy"
+      ],
+      "history": [
+        {
+          "from": "done",
+          "to": "done",
+          "at": "2026-07-23T13:03:16+00:00",
+          "note": "manually resolved against origin/main; SQL migrations renumbered 0018/0019/0020"
+        }
+      ]
+    },
+    "rebase-3": {
+      "key": "rebase-3",
+      "title": "git diff --check + run pnpm install --frozen-lockfile (regen lock if needed)",
+      "severity": "medium",
+      "category": "rebase-conflict",
+      "agent": "parent",
+      "status": "done",
+      "blocks": [
+        "verify"
+      ],
+      "history": [
+        {
+          "from": "done",
+          "to": "done",
+          "at": "2026-07-23T13:03:16+00:00",
+          "note": "manually resolved against origin/main; SQL migrations renumbered 0018/0019/0020"
+        }
+      ]
+    },
+    "rebase-4": {
+      "key": "rebase-4",
+      "title": "Verify pnpm install regenerates pnpm-lock.yaml against merged package.json (root + apps/web + anything else affected)",
+      "severity": "medium",
+      "category": "rebase-conflict",
+      "agent": "parent",
+      "status": "done",
+      "blocks": [
+        "verify"
+      ],
+      "history": [
+        {
+          "from": "done",
+          "to": "done",
+          "at": "2026-07-23T13:03:16+00:00",
+          "note": "manually resolved against origin/main; SQL migrations renumbered 0018/0019/0020"
+        }
+      ]
+    },
+    "rebase-5": {
+      "key": "rebase-5",
+      "title": "Resolve apps/web/app/routes/api.admin.calendar.commit.ts has Unmerged status even though markers are gone \u2014 likely needs git add",
+      "severity": "medium",
+      "category": "rebase-conflict",
+      "agent": "parent",
+      "status": "done",
+      "blocks": [
+        "verify"
+      ],
+      "history": [
+        {
+          "from": "done",
+          "to": "done",
+          "at": "2026-07-23T13:03:16+00:00",
+          "note": "manually resolved against origin/main; SQL migrations renumbered 0018/0019/0020"
+        }
+      ]
+    },
+    "ship-1": {
+      "key": "ship-1",
+      "title": "Run all gates: typecheck / test / lint / build / audit / git diff --check",
+      "severity": "critical",
+      "category": "ship",
+      "agent": "parent",
+      "status": "in-progress",
+      "depends_on": [
+        "rebase-1",
+        "rebase-2",
+        "rebase-3",
+        "rebase-4",
+        "rebase-5"
+      ],
+      "history": [
+        {
+          "from": "in-progress",
+          "to": "in-progress",
+          "at": "2026-07-23T13:03:16+00:00",
+          "note": "rebased, running gates next"
+        }
+      ]
+    },
+    "ship-2": {
+      "key": "ship-2",
+      "title": "Local commit on audit/edusupervise-review-fixes (no push until explicit go)",
+      "severity": "critical",
+      "category": "ship",
+      "agent": "parent",
+      "status": "done",
+      "depends_on": [
+        "ship-1"
+      ],
+      "history": [
+        {
+          "from": "todo",
+          "to": "in-progress",
+          "at": "2026-07-23T13:05:59+00:00",
+          "note": "gates pass; about to commit"
+        },
+        {
+          "from": "in-progress",
+          "to": "done",
+          "at": "2026-07-23T19:34:18+00:00",
+          "note": "commit 98c206b on audit/edusupervise-review-fixes; no push"
+        }
+      ]
+    },
+    "ship-3": {
+      "key": "ship-3",
+      "title": "Optional: push to origin if user says go (memory rule: external side-effects require explicit go)",
+      "severity": "high",
+      "category": "ship",
+      "agent": "human-needed",
+      "status": "done",
+      "depends_on": [
+        "ship-2"
+      ],
+      "history": [
+        {
+          "at": "2026-07-23T19:34:18+00:00",
+          "note": "awaiting human go for git push"
+        },
+        {
+          "from": "todo",
+          "to": "done",
+          "at": "2026-07-24T02:00:20+00:00",
+          "note": "pushed 762a194 to origin/audit/edusupervise-review-fixes"
+        }
+      ]
+    },
+    "migrate-1": {
+      "key": "migrate-1",
+      "title": "Apply migration 0017_audit_log_immutable on production Postgres (enables RLS + trigger)",
+      "severity": "high",
+      "category": "ops",
+      "agent": "human-needed",
+      "status": "in-progress",
+      "depends_on": [
+        "ship-3"
+      ],
+      "history": [
+        {
+          "from": "todo",
+          "to": "in-progress",
+          "at": "2026-07-24T02:00:20+00:00",
+          "note": "remote exists; awaiting human go to SSH and apply 0020_audit_log_immutable"
+        }
+      ]
+    },
+    "migrate-2": {
+      "key": "migrate-2",
+      "title": "Update deploy/install.sh owner_password comment block to reference postgres_password.txt (already done? verify)",
+      "severity": "low",
+      "category": "ops",
+      "agent": "parent",
+      "status": "todo"
+    },
+    "verify-prod-1": {
+      "key": "verify-prod-1",
+      "title": "Smoke prod: login flow, schedule reminder end-to-end, push subscribe, CSRF rejected cross-origin",
+      "severity": "high",
+      "category": "ops",
+      "agent": "human-needed",
+      "status": "todo",
+      "depends_on": [
+        "migrate-1"
+      ]
+    },
+    "verify-prod-2": {
+      "key": "verify-prod-2",
+      "title": "Verify Traefik headers on prod: curl -I https://edusupervise.ashbi.ca \u2014 expect HSTS, X-Frame-Options, Permissions-Policy",
+      "severity": "medium",
+      "category": "ops",
+      "agent": "human-needed",
+      "status": "todo",
+      "depends_on": [
+        "migrate-1"
+      ]
+    },
+    "verify-prod-3": {
+      "key": "verify-prod-3",
+      "title": "Trigger a backup, then check mode: stat -c %a /data/backups/*.dump \u2192 600",
+      "severity": "medium",
+      "category": "ops",
+      "agent": "human-needed",
+      "status": "todo",
+      "depends_on": [
+        "migrate-1"
+      ]
+    },
+    "deferred-1": {
+      "key": "deferred-1",
+      "title": "P2-13: move __testing__ exports off the public surface in @edusupervise/{billing-adapter,email,sms}",
+      "severity": "low",
+      "category": "code-quality",
+      "agent": "subagent",
+      "status": "todo",
+      "comment": "breaking API for sibling tests \u2014 needs human sign-off"
+    },
+    "deferred-2": {
+      "key": "deferred-2",
+      "title": "P2-1: full XSS escalation fix (CSP nonce + Sec-Fetch-Site tightening for ALL routes, not just mutating ones)",
+      "severity": "medium",
+      "category": "security",
+      "agent": "subagent",
+      "status": "backlog",
+      "comment": "current fix closes the push-token-hijack chain; CSP refactor is a separate sprint"
+    },
+    "deferred-3": {
+      "key": "deferred-3",
+      "title": "Mobile push integration test against real Expo Push sandbox (slice-C D5)",
+      "severity": "medium",
+      "category": "test",
+      "agent": "subagent",
+      "status": "backlog",
+      "comment": "current Vitest covers the helper shape only; real Expo round-trip needs EXPO_TOKEN"
+    },
+    "deferred-4": {
+      "key": "deferred-4",
+      "title": "Fresh-DB bootstrap CI parity test (run db/init/* + migrations/* against empty Postgres volume, compare constraints/types)",
+      "severity": "low",
+      "category": "devops",
+      "agent": "subagent",
+      "status": "backlog"
+    },
+    "deferred-5": {
+      "key": "deferred-5",
+      "title": "Merge origin/main \u2014 close the 0-commit drift before any subsequent audit batch",
+      "severity": "low",
+      "category": "ops",
+      "agent": "human-needed",
+      "status": "backlog"
+    }
+  }
+}

@@ -262,13 +262,25 @@ export async function signupSolo(
   if (schoolName.length < 2 || schoolName.length > 80) {
     return { ok: false, error: 'School name must be 2–80 characters.', code: 'error' };
   }
-  // Default to school_admin when the caller did not pass a role
-  // (backward compatibility with the pre-Phase-1 solo POST shape).
-  // parseSoloRole validates; an invalid string falls back to school_admin
-  // rather than 400'ing the form — solo signups should never lose a user
-  // over an unknown role (they'd just hit admin wizard). To strict-reject,
-  // change to `const role = parseSoloRole(input.role); if (!role) return 400`.
-  const role: SoloRole = input.role ?? 'school_admin';
+  // Resolve the role to a known value (audit 2026-07-21).
+  //
+  // Previous behaviour: an unrecognised string fell back to
+  // 'school_admin' — the MOST privileged role. That was wrong on two
+  // axes:
+  //   1. Privilege: an attacker who could submit a custom role value
+  //      (e.g. a hand-crafted POST, a curl probe, a malformed client)
+  //      would silently land an admin account.
+  //   2. Defaults: the route normally passes `role: undefined` when the
+  //      form didn't supply one (Phase 1.1 default Teacher). The server
+  //      then defaulted to 'school_admin'. Defaulting to the LEAST
+  //      privileged valid role ('teacher') means a missing role is the
+  //      safe failure — the user lands as a teacher and can request
+  //      admin promotion via the normal flow.
+  //
+  // An explicit unknown string is now coerced to 'teacher' rather than
+  // rejecting (400'ing) — solo signups should not lose a user over a
+  // bad role value, but they MUST NOT land as admin.
+  const role: SoloRole = input.role ?? 'teacher';
 
   const rate = await checkRateLimit(input.email, ctx.ipAddress);
   if (!rate.ok) {

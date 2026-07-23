@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "SMS provider adapter \u2014 mock + Twilio implementations for EduSupervise.",
+  "description": "SMS provider adapter — mock + Twilio implementations for EduSupervise.",
   "main": "./dist/index.js",
   "types": "./src/index.ts",
   "exports": {
@@ -21,6 +21,6 @@
   },
   "devDependencies": {
     "typescript": "~5.6.3",
-    "vitest": "^2.1.5"
+    "vitest": "^3.2.7"
   }
 }

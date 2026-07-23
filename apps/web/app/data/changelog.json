@@ -1,5 +1,40 @@
 [
   {
+    "hash": "9c98cad6dd5fee30b51b353d33dd4ce2433f8b4b",
+    "shortHash": "9c98cad",
+    "date": "2026-07-13",
+    "subject": "infra: preflight - mark aps-environment + UIBackgroundModes + UIRequiredDeviceCapabilities as shipped",
+    "body": ""
+  },
+  {
+    "hash": "207ea0cb4d77d735ca2a4f86f975f64fefeb0cf8",
+    "shortHash": "207ea0c",
+    "date": "2026-07-13",
+    "subject": "infra: account-deletion cron docs (CRON-ACCOUNT-DELETION.md) + update APP-STORE-PREFLIGHT",
+    "body": "docs/CRON-ACCOUNT-DELETION.md (new)\n    Full operational runbook for the daily hard-delete cron:\n    - App routes (request / confirm / cancel / purge)\n    - Server functions (requestAccountDeletion, c…"
+  },
+  {
+    "hash": "bb74db81c77919cba3002dc5be0c20bca20bd805",
+    "shortHash": "bb74db8",
+    "date": "2026-07-13",
+    "subject": "web: account.delete + .confirm routes + api.admin.purge-account-deletions",
+    "body": "Three new routes close the App Store 5.1.1(v) account-deletion loop:\n\n  /account/delete (routes/account.delete.tsx, modified)\n    Email form. The TODO stub that just logged the request is now\n    wire…"
+  },
+  {
+    "hash": "6e9943d6c5607fb0377f80e78157cf5fc068bb39",
+    "shortHash": "6e9943d",
+    "date": "2026-07-13",
+    "subject": "web: account-deletion.server.ts - request/confirm/cancel/purge",
+    "body": "4 functions for the App Store 5.1.1(v) account-deletion flow:\n\n  requestAccountDeletion(email)\n    Mints a 32-byte base64url token, stores SHA-256 hash in\n    account_deletion_tokens with 7-day expiry…"
+  },
+  {
+    "hash": "808b9214b9e1d2ba360912d4166cde27900aebb4",
+    "shortHash": "808b921",
+    "date": "2026-07-13",
+    "subject": "db: account_deletion schema (0016) + cascade created_by FKs (0017)",
+    "body": "0016_account_deletion: App Store 5.1.1(v) compliance\n  - users.pending_deletion_at TIMESTAMPTZ + partial index\n  - account_deletion_tokens (id, identifier, token_hash, expires_at,\n    used_at, school_…"
+  },
+  {
     "hash": "978d1bc76a965c2b77790b13fbacc5e851ebfbec",
     "shortHash": "978d1bc",
     "date": "2026-07-13",
@@ -313,40 +348,5 @@
     "date": "2026-07-09",
     "subject": "web: /changelog public route + prebuild hook + committed snapshot",
     "body": "Public, no-auth timeline at /changelog reads the prebuilt JSON at\napps/web/app/data/changelog.json. Groups commits by date, marks\ninternal-only commits (test scaffolding, CI plumbing, style sweeps,\nsc…"
-  },
-  {
-    "hash": "c4b017a46d612cd726a5428a95faf41338638d87",
-    "shortHash": "c4b017a",
-    "date": "2026-07-09",
-    "subject": "tools: apps/web/scripts/build-changelog.ts - git log to changelog.json",
-    "body": "Pre-build hook that runs git log and writes the most recent 50 commits\nto apps/web/app/data/changelog.json. The /changelog route reads that\nJSON at runtime so the timeline stays in sync with every rel…"
-  },
-  {
-    "hash": "b0f1aa224dca43794a56b0b5108f02558ee20f1d",
-    "shortHash": "b0f1aa2",
-    "date": "2026-07-09",
-    "subject": "admin: privacy + support pages, push tests, cross-user test target",
-    "body": "Four pieces to close out the iOS App Store pipeline so the URLs\nApple reviewers will hit all resolve and Cameron has a regression\nnet around the dispatcher.\n\n1. apps/web/app/routes/privacy.tsx — publi…"
-  },
-  {
-    "hash": "807267037814f912ac7ad21360c175ddd64d3a7d",
-    "shortHash": "8072670",
-    "date": "2026-07-09",
-    "subject": "admin: fire test push debug route + button + App Store metadata",
-    "body": "Three coordinated pieces for shipping EduSupervise to the App Store:\n\n1. apps/web/app/routes/api.notifications.test.ts — admin-only POST endpoint\n   that fires a real sendNotification() through the sa…"
-  },
-  {
-    "hash": "fb8adedb972f9596c45b766d769567d0afdeb632",
-    "shortHash": "fb8aded",
-    "date": "2026-07-09",
-    "subject": "fix: make push_subscriptions unique indexes non-partial",
-    "body": "Phase 2 smoke test caught this: Drizzle's onConflictDoUpdate with\ntarget: [col, col, col] emits ON CONFLICT (cols) which doesn't match\na partial unique index (WHERE clause). The original migration 001…"
-  },
-  {
-    "hash": "1ef6af434de6de411053bee6b78b18acc3612f37",
-    "shortHash": "1ef6af4",
-    "date": "2026-07-08",
-    "subject": "web+infra: real push notifications — Web Push + APNs in parallel",
-    "body": "Phase 2 of the iOS App Store pipeline. WKWebView does NOT support the\nWeb Push API on iOS, so the iOS app needs a separate channel (APNs)\neven though it loads the same web code as the browser. This co…"
   }
 ]

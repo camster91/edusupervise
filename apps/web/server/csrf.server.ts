@@ -55,7 +55,29 @@ export interface CsrfOptions {
    * Set-Cookie header. Routes call this from their GET loader.
    */
   rotateCookie?: boolean;
+  /**
+   * When true (the default for web routes), the request MUST carry an
+   * Origin header. Requests with no Origin at all are rejected.
+   *
+   * The native mobile app sends literal `Origin: null` (RFC 6454 §7),
+   * which still satisfies the Layer-1 origin match. Set this to `false`
+   * only for the `api.mobile.push.*` routes that are explicitly
+   * designed for native clients where the cookie-binding defense
+   * (Layer 2) is the only signal that matters.
+   *
+   * Audit 2026-07-22 P2-1: without this gate, a non-browser client
+   * (XHR from same-origin XSS, a curl that knows the cookie, or a
+   * native agent that omits Origin) can satisfy Layer 2 with a stolen
+   * cookie and bypass Layer 1 entirely.
+   */
+  requireOrigin?: boolean;
 }
+
+/**
+ * Default for web routes — Origin MUST be present.
+ * Set `false` only on the mobile-push routes (see CsrfOptions.requireOrigin).
+ */
+const DEFAULT_REQUIRE_ORIGIN = true;
 
 const SAFE_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
 
@@ -98,6 +120,21 @@ export function validateCsrf(
   const origin = request.headers.get('origin');
   const referer = request.headers.get('referer');
   const host = request.headers.get('host') ?? '';
+  const requireOrigin = options.requireOrigin ?? DEFAULT_REQUIRE_ORIGIN;
+
+  // Audit 2026-07-22 P2-1: Sec-Fetch-Site is a structured-fields hint
+  // that all modern browsers send on navigations + fetches. "same-origin"
+  // is a stronger same-origin signal than the Origin header (which a
+  // same-origin XSS payload can spoof). If the browser says
+  // cross-site, we reject — before any cookie comparison.
+  //
+  // Non-browser clients (curl, native apps, server-to-server) don't send
+  // Sec-Fetch-Site, so the check is opt-in via the header's presence.
+  const secFetchSite = request.headers.get('sec-fetch-site');
+  if (secFetchSite && secFetchSite !== 'same-origin' && secFetchSite !== 'none') {
+    logger.debug({ secFetchSite }, 'csrf: sec-fetch-site cross-site');
+    return forbidden('sec_fetch_site_cross_site');
+  }
 
   if (!origin && !referer) {
     // No Origin AND no Referer: this is a same-origin request (most
@@ -105,6 +142,15 @@ export function validateCsrf(
     // it's either a server-to-server curl call or an old browser). We
     // still require a CSRF token to be present in this case so the
     // cookie-pair defense is not bypassable.
+    //
+    // Audit 2026-07-22 P2-1: web routes require Origin to be present
+    // so a same-origin XSS page cannot bypass Layer-1 entirely. The
+    // native mobile app's `Origin: null` still satisfies this gate
+    // (see originMatches() — `null` is allowed for native).
+    if (requireOrigin) {
+      logger.debug('csrf: missing origin (web route requires it)');
+      return forbidden('missing_origin');
+    }
   } else if (origin) {
     if (!originMatches(origin, host, options.allowedHosts)) {
       logger.debug({ origin, host }, 'csrf: origin mismatch');
@@ -159,6 +205,28 @@ export function validateCsrf(
  */
 export function readCsrfCookie(request: Request): string | null {
   return readCookie(request, CSRF_COOKIE_NAME);
+}
+
+/**
+ * Build a Set-Cookie header value that clears the CSRF cookie.
+ * Use this on logout and on any "session is gone" response so the
+ * token doesn't outlive the session — without this, a victim's
+ * double-submit token persists in `document.cookie` for the full
+ * 24h TTL after logout.
+ *
+ * Audit 2026-07-22 P3-2.
+ */
+export function clearCsrfCookie(): string {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const parts = [
+    `${CSRF_COOKIE_NAME}=`,
+    `Path=/`,
+    `HttpOnly=false`,
+    `SameSite=Lax`,
+    `Max-Age=0`,
+  ];
+  if (isProduction) parts.push('Secure');
+  return parts.join('; ');
 }
 
 /**
@@ -341,7 +409,20 @@ export function validateCsrfWithFormToken(
   const origin = request.headers.get('origin');
   const referer = request.headers.get('referer');
   const host = request.headers.get('host') ?? '';
-  if (origin) {
+  const requireOrigin = options.requireOrigin ?? DEFAULT_REQUIRE_ORIGIN;
+
+  // Audit 2026-07-22 P2-1: see validateCsrf for the rationale.
+  const secFetchSite = request.headers.get('sec-fetch-site');
+  if (secFetchSite && secFetchSite !== 'same-origin' && secFetchSite !== 'none') {
+    return forbidden('sec_fetch_site_cross_site');
+  }
+
+  if (!origin && !referer) {
+    if (requireOrigin) {
+      logger.debug('csrf: missing origin (web route requires it)');
+      return forbidden('missing_origin');
+    }
+  } else if (origin) {
     if (!originMatches(origin, host, options.allowedHosts)) {
       return forbidden('origin_mismatch');
     }
@@ -407,7 +488,20 @@ export function validateCsrfFromJson(
   const origin = request.headers.get('origin');
   const referer = request.headers.get('referer');
   const host = request.headers.get('host') ?? '';
-  if (origin) {
+  const requireOrigin = options.requireOrigin ?? DEFAULT_REQUIRE_ORIGIN;
+
+  // Audit 2026-07-22 P2-1: see validateCsrf for the rationale.
+  const secFetchSite = request.headers.get('sec-fetch-site');
+  if (secFetchSite && secFetchSite !== 'same-origin' && secFetchSite !== 'none') {
+    return forbidden('sec_fetch_site_cross_site');
+  }
+
+  if (!origin && !referer) {
+    if (requireOrigin) {
+      logger.debug('csrf: missing origin (web route requires it)');
+      return forbidden('missing_origin');
+    }
+  } else if (origin) {
     if (!originMatches(origin, host, options.allowedHosts)) return forbidden('origin_mismatch');
   } else if (referer) {
     if (!refererMatches(referer, host, options.allowedHosts)) return forbidden('referer_mismatch');
@@ -437,6 +531,10 @@ function originMatches(
   host: string,
   allowed: ReadonlyArray<string> | undefined,
 ): boolean {
+  // RFC 6454 §7: native-app fetch() (React Native iOS/Android) sends
+  // literal Origin: null. Mobile auth relies on Layer-2 double-submit
+  // cookie (trusted for native-app + cookie). CSRF rotation unchanged.
+  if (origin === 'null') return true;
   let parsed: URL;
   try {
     parsed = new URL(origin);

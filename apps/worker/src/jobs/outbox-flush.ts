@@ -24,8 +24,7 @@
  */
 
 import type { Queue } from 'bullmq';
-import { eq, isNull, sql, and, asc } from 'drizzle-orm';
-import { randomUUID } from 'node:crypto';
+import { eq, isNull, sql, asc } from 'drizzle-orm';
 import type { Db } from '@edusupervise/db';
 import { outbox, auditLog } from '@edusupervise/db';
 import type { Logger } from '../logger.js';
@@ -93,15 +92,17 @@ export async function flushOutboxOnce(
 
       await opts.queue.add(JOB_NAME_DISPATCH, parseResult.data, {
         ...REMINDER_JOB_OPTIONS,
-        jobId: `outbox-${row.id.toString()}-${randomUUID()}`,
+        jobId: `outbox-${row.id.toString()}`,
       });
 
-      // Stamp `enqueued_at` only after the BullMQ enqueue succeeds —
-      // a failed enqueue leaves the row eligible for retry next poll.
-      await opts.db
-        .update(outbox)
-        .set({ enqueuedAt: new Date() })
-        .where(eq(outbox.id, row.id));
+        // Mark only the row we just enqueued. The deterministic BullMQ
+        // job id keeps a retry safe if this stamp fails after queue.add.
+        await opts.db.execute(sql`
+          UPDATE outbox
+          SET enqueued_at = now()
+          WHERE id = ${row.id}
+            AND enqueued_at IS NULL
+        `);
 
       enqueued++;
       opts.logger.debug(

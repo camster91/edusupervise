@@ -1,0 +1,165 @@
+name: Mobile EAS Build
+
+# EAS Build pipeline for the EduSupervise mobile companion app.
+# Owned by: DevOps (slice D, Sprint 1).
+#
+# Triggers:
+#   - push to main     -> preview build (TestFlight / Play internal), no submit
+#   - pull_request     -> development build (dev client smoke test), no submit
+#   - tag v*           -> production build + auto-submit (App Store / Play internal track)
+#   - workflow_dispatch-> manual trigger; platform + profile inputs
+#
+# Required repository secrets (Settings -> Secrets and variables -> Actions):
+#   EXPO_TOKEN                     -- Expo personal access token (https://expo.dev/settings/access-tokens)
+#   EAS_BUILD_APPLE_TEAM_ID        -- 10-character Apple Developer Team ID
+#   ASC_APP_ID                     -- App Store Connect numeric app ID (10 digits)
+#   GOOGLE_SERVICE_ACCOUNT_KEY_PATH-- (optional) path to the Play service account JSON;
+#                                     not a GH secret -- uploaded as an EAS file secret.
+#                                     Leave unset until slice E (security) provisions it.
+#
+# Note: This workflow runs in the monorepo root context (apps/mobile/ is the
+# EAS project). pnpm + Expo workspace filtering keeps the install fast.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: "Platform to build"
+        required: true
+        type: choice
+        default: all
+        options:
+          - ios
+          - android
+          - all
+      profile:
+        description: "EAS build profile"
+        required: true
+        type: choice
+        default: preview
+        options:
+          - development
+          - preview
+          - production
+
+# Cancel in-progress runs on the same ref to save build minutes.
+concurrency:
+  group: mobile-eas-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: EAS Build (${{ inputs.profile || (startsWith(github.ref, 'refs/tags/v') && 'production') || (github.event_name == 'pull_request' && 'development') || 'preview' }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      # Fail fast without ever printing the secret.
+      - name: Verify EXPO_TOKEN
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -z "$EXPO_TOKEN" ]; then
+            echo "::error::EXPO_TOKEN secret is required for EAS builds."
+            exit 1
+          fi
+
+      # Filtered install: only the mobile app + its workspace deps. pnpm
+      # resolves the rest from the lockfile without materialising node_modules
+      # for the web/worker apps.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --filter ./apps/mobile...
+
+      - name: Mobile validation
+        run: |
+          pnpm --filter @edusupervise/mobile typecheck
+          pnpm --filter @edusupervise/mobile test
+          pnpm --filter @edusupervise/mobile exec expo config --type public
+
+      # Setup EAS CLI. eas-cache: true caches the EAS CLI install across
+      # runs; the action also patches inotify limits on Ubuntu.
+      - name: Setup EAS
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          eas-cache: true
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Resolve build parameters
+        id: params
+        run: |
+          # Profile selection:
+          #   tag v*               -> production
+          #   pull_request         -> development
+          #   push to main         -> preview
+          #   workflow_dispatch    -> user input
+          if [ -n "${{ inputs.profile }}" ]; then
+            PROFILE="${{ inputs.profile }}"
+          elif [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            PROFILE="production"
+          elif [ "${{ github.event_name }}" = "pull_request" ]; then
+            PROFILE="development"
+          else
+            PROFILE="preview"
+          fi
+          PLATFORM="${{ inputs.platform || 'all' }}"
+          echo "profile=${PROFILE}" >> "$GITHUB_OUTPUT"
+          echo "platform=${PLATFORM}" >> "$GITHUB_OUTPUT"
+          echo "Resolved: profile=${PROFILE}, platform=${PLATFORM}"
+
+      # Only production builds auto-submit. development + preview are
+      # internal smoke tests and must NEVER touch the stores.
+      - name: Submit on tag (production only)
+        if: steps.params.outputs.profile == 'production'
+        env:
+          EAS_BUILD_APPLE_TEAM_ID: ${{ secrets.EAS_BUILD_APPLE_TEAM_ID }}
+          ASC_APP_ID: ${{ secrets.ASC_APP_ID }}
+        run: |
+          cd apps/mobile
+          eas build \
+            --platform "${{ steps.params.outputs.platform }}" \
+            --profile production \
+            --non-interactive \
+            --no-wait \
+            --auto-submit
+
+      - name: Build (no submit)
+        if: steps.params.outputs.profile != 'production'
+        env:
+          EAS_BUILD_APPLE_TEAM_ID: ${{ secrets.EAS_BUILD_APPLE_TEAM_ID }}
+        run: |
+          cd apps/mobile
+          eas build \
+            --platform "${{ steps.params.outputs.platform }}" \
+            --profile "${{ steps.params.outputs.profile }}" \
+            --non-interactive \
+            --no-wait
+
+      - name: Summarise
+        if: always()
+        run: |
+          echo "Build kicked off for profile=${{ steps.params.outputs.profile }}, platform=${{ steps.params.outputs.platform }}."
+          echo "Track progress at https://expo.dev/accounts/<account>/projects/edusupervise-mobile/builds"
+          echo "(the EAS CLI prints the build URL to its own run log)."

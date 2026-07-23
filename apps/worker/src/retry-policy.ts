@@ -26,6 +26,7 @@
  */
 
 import type { JobsOptions } from 'bullmq';
+import { and, eq } from 'drizzle-orm';
 import type { Db } from '@edusupervise/db';
 import {
   auditLog,
@@ -138,6 +139,7 @@ export async function onFinalFailure(opts: FinalFailureOpts): Promise<void> {
   const errMsg = (error?.message ?? String(error)).slice(0, 1000);
 
   try {
+    let recordedFailure = false;
     await db.transaction(async (tx) => {
       // Defensive `SET LOCAL` so behavior matches the runtime path even
       // though the system role bypasses RLS for these writes.
@@ -145,9 +147,9 @@ export async function onFinalFailure(opts: FinalFailureOpts): Promise<void> {
         sql`SELECT set_config('app.school_id', ${payload.schoolId}, true)`,
       );
 
-      // 1) reminder_log: mark failed if no terminal row exists, else
-      //    update error/attempts.
-      await tx
+      // 1) reminder_log: insert failed when absent, or transition only
+      //    a still-pending row. A sent row is immutable.
+      const changed = await tx
         .insert(reminderLog)
         .values({
           schoolId: payload.schoolId,
@@ -161,18 +163,30 @@ export async function onFinalFailure(opts: FinalFailureOpts): Promise<void> {
           attempts: TOTAL_ATTEMPTS,
           sentAt: null,
         })
-        .onConflictDoUpdate({
-          target: [
-            reminderLog.reminderId,
-            reminderLog.scheduledFor,
-            reminderLog.channel,
-          ],
-          set: {
-            status: 'failed',
-            error: errMsg,
-            attempts: TOTAL_ATTEMPTS,
-          },
-        });
+        .onConflictDoNothing()
+        .returning({ id: reminderLog.id });
+
+      const transitioned = changed.length > 0
+        ? changed
+        : await tx
+            .update(reminderLog)
+            .set({
+              status: 'failed',
+              error: errMsg,
+              attempts: TOTAL_ATTEMPTS,
+            })
+            .where(and(
+              eq(reminderLog.reminderId, payload.reminderId),
+              eq(reminderLog.scheduledFor, new Date(payload.scheduledFor)),
+              eq(reminderLog.channel, payload.channel),
+              eq(reminderLog.status, 'pending'),
+            ))
+            .returning({ id: reminderLog.id });
+
+      // A late failed event racing with a completed send must be a no-op,
+      // including its audit/notification side effects.
+      if (transitioned.length === 0) return;
+      recordedFailure = true;
 
       // 2) audit_log: system-initiated row. user_id stays NULL per spec
       //    ("NULL for system"); metadata captures the reminder
@@ -208,16 +222,26 @@ export async function onFinalFailure(opts: FinalFailureOpts): Promise<void> {
       });
     });
 
-    logger.error(
-      {
-        reminderId: payload.reminderId,
-        assignmentId: payload.assignmentId,
-        userId: payload.userId,
-        channel: payload.channel,
-        err: error,
-      },
-      'reminder exhausted retries',
-    );
+    if (recordedFailure) {
+      logger.error(
+        {
+          reminderId: payload.reminderId,
+          assignmentId: payload.assignmentId,
+          userId: payload.userId,
+          channel: payload.channel,
+          err: error,
+        },
+        'reminder exhausted retries',
+      );
+    } else {
+      logger.info(
+        {
+          reminderId: payload.reminderId,
+          channel: payload.channel,
+        },
+        'terminal failure ignored because reminder was already terminal',
+      );
+    }
   } catch (err) {
     // Failure to write the audit/notification is itself an alarm-worthy
     // event. Log loudly; the next-heartbeat will still record liveness.

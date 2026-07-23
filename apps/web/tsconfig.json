@@ -3,7 +3,9 @@
   "compilerOptions": {
     "outDir": "dist",
     "rootDir": ".",
+    "rootDirs": [".", ".react-router/types"],
     "types": ["@react-router/node", "vite/client", "node"],
+    "allowImportingTsExtensions": true,
     "paths": {
       "~/*": ["./app/*"]
     }

@@ -1,0 +1,91 @@
+{
+  // EAS Build configuration for the EduSupervise mobile companion app.
+  // Owned by: DevOps (slice D, Sprint 1).
+  // Pinned CLI major: 13+ (current LTS line; CLI 16.x and 20.x are fine).
+  // Bump here when upgrading the build pipeline globally.
+  //
+  // Note: iOS bundleIdentifier ("ca.ashbi.edusupervise") and Android
+  // applicationId live in apps/mobile/app.json, not here. EAS 20.x
+  // schema does not allow overriding them in eas.json. Slice A owns
+  // app.json; the values must match what is registered in App Store
+  // Connect and Google Play Console.
+  "cli": {
+    "version": ">= 13.0.0",
+    "appVersionSource": "remote"
+  },
+
+  "build": {
+    // Shared defaults inherited by every profile below.
+    "base": {
+      "node": "20.11.1",
+      "pnpm": "9.15.0",
+      "env": {
+        // Mobile app talks to the web API at the production URL.
+        // EXPO_PUBLIC_* vars are baked into the JS bundle at build time.
+        "EXPO_PUBLIC_API_BASE_URL": "https://edusupervise.ashbi.ca"
+      }
+    },
+
+    // Development profile: produces a debug/dev-client build (uses
+    // expo-dev-client). Distribution "internal" means it is signed for
+    // ad-hoc install on physical devices, not for store submission.
+    "development": {
+      "extends": "base",
+      "developmentClient": true,
+      "distribution": "internal",
+      "ios": {
+        "simulator": false
+      },
+      "android": {
+        "buildType": "apk",
+        "gradleCommand": ":app:assembleDebug"
+      }
+    },
+
+    // Preview profile: real release-mode binary for TestFlight (iOS) and
+    // Play Console internal track (Android). Same signing as production,
+    // but targets internal distribution, not the public stores.
+    "preview": {
+      "extends": "base",
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      }
+    },
+
+    // Production profile: store-ready .aab / .ipa. Submitted to the
+    // stores via the `submit.production` block below. Version and
+    // build number are auto-incremented on the EAS side.
+    "production": {
+      "extends": "base",
+      "autoIncrement": true,
+      "android": {
+        "buildType": "app-bundle"
+      }
+    }
+  },
+
+  "submit": {
+    // Auto-submit configuration used by the production CI job
+    // (.github/workflows/mobile-eas.yml) when a v* tag is pushed.
+    "production": {
+      "ios": {
+        // ascAppId is the App Store Connect numeric ID (10 digits).
+        // It is sourced from the EAS secret ASC_APP_ID (set via
+        // `eas env:create` from the project root).
+        "ascAppId": "${env.ASC_APP_ID}"
+      },
+      "android": {
+        // Internal track = no Play Store review, up to 100 testers.
+        // First-time production release uses 'internal'; switch to
+        // 'production' track only when ready for public rollout.
+        "track": "internal",
+        // Path to the Google Play service account JSON. The JSON itself
+        // is uploaded as an EAS file-type secret (see runbook) named
+        // GOOGLE_SERVICE_ACCOUNT_KEY_PATH, which EAS materializes to a
+        // file path on the build machine.
+        "serviceAccountKeyPath": "${env.GOOGLE_SERVICE_ACCOUNT_KEY_PATH}"
+      }
+    }
+  }
+}

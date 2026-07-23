@@ -13,11 +13,12 @@ import { clientIp as readClientIp } from '../../server/client-ip.server';
 import {
   signupSolo,
   parseSoloRole,
+  type SoloRole,
   type SoloSignupInput,
 } from '../../server/signup.server';
 import {
   newSessionTokenFor,
-  sessionCookieAttributes,
+  setSessionCookie,
 } from '../../server/auth.server';
 import { logger } from '../../server/logger.server';
 
@@ -63,9 +64,30 @@ export async function action({ request }: Route.ActionArgs) {
   const email = String(form.get('email') ?? '').trim();
   const password = String(form.get('password') ?? '');
   const schoolName = String(form.get('schoolName') ?? '').trim();
-  // Phase 1.1: solo signups now pick a role at /signup (default Teacher).
-  // Invalid strings silently fall back to school_admin (see signupSolo).
-  const role = parseSoloRole(form.get('role'));
+  // Phase 1.1: solo signups now pick a role at /signup. Missing role
+  // is fine (server defaults to 'teacher' — the least-privileged solo
+  // role, audit 2026-07-21). A PRESENT-but-unknown role is rejected
+  // 400: a curl probe or buggy client that submitted `role=__admin__`
+  // used to silently land an admin account when the server's previous
+  // default of 'school_admin' kicked in. Now we treat that as a bad
+  // request — the server's role coercion is a defence-in-depth for
+  // legacy callers, NOT a permissive accept-anything entry point.
+  const rawRole = form.get('role');
+  let parsedRole: SoloRole | undefined;
+  if (rawRole !== null && rawRole !== undefined) {
+    const parsed = parseSoloRole(rawRole);
+    if (parsed === null) {
+      return Response.json(
+        {
+          error: 'invalid_role',
+          detail:
+            "role must be one of 'teacher', 'educational_assistant', 'school_admin'",
+        },
+        { status: 400 },
+      );
+    }
+    parsedRole = parsed;
+  }
 
   if (!name || !email || !password || !schoolName) {
     return Response.json(
@@ -75,7 +97,7 @@ export async function action({ request }: Route.ActionArgs) {
   }
 
   const result = await signupSolo(
-    { mode: 'solo', name, email, password, schoolName, role: role ?? undefined } satisfies SoloSignupInput,
+    { mode: 'solo', name, email, password, schoolName, role: parsedRole } satisfies SoloSignupInput,
     { ipAddress: readClientIp(request), userAgent: clientUa(request) },
   );
 
@@ -103,7 +125,12 @@ export async function action({ request }: Route.ActionArgs) {
 
   return redirect(onboardingPath, {
     headers: {
-      'Set-Cookie': `edusupervise.session=${token}; ${sessionCookieAttributes()}`,
+      // setSessionCookie picks the env-aware name (bare in dev,
+      // `__Host-` prefix in prod) and emits the matching Secure flag.
+      // Audit 2026-07-21: this replaces the previous inline
+      // setSessionCookie(token)
+      // which would have shipped the bare name even in prod.
+      'Set-Cookie': setSessionCookie(token),
     },
   });
 }

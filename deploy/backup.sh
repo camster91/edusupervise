@@ -57,7 +57,19 @@ fi
 # ---- 2. Sanity checks ----
 command -v pg_dump >/dev/null 2>&1 || command -v docker >/dev/null 2>&1 \
   || die "neither pg_dump nor docker is available; install postgresql-client or docker"
-mkdir -p "${BACKUP_DIR}"
+
+# Audit 2026-07-22 P1-6: backups contain user / auth / tenant data and
+# must NOT be world-readable on disk or over the wire. Set a strict
+# umask for this script's process so every file we create (including
+# the dump itself) is owner-only, regardless of the calling shell's
+# inherited umask.
+umask 077
+
+# Create the backup directory with restrictive permissions in case it
+# doesn't exist yet. The mode 0700 means only the owner can read or
+# traverse, which is what we want for a directory holding database
+# dumps.
+install -d -m 0700 "${BACKUP_DIR}"
 
 # ---- 3. Run pg_dump ----
 DATE=$(date -u +%F)
@@ -94,7 +106,10 @@ fi
 # ---- 4. Rsync to offsite ----
 if [[ -n "${OFFSITE_TARGET}" ]]; then
   log "syncing ${DUMP_FILE} -> ${OFFSITE_TARGET}"
-  rsync -az --partial --no-perms --chmod=u=rw,go=r "${DUMP_FILE}" "${OFFSITE_TARGET}/"
+  # Audit 2026-07-22 P1-6: chmod=go-rwx (not go=r) so the offsite copy
+  # is also owner-only. The receiver may apply umask differently; we
+  # pin the file mode at the sender side.
+  rsync -az --partial --no-perms --chmod=u=rw,go= "${DUMP_FILE}" "${OFFSITE_TARGET}/"
   log "offsite sync complete"
 else
   log "BACKUP_OFFSITE not set; skipping offsite rsync (BACKUP_DIR is local-only)"

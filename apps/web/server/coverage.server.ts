@@ -75,7 +75,32 @@ export async function recordAbsence(args: {
 
   return withSchoolId(args.schoolId, async (tx) => {
     if (args.externalId) {
-      const existing = await tx
+      // Insert first and let the tenant-scoped partial unique index arbitrate
+      // concurrent webhook retries. A SELECT-then-INSERT check has a race in
+      // which both requests can observe no row and create duplicates.
+      const inserted = await tx
+        .insert(coverageEvents)
+        .values({
+          schoolId: args.schoolId,
+          teacherId: args.teacherId,
+          absenceDate: args.absenceDate,
+          reason: args.reason ?? null,
+          source,
+          externalId: args.externalId,
+          createdBy: args.createdBy,
+        })
+        .onConflictDoNothing({
+          target: [
+            coverageEvents.schoolId,
+            coverageEvents.source,
+            coverageEvents.externalId,
+          ],
+          where: sql`${coverageEvents.externalId} IS NOT NULL`,
+        })
+        .returning({ id: coverageEvents.id });
+      if (inserted[0]) return { id: inserted[0].id, deduplicated: false };
+
+      const [existing] = await tx
         .select({ id: coverageEvents.id })
         .from(coverageEvents)
         .where(and(
@@ -84,7 +109,10 @@ export async function recordAbsence(args: {
           eq(coverageEvents.externalId, args.externalId),
         ))
         .limit(1);
-      if (existing[0]) return { id: existing[0].id, deduplicated: true };
+      if (!existing) {
+        throw new Error('Coverage absence conflict did not resolve to an existing event');
+      }
+      return { id: existing.id, deduplicated: true };
     }
 
     const [row] = await tx
@@ -95,7 +123,7 @@ export async function recordAbsence(args: {
         absenceDate: args.absenceDate,
         reason: args.reason ?? null,
         source,
-        externalId: args.externalId ?? null,
+        externalId: null,
         createdBy: args.createdBy,
       })
       .returning({ id: coverageEvents.id });
@@ -338,16 +366,33 @@ export async function routeAbsence(args: {
       // single-replacement flow.
       const isBroadcast = event.source === 'broadcast';
 
-      const created: Array<{ id: string; dutyId: string; newTeacherId: string | null; status: string }> = [];
-      let uncovered = 0;
-
-      for (const duty of affected) {
-        if (isBroadcast) {
-          const cohort = await findEligibleBroadcastCohort({
+      // HOIST the cohort query out of the duty loop. Audit 2026-07-22 P2-5:
+      // previously each iteration of `for (const duty of affected)` called
+      // findEligibleBroadcastCohort({...}) which depends only on school /
+      // excludeTeacherId / absenceDate — never on `duty`. For K affected
+      // duties this fired K identical 3-query cohort lookups.
+      const broadcastCohort = isBroadcast
+        ? await findEligibleBroadcastCohort({
             schoolId: event.schoolId,
             excludeTeacherId: event.teacherId,
             absenceDate: event.absenceDate,
-          });
+          })
+        : null;
+
+      const created: Array<{ id: string; dutyId: string; newTeacherId: string | null; status: string }> = [];
+      let uncovered = 0;
+      const notificationRows: Array<{
+        schoolId: string;
+        userId: string;
+        kind: 'duty_assigned';
+        title: string;
+        body: string;
+        linkUrl: string;
+      }> = [];
+
+      for (const duty of affected) {
+        if (isBroadcast) {
+          const cohort = broadcastCohort ?? [];
           if (cohort.length === 0) {
             // Still create an "uncovered" row so the absence event stays
             // in a coherent state (one row per affected duty).
@@ -384,7 +429,13 @@ export async function routeAbsence(args: {
             .insert(coverageAssignments)
             .values(rows)
             .returning({ id: coverageAssignments.id });
-          // One notification per teacher — bcc-style blast.
+
+          // BULK notifications. Audit 2026-07-22 P2-5: previously each
+          // cohort member triggered an individual `tx.insert(notifications)`
+          // inside the loop — K duties × M cohort members = K·M queries.
+          // Now we collect all rows in memory and insert once after the
+          // outer loop (or per-duty on insert). The conflict tolerance
+          // pattern matches parent-alerts.server.ts:253-268.
           for (let i = 0; i < cohort.length; i += 1) {
             created.push({
               id: inserted[i]!.id,
@@ -392,21 +443,14 @@ export async function routeAbsence(args: {
               newTeacherId: cohort[i]!.id,
               status: 'pending',
             });
-            try {
-              await tx.insert(notifications).values({
-                schoolId: event.schoolId,
-                userId: cohort[i]!.id,
-                kind: 'duty_assigned',
-                title: 'Coverage broadcast',
-                body: `${duty.dutyName} (${duty.startTime}–${duty.endTime}) on ${event.absenceDate}`,
-                linkUrl: `/app/coverage/${inserted[i]!.id}`,
-              });
-            } catch (err) {
-              logger.warn(
-                { assignmentId: inserted[i]!.id, err },
-                'coverage.broadcast_notification_failed',
-              );
-            }
+            notificationRows.push({
+              schoolId: event.schoolId,
+              userId: cohort[i]!.id,
+              kind: 'duty_assigned',
+              title: 'Coverage broadcast',
+              body: `${duty.dutyName} (${duty.startTime}–${duty.endTime}) on ${event.absenceDate}`,
+              linkUrl: `/app/coverage/${inserted[i]!.id}`,
+            });
           }
           continue;
         }
@@ -456,6 +500,24 @@ export async function routeAbsence(args: {
               'coverage.notification_failed',
             );
           }
+        }
+      }
+
+      // Bulk insert all collected notifications in a single round-trip.
+      // Audit 2026-07-22 P2-5. Per-row failures (e.g. a unique constraint)
+      // are still surfaced as warn-level logs, never thrown — coverage
+      // routing must complete even if a duplicate notification exists.
+      if (notificationRows.length > 0) {
+        try {
+          await tx.insert(notifications).values(notificationRows);
+        } catch (err) {
+          logger.warn(
+            {
+              count: notificationRows.length,
+              err: err instanceof Error ? err.message : String(err),
+            },
+            'coverage.bulk_notification_failed',
+          );
         }
       }
 

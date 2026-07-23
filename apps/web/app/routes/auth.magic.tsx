@@ -30,7 +30,7 @@ import type { Route } from './+types/auth.magic';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { getSystemClient, users } from '@edusupervise/db';
-import { newSessionTokenFor, sessionCookieAttributes } from '../../server/auth.server';
+import { newSessionTokenFor, setSessionCookie } from '../../server/auth.server';
 import {
   ensureCsrfCookie,
   validateCsrfWithFormToken,
@@ -188,7 +188,7 @@ export async function action({ request }: Route.ActionArgs) {
         status: 303,
         headers: {
           Location: '/app',
-          'Set-Cookie': `edusupervise.session=${sessionToken}; ${sessionCookieAttributes()}`,
+          'Set-Cookie': setSessionCookie(sessionToken),
         },
       });
     } finally {

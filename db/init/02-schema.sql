@@ -161,6 +161,19 @@ CREATE INDEX IF NOT EXISTS idx_reminders_school_assignment ON reminders(school_i
 -- =========================================
 -- Reminder dispatch log
 -- =========================================
+--
+-- NOTE: reminder_log.channel is the `reminder_channel` Postgres ENUM
+-- (declared at the top of this file as ('email','sms')). Migration
+-- 0015 added 'push-expo' to that enum. For a fresh-DB bootstrap that
+-- runs init/* before migrations/*, the enum is created without the
+-- 'push-expo' value, and any INSERT with channel='push-expo' fails
+-- until 0015 runs. The 'push-expo' value must be added inline here so
+-- the bootstrap order doesn't leave the column in a state that rejects
+-- mobile-app reminder writes.
+--
+-- Audit 2026-07-22 P1-4.
+
+CREATE TYPE IF NOT EXISTS reminder_channel AS ENUM ('email', 'sms', 'push-expo');
 
 CREATE TABLE IF NOT EXISTS reminder_log (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -170,7 +183,7 @@ CREATE TABLE IF NOT EXISTS reminder_log (
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   scheduled_for TIMESTAMPTZ NOT NULL,
   sent_at TIMESTAMPTZ,
-  channel TEXT NOT NULL CHECK (channel IN ('email', 'sms')),
+  channel reminder_channel NOT NULL,
   status TEXT NOT NULL CHECK (status IN ('pending', 'sent', 'failed', 'skipped')),
   error TEXT,
   attempts INTEGER NOT NULL DEFAULT 0,

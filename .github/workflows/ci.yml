@@ -41,23 +41,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Lint (if configured)
-        run: |
-          if grep -q '"lint"' package.json; then
-            pnpm run lint
-          else
-            echo "No lint script found, skipping."
-          fi
-        continue-on-error: true
+      - name: Lint
+        run: pnpm run lint
 
-      - name: Type check (if configured)
-        run: |
-          if grep -q '"typecheck"\|"type-check"\|"tsc"' package.json; then
-            pnpm run typecheck || pnpm run type-check || pnpm exec tsc --noEmit
-          else
-            echo "No typecheck script found, skipping."
-          fi
-        continue-on-error: true
+      - name: Type check
+        run: pnpm run typecheck
 
       - name: Unit tests
         run: pnpm test

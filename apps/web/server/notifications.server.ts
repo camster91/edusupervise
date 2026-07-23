@@ -9,6 +9,12 @@
 // Tier 2 (this commit) ships Web Push integration: every notification
 // is also pushed to the user's registered browser subscriptions if any.
 //
+// Mobile push (Sprint 1, 2026-07-06): in parallel to Web Push, every
+// notification is also pushed to any registered mobile devices via
+// Expo Push (https://exp.host/--/api/v2/push/send). The dispatcher
+// lives in @edusupervise/push so the worker can reuse it for
+// reminder.dispatch jobs. Failures are swallowed; push is best-effort.
+//
 // RLS: the INSERT runs inside `withUserContext` so the runtime role's
 // FORCE RLS policy on `notifications` admits the write.
 //
@@ -18,6 +24,7 @@
 // Now we reuse the cached singleton from `db.server.ts#getDb()`.
 
 import { notifications, withUserContext } from '@edusupervise/db';
+import { sendMobilePushToUser } from '@edusupervise/push';
 
 import { logger } from './logger.server';
 import { getDb } from './db.server';
@@ -62,7 +69,7 @@ export async function sendNotification(input: SendNotificationInput): Promise<vo
     'notification: created',
   );
 
-  // Best-effort browser push. Wrapped in try/finally so a push
+  // Best-effort browser push. Wrapped in try/catch so a push
   // failure doesn't surface to the caller (the in-app notification
   // already succeeded). The push helper itself returns void and
   // logs internal failures; this catch is for unexpected throws
@@ -79,6 +86,31 @@ export async function sendNotification(input: SendNotificationInput): Promise<vo
     logger.warn(
       { err, userId: input.userId, kind: input.kind },
       'notification: push failed (non-fatal)',
+    );
+  }
+
+  // Best-effort mobile push (Expo). Parallel to web push above.
+  // The dispatcher NEVER throws (best-effort contract, see
+  // @edusupervise/push). The try/catch is a defense-in-depth net
+  // for any unexpected throw in the surrounding code.
+  try {
+    await sendMobilePushToUser(
+      db,
+      input.userId,
+      input.schoolId,
+      {
+        title: input.title,
+        body: input.body ?? null,
+        linkUrl: input.linkUrl ?? null,
+        kind: input.kind,
+        data: input.data ?? {},
+      },
+      logger,
+    );
+  } catch (err) {
+    logger.warn(
+      { err, userId: input.userId, kind: input.kind },
+      'notification: mobile push failed (non-fatal)',
     );
   }
 }

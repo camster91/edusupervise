@@ -103,7 +103,7 @@ export async function listTeachersForDuty(args: {
   });
 }
 
-interface RosterMember {
+export interface RosterMember {
   userId: string;
   userName: string;
   coverageRole: CoverageRole;

@@ -28,7 +28,7 @@ import { getSystemClient, users } from '@edusupervise/db';
 import {
   verifyPassword,
   newSessionTokenFor,
-  sessionCookieAttributes,
+  setSessionCookie,
 } from '../../server/auth.server';
 import {
   ensureCsrfCookie,
@@ -122,7 +122,7 @@ export async function action({ request }: Route.ActionArgs) {
     const { token } = newSessionTokenFor(user.id);
     return redirect('/app', {
       headers: {
-        'Set-Cookie': `edusupervise.session=${token}; ${sessionCookieAttributes()}`,
+        'Set-Cookie': setSessionCookie(token),
       },
     });
   } finally {

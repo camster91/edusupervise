@@ -1,0 +1,52 @@
+{
+  "expo": {
+    "name": "EduSupervise",
+    "slug": "edusupervise",
+    "scheme": "edusupervise",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "ca.ashbi.edusupervise",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false,
+          "NSExceptionDomains": {
+            "edusupervise.ashbi.ca": {
+              "NSExceptionAllowsInsecureHTTPLoads": false,
+              "NSIncludesSubdomains": true
+            }
+          }
+        }
+      }
+    },
+    "android": {
+      "package": "ca.ashbi.edusupervise",
+      "edgeToEdgeEnabled": true,
+      "allowBackup": false,
+      "dataExtractionRules": {
+        "disableIfNoEncryption": true
+      },
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-linking",
+        {
+          "schemes": ["edusupervise"]
+        }
+      ]
+    ],
+    "extra": {
+      "router": {
+        "origin": false
+      }
+    }
+  }
+}

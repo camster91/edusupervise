@@ -106,6 +106,41 @@
       "when": 1783497600000,
       "tag": "0015_push_subscriptions_apns",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1783497800000,
+      "tag": "0016_account_deletion",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1783497900000,
+      "tag": "0017_cascade_created_by",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1783500000000,
+      "tag": "0018_mobile_push_subscriptions",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1784678400000,
+      "tag": "0019_reliability_constraints",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1784786700000,
+      "tag": "0020_audit_log_immutable",
+      "breakpoints": true
     }
   ]
 }

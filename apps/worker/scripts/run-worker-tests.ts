@@ -29,11 +29,13 @@ import postgres from 'postgres';
 import { randomUUID } from 'node:crypto';
 import {
   auditLog,
+  cycleCalendar,
   duties,
   dutyAssignments,
   getRuntimeClient,
   getSystemClient,
   notifications,
+  outbox,
   reminders,
   reminderLog,
   schools,
@@ -41,6 +43,8 @@ import {
   workerHeartbeats,
   withSchoolContext,
 } from '@edusupervise/db';
+import { flushOutboxOnce } from '@edusupervise/worker/jobs/outbox-flush';
+import { runSchedulerTick } from '@edusupervise/worker/jobs/reminder-scheduler';
 import {
   InvalidPayloadError,
   makeReminderProcessor,
@@ -162,18 +166,20 @@ async function main(): Promise<void> {
   async function seedFixture(suffix: string): Promise<FixtureBundle> {
     const start = '2026-09-07';
     const end = '2027-06-30';
-    const [school] = await systemDb
-      .insert(schools)
-      .values({
-        slug: `worker-test-school-${suffix}`,
-        name: `Worker Test School ${suffix}`,
-        timezone: 'America/Toronto',
-        cycleDays: 5,
-        schoolYearStart: start,
-        schoolYearEnd: end,
-        plan: 'trial',
-      })
-      .returning();
+    const [school] = await sqlOwner<{ id: string }[]>`
+      INSERT INTO schools (
+        slug, name, timezone, cycle_days, school_year_start, school_year_end, plan
+      ) VALUES (
+        ${`worker-test-school-${suffix}`},
+        ${`Worker Test School ${suffix}`},
+        'America/Toronto',
+        5,
+        ${start},
+        ${end},
+        'trial'
+      )
+      RETURNING id
+    `;
     if (!school) throw new Error('seedFixture: school insert failed');
 
     const [admin] = await systemDb
@@ -630,6 +636,254 @@ async function main(): Promise<void> {
       });
       if (dispatch.toISOString() !== '2026-06-15T12:50:00.000Z') {
         throw new Error(`dispatch=${dispatch.toISOString()}`);
+      }
+    },
+  });
+
+  freshCases.push({
+    name: 'scheduler: scopes calendar by school and converts local duty time across DST',
+    fn: async () => {
+      const a = await seedFixture('scheduler-a');
+      const b = await seedFixture('scheduler-b');
+      await systemDb
+        .update(schools)
+        .set({ timezone: 'America/Toronto' })
+        .where(eq(schools.id, a.schoolId));
+      await systemDb
+        .update(reminders)
+        .set({ minutesBefore: 10, notifyEmail: true, notifySms: false })
+        .where(eq(reminders.id, a.reminderId));
+      await systemDb
+        .update(dutyAssignments)
+        .set({ startDate: '2026-03-01' })
+        .where(eq(dutyAssignments.id, a.assignmentId));
+
+      await systemDb.insert(cycleCalendar).values([
+        {
+          schoolId: b.schoolId,
+          date: '2026-03-09',
+          cycleDay: 1,
+          isSchoolDay: true,
+          isInstructional: true,
+        },
+        {
+          schoolId: a.schoolId,
+          date: '2026-03-10',
+          cycleDay: 1,
+          isSchoolDay: true,
+          isInstructional: true,
+        },
+      ]);
+
+      const result = await runSchedulerTick({
+        db: systemDb,
+        logger,
+        now: new Date('2026-03-10T12:19:30.000Z'),
+      });
+      if (result.errors !== 0) throw new Error(`scheduler errors=${result.errors}`);
+
+      const rows = await systemDb
+        .select()
+        .from(outbox)
+        .where(eq(outbox.schoolId, a.schoolId));
+      if (rows.length !== 2) throw new Error(`expected email + push outbox rows, got ${rows.length}`);
+      for (const row of rows) {
+        const payload = row.payload as { dutyStartAt?: string; scheduledFor?: string };
+        if (payload.dutyStartAt !== '2026-03-10T12:30:00.000Z') {
+          throw new Error(`DST conversion produced dutyStartAt=${payload.dutyStartAt}`);
+        }
+        if (payload.scheduledFor !== '2026-03-10T12:20:00.000Z') {
+          throw new Error(`scheduledFor=${payload.scheduledFor}`);
+        }
+      }
+    },
+  });
+
+  freshCases.push({
+    name: 'scheduler: scans past the first deterministic batch so later reminders are not starved',
+    fn: async () => {
+      const a = await seedFixture('scheduler-page-a');
+      const b = await seedFixture('scheduler-page-b');
+      await systemDb
+        .update(reminders)
+        .set({ minutesBefore: 1 })
+        .where(eq(reminders.id, a.reminderId));
+      await systemDb
+        .update(reminders)
+        .set({ minutesBefore: 10 })
+        .where(eq(reminders.id, b.reminderId));
+      await systemDb
+        .update(dutyAssignments)
+        .set({ startDate: '2026-06-01' });
+      await systemDb.insert(cycleCalendar).values([
+        { schoolId: a.schoolId, date: '2026-06-15', cycleDay: 1, isSchoolDay: true, isInstructional: true },
+        { schoolId: b.schoolId, date: '2026-06-15', cycleDay: 1, isSchoolDay: true, isInstructional: true },
+      ]);
+
+      const result = await runSchedulerTick({
+        db: systemDb,
+        logger,
+        batchSize: 1,
+        now: new Date('2026-06-15T12:19:30.000Z'),
+      });
+      if (result.scanned !== 2) throw new Error(`expected all 2 reminders scanned, got ${result.scanned}`);
+      const rows = await systemDb
+        .select()
+        .from(outbox)
+        .where(eq(outbox.schoolId, b.schoolId));
+      if (rows.length !== 2) throw new Error(`later reminder was starved; outbox rows=${rows.length}`);
+    },
+  });
+
+  freshCases.push({
+    name: 'scheduler: repeated ticks durably deduplicate outbox rows',
+    fn: async () => {
+      const fx = await seedFixture('scheduler-dedup');
+      await systemDb
+        .update(dutyAssignments)
+        .set({ startDate: '2026-06-01' })
+        .where(eq(dutyAssignments.id, fx.assignmentId));
+      await systemDb.insert(cycleCalendar).values({
+        schoolId: fx.schoolId,
+        date: '2026-06-15',
+        cycleDay: 1,
+        isSchoolDay: true,
+        isInstructional: true,
+      });
+      const opts = {
+        db: systemDb,
+        logger,
+        now: new Date('2026-06-15T12:19:30.000Z'),
+      };
+      await runSchedulerTick(opts);
+      await runSchedulerTick(opts);
+      const rows = await systemDb
+        .select()
+        .from(outbox)
+        .where(eq(outbox.schoolId, fx.schoolId));
+      if (rows.length !== 2) throw new Error(`expected 2 unique channel rows, got ${rows.length}`);
+    },
+  });
+
+  freshCases.push({
+    name: 'outbox: deterministic job id makes enqueue idempotent when stamping fails',
+    fn: async () => {
+      const fx = await seedFixture('outbox-idempotent');
+      const [row] = await systemDb
+        .insert(outbox)
+        .values({
+          schoolId: fx.schoolId,
+          jobType: 'reminder.dispatch',
+          payload: {
+            schoolId: fx.schoolId,
+            reminderId: fx.reminderId,
+            assignmentId: fx.assignmentId,
+            userId: fx.teacherId,
+            channel: 'email',
+            scheduledFor: '2026-09-14T13:00:00.000Z',
+          },
+          enqueuedAt: null,
+        })
+        .returning();
+      if (!row) throw new Error('outbox insert failed');
+
+      const jobIds: string[] = [];
+      const queue = {
+        add: async (_name: string, _payload: unknown, options: { jobId?: string }) => {
+          if (!options.jobId) throw new Error('missing jobId');
+          jobIds.push(options.jobId);
+          return {};
+        },
+      } as unknown as Queue;
+      const failingDb = new Proxy(systemDb as object, {
+        get(target, prop, receiver) {
+          if (prop === 'execute') return () => { throw new Error('simulated stamp failure'); };
+          return Reflect.get(target, prop, receiver);
+        },
+      }) as typeof systemDb;
+
+      await flushOutboxOnce({ db: failingDb, queue, logger });
+      await flushOutboxOnce({ db: failingDb, queue, logger });
+      if (jobIds.length !== 2) throw new Error(`expected 2 enqueue attempts, got ${jobIds.length}`);
+      if (jobIds[0] !== `outbox-${row.id}` || jobIds[1] !== jobIds[0]) {
+        throw new Error(`job ids were not deterministic: ${jobIds.join(',')}`);
+      }
+    },
+  });
+
+  freshCases.push({
+    name: 'processor: claims reminder_log before provider side effects',
+    fn: async () => {
+      const fx = await seedFixture('processor-claim');
+      const scheduledFor = '2026-09-14T13:00:00.000Z';
+      await systemDb.insert(reminderLog).values({
+        schoolId: fx.schoolId,
+        reminderId: fx.reminderId,
+        assignmentId: fx.assignmentId,
+        userId: fx.teacherId,
+        scheduledFor: new Date(scheduledFor),
+        channel: 'email',
+        status: 'pending',
+        attempts: 0,
+      });
+      let sends = 0;
+      const processor = makeReminderProcessor({
+        db: systemDb,
+        logger,
+        sendEmail: async () => {
+          sends++;
+          return { providerId: 'should-not-send', status: 'sent' as const };
+        },
+      });
+      await processor({
+        id: 'duplicate-claim',
+        data: {
+          schoolId: fx.schoolId,
+          reminderId: fx.reminderId,
+          assignmentId: fx.assignmentId,
+          userId: fx.teacherId,
+          channel: 'email',
+          scheduledFor,
+        },
+        attemptsMade: 0,
+      } as unknown as Job);
+      if (sends !== 0) throw new Error(`duplicate claim sent ${sends} provider requests`);
+    },
+  });
+
+  freshCases.push({
+    name: 'retry: terminal failure never overwrites sent or emits failure side effects',
+    fn: async () => {
+      const fx = await seedFixture('retry-sent');
+      const payload = {
+        schoolId: fx.schoolId,
+        reminderId: fx.reminderId,
+        assignmentId: fx.assignmentId,
+        userId: fx.teacherId,
+        channel: 'email' as const,
+        scheduledFor: '2026-09-14T13:00:00.000Z',
+      };
+      await systemDb.insert(reminderLog).values({
+        schoolId: fx.schoolId,
+        reminderId: fx.reminderId,
+        assignmentId: fx.assignmentId,
+        userId: fx.teacherId,
+        scheduledFor: new Date(payload.scheduledFor),
+        channel: payload.channel,
+        status: 'sent',
+        sentAt: new Date(),
+        attempts: 1,
+      });
+      await onFinalFailure({ db: systemDb, logger, payload, error: new Error('late failed event') });
+      const [log] = await systemDb
+        .select()
+        .from(reminderLog)
+        .where(eq(reminderLog.reminderId, fx.reminderId));
+      if (log?.status !== 'sent') throw new Error(`sent status overwritten with ${log?.status}`);
+      const audits = await systemDb.select().from(auditLog).where(eq(auditLog.action, 'reminder.failed'));
+      const notifs = await systemDb.select().from(notifications).where(eq(notifications.kind, 'reminder.failed'));
+      if (audits.length !== 0 || notifs.length !== 0) {
+        throw new Error(`late failure emitted audit=${audits.length} notif=${notifs.length}`);
       }
     },
   });

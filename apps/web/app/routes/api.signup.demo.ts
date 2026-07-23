@@ -16,7 +16,7 @@ import {
 } from '../../server/signup.server';
 import {
   newSessionTokenFor,
-  sessionCookieAttributes,
+  setSessionCookie,
 } from '../../server/auth.server';
 import { logger } from '../../server/logger.server';
 
@@ -86,7 +86,7 @@ export async function action({ request }: Route.ActionArgs) {
 
   return redirect('/app/today', {
     headers: {
-      'Set-Cookie': `edusupervise.session=${token}; ${sessionCookieAttributes()}`,
+      'Set-Cookie': setSessionCookie(token),
     },
   });
 }

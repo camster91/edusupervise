@@ -246,49 +246,31 @@ export async function generateAlertsForAssignment(args: {
         newTeacherName,
       });
 
-      let created = 0;
-      let skipped = 0;
-      for (const parent of matchingParents) {
-        try {
-          await tx
-            .insert(parentAlerts)
-            .values({
-              schoolId: assignment.schoolId,
-              parentId: parent.id,
-              coverageAssignmentId: assignment.id,
-              channel: 'sms',
-              subject,
-              bodyShort,
-              bodyLong,
-              status: 'draft',
-            })
-            .onConflictDoNothing({
-              target: [parentAlerts.parentId, parentAlerts.coverageAssignmentId],
-            });
-          created += 1;
-        } catch (err) {
-          // Audit slice-2 RED-2: the previous catch swallowed ALL errors
-          // (including real DB failures — connection drops, FK violations,
-          // runtime-role denials) and silently counted them as 'skipped'.
-          // The intent was idempotency on the unique(parent, assignment)
-          // index, which `onConflictDoNothing` already handles WITHOUT
-          // throwing. So a throw here means a real DB failure — surface it.
-          const pgCode =
-            err && typeof err === 'object' && 'code' in err
-              ? (err as { code?: string }).code
-              : undefined;
-          if (pgCode === '23505') {
-            // Unique violation — race with another writer for the same
-            // (parent, assignment) pair. Safe to skip silently.
-            skipped += 1;
-          } else {
-            // Real failure — log + re-throw so the transaction rolls back
-            // and the coverage.accept handler reports it to the user.
-            throw err;
-          }
-        }
-      }
-      return { created, skipped };
+      // One bulk INSERT replaces up to hundreds of sequential round trips.
+      // RETURNING is the source of truth for conflict accounting: Postgres
+      // returns only rows actually inserted, not rows suppressed by conflict.
+      const parentIds = [...new Set(matchingParents.map((parent) => parent.id))];
+      const inserted = await tx
+        .insert(parentAlerts)
+        .values(parentIds.map((parentId) => ({
+          schoolId: assignment.schoolId,
+          parentId,
+          coverageAssignmentId: assignment.id,
+          channel: 'sms',
+          subject,
+          bodyShort,
+          bodyLong,
+          status: 'draft',
+        })))
+        .onConflictDoNothing({
+          target: [parentAlerts.parentId, parentAlerts.coverageAssignmentId],
+        })
+        .returning({ parentId: parentAlerts.parentId });
+
+      return {
+        created: inserted.length,
+        skipped: parentIds.length - inserted.length,
+      };
     });
   } finally {
     await systemClient.close();
